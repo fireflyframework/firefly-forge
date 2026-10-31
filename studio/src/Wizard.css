@@ -1,0 +1,111 @@
+/* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+/* Full-page settings use a navigation rail and one continuous content column. */
+.wizard-rail.wizard-frame {
+  grid-template-columns: 208px minmax(0, 1fr);
+  grid-template-rows: auto;
+  align-items: start;
+  gap: 32px;
+}
+.wizard-rail.wizard-frame .wizard-steps {
+  grid-column: 1;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
+  align-items: stretch;
+  gap: 4px;
+  padding: 0 24px 24px 0;
+  border-bottom: 0;
+  border-inline-end: 1px solid var(--line);
+}
+.wizard-rail.wizard-frame .wizard-steps button {
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 0;
+  text-align: start;
+}
+.wizard-rail .wizard-step-label {
+  padding-top: 5px;
+}
+.wizard-rail .wizard-step-label small {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+.wizard-rail.wizard-frame .wizard-body {
+  grid-column: 2;
+  grid-row: 1;
+}
+.wizard-rail.wizard-frame .wizard-content {
+  padding: 0;
+}
+.wizard-rail.wizard-frame .wizard-heading {
+  margin-bottom: 28px;
+}
+.wizard-rail.wizard-frame .wizard-heading h2 {
+  font-size: 24px;
+  line-height: 1.35;
+  letter-spacing: -0.025em;
+}
+.wizard-mobile-progress {
+  display: none;
+}
+.wizard-actions[hidden] {
+  display: none !important;
+}
+.wizard-form:has(> .wizard-actions[hidden]) {
+  gap: 0;
+}
+.form-field-wide {
+  grid-column: 1 / -1;
+}
+@media (max-width: 760px) {
+  .wizard-rail.wizard-frame {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+  .wizard-rail.wizard-frame .wizard-steps {
+    display: none;
+  }
+  .wizard-rail .wizard-mobile-progress {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 16px;
+    width: 100%;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--line);
+  }
+  .wizard-mobile-progress label {
+    color: var(--muted);
+    font-size: 12px;
+    margin: 0;
+  }
+  .wizard-mobile-progress select {
+    min-width: 0;
+    width: 100%;
+    min-height: 44px;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.5;
+  }
+  .wizard-mobile-progress select:disabled {
+    opacity: 1;
+    color: var(--muted);
+    -webkit-text-fill-color: var(--muted);
+    background: var(--surface-subtle);
+  }
+  .wizard-rail.wizard-frame .wizard-body {
+    width: 100%;
+  }
+}

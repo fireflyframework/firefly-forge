@@ -63,16 +63,22 @@ export function ProviderConfiguration({
   provider,
   connection,
   onUpdated,
+  onEditingChange,
 }: {
   provider: CodingProvider;
   connection: Connection;
   onUpdated: () => void;
+  onEditingChange?: (editing: boolean) => void;
 }) {
   const [current, setCurrent] = useState(provider);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [edit, setEdit] = useState(false);
+  const setEditing = (editing: boolean) => {
+    setEdit(editing);
+    onEditingChange?.(editing);
+  };
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
@@ -100,7 +106,7 @@ export function ProviderConfiguration({
         { method: "PUT", body: JSON.stringify({ values, clear_secrets }) },
       );
       setCurrent(result);
-      setEdit(false);
+      setEditing(false);
       setNotice("Settings saved. Check the connection before starting a run.");
       onUpdated();
     } catch (cause) {
@@ -127,6 +133,90 @@ export function ProviderConfiguration({
       setBusy(false);
     }
   }
+  if (edit)
+    return (
+      <section
+        className="provider-editor"
+        aria-label={`Configure ${current.name}`}
+      >
+        <form
+          className="provider-config-form"
+          onSubmit={(event) => void save(event)}
+        >
+          <div className="provider-fields form-grid">
+            {(current.fields ?? [])
+              .filter(
+                (field) =>
+                  current.id !== "bridge" ||
+                  !["completion_recovery", "checkpoints"].includes(field.key),
+              )
+              .map((field) => (
+                <FormField
+                  id={`${current.id}-${field.key}`}
+                  label={field.label}
+                  key={field.key}
+                  className={
+                    field.secret || field.key === "endpoint"
+                      ? "form-field-wide"
+                      : undefined
+                  }
+                >
+                  <input
+                    id={`${current.id}-${field.key}`}
+                    name={field.key}
+                    type={field.secret ? "password" : "text"}
+                    defaultValue={
+                      field.secret
+                        ? ""
+                        : String(current.config?.[field.key] ?? "")
+                    }
+                    autoComplete="off"
+                    placeholder={
+                      field.secret &&
+                      current.config?.[field.key + "_configured"]
+                        ? "Configured; leave blank to keep it"
+                        : field.placeholder
+                    }
+                  />
+                  {field.secret &&
+                    current.config?.[field.key + "_configured"] && (
+                      <label className="check-choice">
+                        <input type="checkbox" name={"clear-" + field.key} />
+                        Remove the stored {field.label.toLowerCase()}
+                      </label>
+                    )}
+                </FormField>
+              ))}
+          </div>
+          {current.id === "bridge" &&
+            (current.fields ?? []).some(
+              (field) => field.key === "checkpoints",
+            ) && <BridgeRecoveryChoices config={current.config ?? {}} />}
+          <small>
+            Secrets are stored on the server and never returned to this page.
+          </small>
+          <div className="provider-editor-actions form-divider">
+            <button
+              className="secondary"
+              type="button"
+              disabled={busy}
+              onClick={() => setEditing(false)}
+            >
+              Cancel settings
+            </button>
+            <button className="primary" disabled={busy}>
+              <Check size={15} />
+              Save settings
+            </button>
+          </div>
+        </form>
+        {error && (
+          <div className="alert" role="alert">
+            {error}
+          </div>
+        )}
+      </section>
+    );
   return (
     <article className="provider-card">
       <div className="provider-card-heading">
@@ -173,10 +263,10 @@ export function ProviderConfiguration({
           className="secondary"
           type="button"
           disabled={busy}
-          onClick={() => setEdit(!edit)}
+          onClick={() => setEditing(true)}
         >
           <Settings2 size={15} />
-          {edit ? "Close settings" : "Configure"}
+          Configure
         </button>
         <button
           className="quiet"
@@ -197,61 +287,7 @@ export function ProviderConfiguration({
           </a>
         )}
       </div>
-      {edit && (
-        <form
-          className="provider-config-form"
-          onSubmit={(event) => void save(event)}
-        >
-          {(current.fields ?? [])
-            .filter(
-              (field) =>
-                current.id !== "bridge" ||
-                !["completion_recovery", "checkpoints"].includes(field.key),
-            )
-            .map((field) => (
-              <FormField
-                id={`${current.id}-${field.key}`}
-                label={field.label}
-                key={field.key}
-              >
-                <input
-                  id={`${current.id}-${field.key}`}
-                  name={field.key}
-                  type={field.secret ? "password" : "text"}
-                  defaultValue={
-                    field.secret
-                      ? ""
-                      : String(current.config?.[field.key] ?? "")
-                  }
-                  autoComplete="off"
-                  placeholder={
-                    field.secret && current.config?.[field.key + "_configured"]
-                      ? "Configured; leave blank to keep it"
-                      : field.placeholder
-                  }
-                />
-                {field.secret &&
-                  current.config?.[field.key + "_configured"] && (
-                    <label className="check-choice">
-                      <input type="checkbox" name={"clear-" + field.key} />
-                      Remove the stored {field.label.toLowerCase()}
-                    </label>
-                  )}
-              </FormField>
-            ))}
-          {current.id === "bridge" &&
-            (current.fields ?? []).some(
-              (field) => field.key === "checkpoints",
-            ) && <BridgeRecoveryChoices config={current.config ?? {}} />}
-          <small>
-            Secrets are stored on the server and never returned to this page.
-          </small>
-          <button className="primary" disabled={busy}>
-            <Check size={15} />
-            Save {current.name} settings
-          </button>
-        </form>
-      )}
+
       {error && (
         <div className="alert" role="alert">
           {error}

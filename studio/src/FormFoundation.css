@@ -25,7 +25,7 @@
   border-block-start: 1px solid var(--line);
 }
 .wizard {
-  --wizard-inline-inset: var(--form-space-7);
+  --wizard-inline-inset: 0px;
 }
 .step-number {
   position: relative;
@@ -71,22 +71,6 @@
 .form-scroll-status[hidden] {
   display: none;
 }
-.page-scroll-status {
-  border-top: 1px solid var(--line);
-  background: var(--surface);
-  padding: 6px var(--content-gutter);
-}
-.page-scroll-status > span {
-  flex: 1 1 0;
-}
-.page-scroll-status .text-button {
-  min-height: 28px;
-  padding: 0;
-  color: var(--accent-ink);
-  font-size: 12px;
-  white-space: normal;
-  text-align: right;
-}
 .wizard-field-scroll:focus-visible {
   outline: 2px solid var(--accent-ink);
   outline-offset: -2px;
@@ -99,9 +83,4 @@
 .wizard[data-layout="flow"] .form-scroll-region {
   overflow: visible;
   display: block;
-}
-@media (max-width: 600px) {
-  .wizard {
-    --wizard-inline-inset: var(--form-space-4);
-  }
 }

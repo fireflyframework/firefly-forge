@@ -581,7 +581,6 @@ function Administrator({
         <>
           <Wizard
             className="external-tools-wizard"
-            minimumFieldHeight={64}
             steps={["Connection", "Discover", "Review", "Project access"]}
             active={step}
             onStep={(next) => {

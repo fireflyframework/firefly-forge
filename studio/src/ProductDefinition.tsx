@@ -987,7 +987,6 @@ function DefinitionEditor({
     <>
       <Wizard
         progressMode="visited"
-        parentLayout
         headingAction={
           <button
             type="button"
@@ -1014,11 +1013,11 @@ function DefinitionEditor({
         }
         description={
           [
-            "Name the customer, describe their problem, and choose the people responsible for this product.",
-            "Put the customer’s actions in order, then describe the outcome they expect.",
-            "Link each journey to features, observable outcomes, and what happens when things go wrong.",
+            "Required: customer, problem and at least one product owner.",
+            "Put customer actions in order. Required: at least one journey and a user story.",
+            "Required: observable acceptance outcomes. Map features to record a functional review.",
             "Describe your services and third-party connections. No live connection is made by saving these contracts.",
-            "Review the definition and any attached design. Saving a definition and implementing it are separate actions.",
+            "Save a draft with pending reviews, or record completed human reviews. Saving does not implement the product.",
           ][step]
         }
       >
@@ -1026,19 +1025,6 @@ function DefinitionEditor({
           onSubmit={(event) => void submit(event)}
           onChangeCapture={onDirty}
         >
-          <div className="product-step-purpose">
-            <p>
-              {
-                [
-                  "Required: customer, problem and at least one product owner.",
-                  "Required: at least one journey and a user story.",
-                  "Required: acceptance outcomes. Map features to record a functional review.",
-                  "Optional when this product operates independently.",
-                  "Save a draft with pending reviews, or record the completed human reviews.",
-                ][step]
-              }
-            </p>
-          </div>
           {step === 0 && (
             <div className="product-brief-grid">
               <div className="product-customer-summary">

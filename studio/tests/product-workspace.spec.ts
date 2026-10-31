@@ -5,7 +5,7 @@ import { navigate } from "./navigation";
 
 test("collapsing the assistant releases editor space without losing the chat draft and restores keyboard focus", async ({
   page,
-}) => {
+}, info) => {
   const repository = "a".repeat(32),
     conversation = "b".repeat(32);
   await page.route("**/api/v1/**", async (route) => {
@@ -76,6 +76,7 @@ test("collapsing the assistant releases editor space without losing the chat dra
     }));
   expect(progressWidth.scroll).toBeLessThanOrEqual(progressWidth.visible);
   const main = page.locator("main");
+  const documentScroll = page.locator(".product-document");
   const panel = page.locator("dialog.product-assistant-panel");
   const fields = page.locator(".wizard-field-scroll");
   for (let owner = 0; owner < 6; owner++)
@@ -86,32 +87,70 @@ test("collapsing the assistant releases editor space without losing the chat dra
   ]) {
     await page.setViewportSize(viewport);
     await expect(panel).toHaveCSS("position", "static");
+    await expect(fields).toHaveCSS("overflow-y", "visible");
     await fields.hover();
     await page.mouse.wheel(0, 800);
     await expect
-      .poll(() => fields.evaluate((element) => element.scrollTop))
+      .poll(() => documentScroll.evaluate((element) => element.scrollTop))
       .toBeGreaterThan(0);
-    expect(await main.evaluate((element) => element.scrollTop)).toBe(0);
+    expect(await fields.evaluate((element) => element.scrollTop)).toBe(0);
     const bounds = await main.boundingBox();
+    await info.attach("assistant-geometry-" + viewport.width, {
+      contentType: "application/json",
+      body: JSON.stringify(
+        await panel.evaluate((node) => {
+          const list = [];
+          let el: HTMLElement | null = node;
+          while (el) {
+            const r = el.getBoundingClientRect(),
+              s = getComputedStyle(el);
+            list.push({
+              tag: el.tagName,
+              class: el.className,
+              y: r.y,
+              height: r.height,
+              scroll: el.scrollTop,
+              overflow: s.overflow,
+              position: s.position,
+              top: s.top,
+              bottom: s.bottom,
+              grid: s.gridTemplateRows,
+            });
+            el = el.parentElement;
+          }
+          return list;
+        }),
+        null,
+        2,
+      ),
+    });
     for (const control of [
       page.getByRole("heading", { name: "AI design assistant", exact: true }),
       page.getByRole("button", { name: "New conversation", exact: true }),
       page.getByRole("button", { name: "Close design assistant", exact: true }),
       panel.locator(".assistant-composer"),
-      page.getByRole("button", { name: "Continue", exact: true }),
     ]) {
       const box = await control.boundingBox();
       expect
-        .soft(box!.y, `${viewport.width}: control above main`)
+        .soft(box!.y, viewport.width + ": assistant above main")
         .toBeGreaterThanOrEqual(bounds!.y);
       expect
-        .soft(box!.y + box!.height, `${viewport.width}: control below main`)
+        .soft(box!.y + box!.height, viewport.width + ": assistant below main")
         .toBeLessThanOrEqual(bounds!.y + bounds!.height);
     }
-    await page.mouse.wheel(0, -800);
-    await expect
-      .poll(() => fields.evaluate((element) => element.scrollTop))
-      .toBe(0);
+    const continueButton = page.getByRole("button", {
+      name: "Continue",
+      exact: true,
+    });
+    await continueButton.focus();
+    const action = await continueButton.boundingBox();
+    expect(action!.y).toBeGreaterThanOrEqual(bounds!.y);
+    expect(action!.y + action!.height).toBeLessThanOrEqual(
+      bounds!.y + bounds!.height,
+    );
+    await documentScroll.evaluate((element) =>
+      element.scrollTo({ top: 0, behavior: "instant" }),
+    );
   }
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page
@@ -253,24 +292,9 @@ for (const viewport of [
       };
     });
     expect(bounds.title.top).toBeGreaterThanOrEqual(bounds.main.top);
-    if (viewport.width > 1100) {
-      expect(bounds.overflow).toBe("auto");
-      expect(bounds.body.bottom).toBeLessThanOrEqual(bounds.actions.top);
-      const owner = page.getByLabel("Product owners", { exact: true });
-      await owner.scrollIntoViewIfNeeded();
-      const ownerBounds = await owner.boundingBox();
-      const fieldBounds = await page
-        .locator(".wizard-field-scroll")
-        .boundingBox();
-      expect(ownerBounds!.y).toBeGreaterThanOrEqual(fieldBounds!.y);
-      expect(ownerBounds!.y + ownerBounds!.height).toBeLessThanOrEqual(
-        fieldBounds!.y + fieldBounds!.height,
-      );
-    } else {
-      expect(bounds.overflow).toBe("visible");
-      expect(bounds.actions.top).toBeGreaterThanOrEqual(bounds.problem.bottom);
-      expect(bounds.actions.top).toBeGreaterThanOrEqual(bounds.owner.bottom);
-    }
+    expect(bounds.overflow).toBe("visible");
+    expect(bounds.actions.top).toBeGreaterThanOrEqual(bounds.problem.bottom);
+    expect(bounds.actions.top).toBeGreaterThanOrEqual(bounds.owner.bottom);
     await page
       .getByRole("button", { name: "Continue", exact: true })
       .scrollIntoViewIfNeeded();
@@ -294,6 +318,42 @@ for (const viewport of [
     await page
       .getByLabel("Product owners", { exact: true })
       .fill("Inventory team");
+    for (let owner = 0; owner < 6; owner++)
+      await page
+        .getByRole("button", { name: "Add owner", exact: true })
+        .click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    const scrollOwner = page.locator(
+      viewport.width >= 1100 ? ".product-document" : ".workspace-main > main",
+    );
+    const journeyHeading = page.getByRole("heading", {
+      name: "What does the customer need to do?",
+      exact: true,
+    });
+    const expectStepInView = async (heading: typeof journeyHeading) => {
+      await expect(heading).toBeFocused();
+      const box = await heading.boundingBox(),
+        owner = await scrollOwner.boundingBox();
+      expect(box!.y).toBeGreaterThanOrEqual(owner!.y);
+      expect(box!.y + box!.height).toBeLessThanOrEqual(
+        owner!.y + owner!.height,
+      );
+      if (viewport.width >= 1100)
+        expect(
+          await scrollOwner.evaluate((node) => node.scrollTop),
+        ).toBeLessThanOrEqual(1);
+    };
+    await expectStepInView(journeyHeading);
+    await page.getByRole("button", { name: "Back", exact: true }).click();
+    await expectStepInView(
+      page.getByRole("heading", {
+        name: "Who is this product for?",
+        exact: true,
+      }),
+    );
+    await expect(
+      page.getByLabel("Customer or user", { exact: true }),
+    ).toHaveValue("Warehouse operator");
     await page.getByRole("button", { name: "Continue", exact: true }).click();
     await page
       .getByLabel("Customer journey", { exact: true })

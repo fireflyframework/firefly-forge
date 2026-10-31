@@ -2,10 +2,11 @@
 import { expect, test } from "@playwright/test";
 import { navigate } from "./navigation";
 import { mockIdentity } from "./auth-fixture";
+import { writeFile } from "node:fs/promises";
 
 test("large product components remain searchable and editable without truncation or a quadratic dependency form", async ({
   page,
-}) => {
+}, info) => {
   const repository = {
     id: "a".repeat(32),
     name: "Services",
@@ -140,10 +141,34 @@ test("large product components remain searchable and editable without truncation
   await page
     .getByLabel("Search configured components", { exact: true })
     .fill("component-4999");
-  await page
+  const selectedComponent = page
     .getByRole("navigation", { name: "Configured components", exact: true })
-    .getByRole("button", { name: "5000. Service 4999", exact: true })
-    .click();
+    .getByRole("button", { name: "5000. Service 4999", exact: true });
+  await selectedComponent.scrollIntoViewIfNeeded();
+  const frames = await selectedComponent.evaluate(async (node) => {
+    const main = node.closest("main")!,
+      samples = [];
+    for (let i = 0; i < 60; i++) {
+      await new Promise(requestAnimationFrame);
+      samples.push({
+        mainHeight: main.clientHeight,
+        mainScroll: main.scrollTop,
+        buttonY: node.getBoundingClientRect().y,
+      });
+    }
+    return samples;
+  });
+  await writeFile(
+    info.outputPath("component-5000-stability.json"),
+    JSON.stringify(frames, null, 2),
+  );
+  for (const key of ["mainHeight", "mainScroll", "buttonY"] as const)
+    expect(
+      Math.max(...frames.map((frame) => frame[key])) -
+        Math.min(...frames.map((frame) => frame[key])),
+      key,
+    ).toBeLessThanOrEqual(1);
+  await selectedComponent.click();
   await expect(page.getByLabel("Component name", { exact: true })).toHaveValue(
     "Service 4999",
   );

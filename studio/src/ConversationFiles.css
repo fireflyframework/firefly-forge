@@ -189,24 +189,6 @@
   padding: 4px;
   flex: none;
 }
-.assistant-composer-actions {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 8px;
-}
-.product-assistant-panel .assistant-composer-actions button {
-  width: auto;
-  white-space: nowrap;
-  font-size: 13px;
-}
-.product-assistant-panel .assistant-file-guidance {
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--muted);
-  max-height: 44px;
-  overflow: auto;
-}
 @media (max-width: 600px) {
   .conversation-files-dialog {
     inset: 12px;
@@ -227,25 +209,6 @@
     padding: 16px;
   }
 }
-.product-assistant-panel .assistant-composer .conversation-file-chip button {
-  width: 28px;
-  min-height: 28px;
-  padding: 4px;
-  flex: none;
-}
-.product-assistant-panel
-  .assistant-composer
-  .assistant-composer-actions
-  button {
-  width: auto;
-  min-height: 40px;
-  margin: 0;
-  white-space: nowrap;
-}
-.product-assistant-panel .assistant-composer .conversation-file-tray {
-  margin: 0;
-  padding-bottom: 4px;
-}
 
 .conversation-file-tray {
   flex-wrap: wrap;
@@ -261,7 +224,6 @@
 .conversation-file-chip > span {
   flex: 1;
 }
-.product-assistant-panel .assistant-composer .conversation-more-files,
 .product-assistant-panel .conversation-more-files {
   width: auto;
   min-height: 28px;
