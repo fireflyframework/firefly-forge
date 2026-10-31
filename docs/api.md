@@ -28,7 +28,11 @@ catalog manifests and file indexes identify evidence; they do not grant access.
 | `/revisions/{snapshot_id}/files/{entry_index}?expected_manifest={sha256}&page=0&offset=0&limit=32768` | A verified byte window for an entry in that exact catalog page. |
 
 Catalog/file requests may include `request_id` for an existing Git delivery
-checkpoint; its recorded source tree must match the selected snapshot. File
+checkpoint. Its verified journal intent and receipt must retain a typed
+`expected_source_digest` equal to the catalog's complete source digest, as well
+as the same Git tree. A matching tree alone does not cover ignored public files.
+Older checkpoints without that exact proof remain unavailable through this
+selector; their source snapshot can still be read independently. File
 windows are at most 1 MiB and include exact byte offsets, a window SHA-256,
 Base64 content and optional UTF-8 text. `binary` describes the returned window,
 including a window that bisects a UTF-8 sequence; it does not guess a file type.
@@ -38,6 +42,33 @@ The Python SDK exposes `run_source_revisions`, `run_source_catalog` and
 hashes without retries. Unpublished snapshots have no content endpoint, and
 the server never substitutes a live workspace read. See
 [source storage and publication](architecture.md#read-recorded-source).
+
+### Rescan retained bytes after credential rotation
+
+A changed configured credential registry holds archived file reads until a
+current project owner or factory administrator explicitly scans the retained
+bytes. This uses existing native `members` authority; it does not grant execution
+or alter project permissions. A workspace is not required.
+
+| Endpoint under `/api/v1/runs/{run_id}/source/revisions/{snapshot_id}` | Purpose |
+| --- | --- |
+| `GET /credential-scan-candidate?expected_manifest={sha256}` | Review the current catalog and configured-credential fingerprint. Requires owner authority. |
+| `POST /credential-scans/{request_id}` | Submit one `SourceCredentialScanInputV1`, including both explicit retained-byte/no-source-change acknowledgments. |
+| `GET /credential-scans/{request_id}?expected_manifest={sha256}` | Read the exact pending or completed request without repeating a scan. Requires current source read access. |
+
+Keep the request identity, complete body and its canonical SHA-256 before the
+POST. After a lost reply, read that exact receipt. A pending request does not
+authorize content access and is never restarted automatically. A completed
+receipt records the unchanged snapshot, source digest, storage binding, actor,
+current credential fingerprint, file/byte counts and content-proof chain. The
+scanner verifies every retained chunk and file checksum before publication;
+it does not upload files, recreate a workspace or rewrite the archive.
+
+The SDK exposes `run_source_scan_candidate`, `run_source_rescan` and
+`run_source_scan_receipt`; readback requires `expected_request_sha256`.
+All responses are private and uncached. Current project access remains necessary
+after a successful scan. Personal API-token source routes remain unsupported
+until their separate observation allowlist is extended and tested.
 
 ## Automatic verification handoffs
 

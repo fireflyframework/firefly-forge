@@ -188,8 +188,11 @@ remain separate work; the implemented retention policy keeps recorded bytes.
 
 Authenticated GET routes list recorded snapshots and return catalog/file pages.
 Each response rechecks the native reader, current project access, run scope,
-tenant and immutable reference. An optional Git delivery request selects only a
-checkpoint with the same recorded source tree. Reads perform no Git or SCM
+tenant and immutable reference. An optional Git delivery request requires its
+verified intent/receipt and typed `expected_source_digest` to match the complete
+catalog source digest, alongside the recorded Git tree. A matching tree alone
+does not cover ignored public files; missing legacy proof holds that selector.
+Reads perform no Git or SCM
 network operation. `branch` and `head` describe the captured run baseline;
 `tree` describes the admitted snapshot, without claiming a remote branch update.
 
@@ -198,7 +201,16 @@ Publication scans the complete file for configured credentials and verifies its
 SHA-256. Reads verify the bounded metadata chain, then fetch only chunks that
 intersect the requested window and its credential-scan overlap. They never
 restore the complete file or archive per window. The configured credential
-fingerprint must still match; a changed registry requires a fresh publication.
+fingerprint must still match. After rotation, a current project owner or factory
+administrator can explicitly rescan the retained objects without the workspace.
+The scan streams every chunk, verifies file checksums and metadata, and appends
+a request-scoped credential receipt in the same private source schema. Source,
+catalog, object and checkpoint identities remain unchanged. Pending or uncertain
+scans grant no access and are read back rather than retried. Native identity and
+membership locks cover receipt publication; current access and registry checks
+also cover object reads. The page chain is verified once and streamed again in
+bounded pages, so rescan metadata work is linear rather than one full catalog
+pass per file. GET requests never create scan receipts or upload content.
 Request-specific credential taints are checked against the returned byte range
 without changing that persistent fingerprint. Application memory scales with
 chunk/page width and the bounded response window. Publication scratch scales
