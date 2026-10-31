@@ -10,8 +10,10 @@ from pyfly.container import repository
 from pyfly.data.relational.sqlalchemy import Repository
 from sqlalchemy import BigInteger, ColumnElement, Numeric, Select, String, and_, case, cast, func, literal, select
 from sqlalchemy.dialects.postgresql import BIT, JSONB
+from sqlalchemy.orm import aliased
 
 from firefly_forge.access_persistence import ForgeMembershipEntity
+from firefly_forge.engine_activity_persistence import ForgeEngineActivityEntity, current_activity_predicate
 from firefly_forge.factory_dashboard_models import RUN_BUCKETS, DashboardScope
 from firefly_forge.identity import Principal
 from firefly_forge.identity_persistence import ForgeIdentitySessionEntity, ForgeIdentityUserEntity
@@ -257,6 +259,7 @@ class FactoryDashboardRepository(Repository[ForgeRunEntity, UUID]):
         after: int | None,
         limit: int,
         bucket: str | None,
+        schema: str,
         allowed_projects: tuple[str, ...] | None = None,
     ) -> dict[str, Any]:
         session = self._require_session()
@@ -284,9 +287,11 @@ class FactoryDashboardRepository(Repository[ForgeRunEntity, UUID]):
         ).subquery()
         tasks = ForgeTaskEntity
         stage = case((tasks.task_id.like("publish%"), literal("publish")), else_=tasks.task_id)
-        # The controller ledger lives in its separate private schema. A running task
-        # is retained progress, not a per-run heartbeat; never infer current motion.
+        activity = ForgeEngineActivityEntity
+        observed_run = aliased(ForgeRunEntity, scoped)
+        observed = current_activity_predicate(schema, run=observed_run, task=tasks, activity=activity)
         task_state = case(
+            (observed, literal("active")),
             (tasks.status.in_(("done", "succeeded")), literal("done")),
             (tasks.status.in_(("queued", "pending", "waiting")), literal("waiting")),
             (tasks.status == "skipped", literal("skipped")),
@@ -300,9 +305,11 @@ class FactoryDashboardRepository(Repository[ForgeRunEntity, UUID]):
                 task_state.label("state"),
                 func.count().label("count"),
                 func.count().filter(tasks.status == "running").label("recorded_running"),
+                func.min(case((observed, activity.expires_at), else_=None)).label("observed_until"),
             )
             .select_from(tasks)
             .join(scoped, scoped.c.id == tasks.run_id)
+            .outerjoin(activity, and_(activity.run_id == tasks.run_id, activity.task_id == tasks.task_id))
             .join(latest_plans, and_(latest_plans.c.run_id == tasks.run_id, latest_plans.c.position == 1))
             .group_by(stage, task_state)
         )
