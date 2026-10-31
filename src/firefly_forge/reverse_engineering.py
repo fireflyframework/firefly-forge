@@ -107,12 +107,8 @@ class ReverseEngineering:
     async def analyze(self, project_id: str, request: AnalysisInput) -> Data:
         project = await self.projects.project(project_id)
         if (
-            request.expected_project_revision is not None
-            and request.expected_project_revision != project["revision"]
-        ) or (
-            request.expected_project_digest is not None
-            and request.expected_project_digest != project["digest"]
-        ):
+            request.expected_project_revision is not None and request.expected_project_revision != project["revision"]
+        ) or (request.expected_project_digest is not None and request.expected_project_digest != project["digest"]):
             raise ValueError("Project changed; review component scope again")
         components = project["definition"]["components"]
         requested = set(request.component_ids)
