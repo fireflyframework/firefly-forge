@@ -113,7 +113,7 @@ def test_native_api_browser_consent_private_creation_sdk_readback_and_logout(tmp
         assert created.headers["cache-control"] == "no-store" and state["creates"] == 1
         assert "synthetic-github-access-token" not in created.text
 
-        with ForgeClient(origin, "") as sdk:
+        with ForgeClient(origin, TOKEN) as sdk:
             sdk.http.close()
             sdk.http = browser
             browser.base_url = origin + "/api/v1/"
