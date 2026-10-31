@@ -1,5 +1,11 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type FormEvent,
+} from "react";
 import {
   MessageSquare,
   Paperclip,
@@ -23,6 +29,13 @@ import {
 import { AssistantRecovery, type RecoverableTurn } from "./AssistantRecovery";
 import { StepContextReview } from "./StepContextReview";
 import { RichMarkdown } from "./RichMarkdown";
+import {
+  AssistantRequestCustody,
+  matchesReviewedSource,
+  reviewedSourcePayload,
+  reviewedSourceSnapshot,
+  type ReviewedSourceContext,
+} from "./SourceAnalysisContext";
 import {
   AssistantSources,
   type AssistantSourceContext,
@@ -75,6 +88,7 @@ type Conversation = {
   created_at: string;
   turns?: Turn[];
   journal?: { verified: boolean; head: string; entries: unknown[] };
+  analysis_snapshot?: unknown;
 };
 const failure = (cause: unknown) =>
   cause instanceof Error
@@ -89,7 +103,11 @@ export function ProductAssistant({
   sourceTarget,
   onCollapse,
   draftPrompt,
+  reviewedSource,
+  custody: requestCustody,
 }: {
+  reviewedSource?: ReviewedSourceContext;
+  custody?: AssistantRequestCustody;
   draftPrompt?: { id: number; text: string };
   onCollapse?: () => void;
   sourceTarget?: { conversation_id: string; turn_id: string };
@@ -102,6 +120,21 @@ export function ProductAssistant({
     source: AIProposalProvenance,
   ) => void;
 }) {
+  const [fallbackCustody] = useState(() => new AssistantRequestCustody());
+  const custody = requestCustody ?? fallbackCustody;
+  const { creationUncertain, uncertainRequests } = useSyncExternalStore(
+    custody.subscribe,
+    custody.getSnapshot,
+    custody.getSnapshot,
+  );
+  const sourceKey = reviewedSource ? JSON.stringify(reviewedSource) : "";
+  const lastSource = useRef("");
+  const [draftSource, setDraftSource] = useState<ReviewedSourceContext>();
+  const pendingSourceChange = Boolean(
+    sourceKey && sourceKey !== lastSource.current,
+  );
+  const pendingRequests =
+    creationUncertain || Object.keys(uncertainRequests).length > 0;
   const [sessions, setSessions] = useState<Conversation[]>([]),
     [selected, setSelected] = useState(""),
     [conversation, setConversation] = useState<Conversation | null>(null),
@@ -110,10 +143,6 @@ export function ProductAssistant({
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [revision, setRevision] = useState(0),
-    [uncertainRequests, setUncertainRequests] = useState<
-      Record<string, string>
-    >({}),
-    [creationUncertain, setCreationUncertain] = useState(false),
     [listReady, setListReady] = useState(false),
     [historyOpen, setHistoryOpen] = useState(false),
     [newDraft, setNewDraft] = useState(false);
@@ -194,12 +223,7 @@ export function ProductAssistant({
             recordedUncertain &&
             value.turns?.some((turn) => turn.request_id === recordedUncertain)
           )
-            setUncertainRequests((items) => {
-              if (items[id] !== recordedUncertain) return items;
-              const next = { ...items };
-              delete next[id];
-              return next;
-            });
+            custody.confirmTurn(id, recordedUncertain);
         })
         .catch((cause) => {
           if (!controller.signal.aborted) setError(failure(cause));
@@ -210,7 +234,7 @@ export function ProductAssistant({
       controller.abort();
       clearInterval(timer);
     };
-  }, [connection, repository, id, revision, recordedUncertain]);
+  }, [connection, repository, id, revision, recordedUncertain, custody]);
   useEffect(() => {
     setImageCapability(null);
     setRecoveryTurn(null);
@@ -241,7 +265,30 @@ export function ProductAssistant({
       setHistoryOpen(false);
     }
   }, [sourceTarget]);
-  const current = !newDraft && conversation?.id === id ? conversation : null;
+  useEffect(() => {
+    if (busy || pendingRequests || sourceKey === lastSource.current) return;
+    lastSource.current = sourceKey;
+    setDraftSource(
+      reviewedSource ? structuredClone(reviewedSource) : undefined,
+    );
+    if (reviewedSource) {
+      setNewDraft(true);
+      setHistoryOpen(false);
+    }
+  }, [sourceKey, reviewedSource, busy, pendingRequests]);
+  const current =
+    !newDraft &&
+    conversation &&
+    conversation?.id === id &&
+    conversation.repository_id === repository &&
+    (conversation.project_id ?? null) === (projectId ?? null)
+      ? conversation
+      : null;
+  const actualSource = reviewedSourceSnapshot(current?.analysis_snapshot);
+  const invalidRecordedSource = Boolean(
+    current?.analysis_snapshot &&
+    (!actualSource || actualSource.project_id !== projectId),
+  );
   const selectedFiles = current ? (fileDrafts[current.id] ?? []) : [];
   const fileError = attachmentSelectionError(selectedFiles);
   function selectFiles(
@@ -290,6 +337,8 @@ export function ProductAssistant({
     active ||
     Boolean(uncertain) ||
     creationUncertain ||
+    Boolean(pendingSourceChange && pendingRequests) ||
+    invalidRecordedSource ||
     !listReady ||
     Boolean(id && !current && !newDraft);
   useEffect(() => {
@@ -318,6 +367,10 @@ export function ProductAssistant({
     if (!controller.signal.aborted) setBusy(false);
   }
   async function createSession(controller: AbortController) {
+    const source = draftSource
+      ? reviewedSourcePayload(draftSource, projectId)
+      : undefined;
+    custody.markCreationPending();
     try {
       const value = await request<Conversation>(
         connection,
@@ -327,6 +380,7 @@ export function ProductAssistant({
           body: JSON.stringify({
             task,
             ...(projectId ? { project_id: projectId } : {}),
+            ...source,
           }),
           signal: controller.signal,
         },
@@ -336,7 +390,8 @@ export function ProductAssistant({
       if (
         !/^[a-f0-9]{32}$/.test(value.id) ||
         value.repository_id !== repository ||
-        (value.project_id ?? null) !== (projectId ?? null)
+        (value.project_id ?? null) !== (projectId ?? null) ||
+        (source && !matchesReviewedSource(value.analysis_snapshot, source))
       )
         throw new Error("The created conversation could not be confirmed.");
       setSessions((items) => [
@@ -346,19 +401,29 @@ export function ProductAssistant({
       setSelected(value.id);
       setConversation(value);
       setNewDraft(false);
-      setCreationUncertain(false);
+      custody.confirmCreation();
       setRevision((value) => value + 1);
       return value;
     } catch (cause) {
       if (
         !controller.signal.aborted &&
-        !(
-          cause instanceof ApiError &&
-          [400, 401, 403, 404, 409, 422].includes(cause.status)
-        )
+        cause instanceof ApiError &&
+        [400, 401, 403, 404, 409, 422].includes(cause.status)
       )
-        setCreationUncertain(true);
+        custody.confirmCreation();
       throw cause;
+    }
+  }
+  async function createReviewedConversation() {
+    if (locked || !draftSource) return;
+    const controller = begin();
+    if (!controller) return;
+    try {
+      await createSession(controller);
+    } catch (cause) {
+      if (!controller.signal.aborted) setError(failure(cause));
+    } finally {
+      finish(controller);
     }
   }
   async function attach() {
@@ -390,7 +455,8 @@ export function ProductAssistant({
       targetId = target.id;
       if (controller.signal.aborted) return;
       requestId = crypto.randomUUID().replaceAll("-", "");
-      await request<Turn>(
+      custody.markTurnPending(target.id, requestId);
+      const receipt = await request<Turn>(
         connection,
         `/repositories/${repository}/assistant/conversations/${target.id}/turns`,
         {
@@ -406,6 +472,12 @@ export function ProductAssistant({
         },
       );
       if (controller.signal.aborted) return;
+      if (
+        receipt.request_id !== requestId ||
+        !/^[a-f0-9]{32}$/.test(receipt.id)
+      )
+        throw new Error("The recorded response could not be confirmed.");
+      custody.confirmTurn(target.id, requestId);
       setMessage("");
       setContextNote(false);
       selectFiles(target.id, []);
@@ -414,11 +486,7 @@ export function ProductAssistant({
       if (!controller.signal.aborted) {
         const rejected =
           cause instanceof ApiError && [409, 422].includes(cause.status);
-        if (!rejected && requestId)
-          setUncertainRequests((items) => ({
-            ...items,
-            [targetId]: requestId,
-          }));
+        if (rejected && requestId) custody.confirmTurn(targetId, requestId);
         setError(
           rejected || !requestId
             ? failure(cause)
@@ -471,6 +539,53 @@ export function ProductAssistant({
           )}
         </div>
       </header>
+      {reviewedSource &&
+        (!current ||
+          !matchesReviewedSource(
+            current.analysis_snapshot,
+            reviewedSource,
+          )) && (
+          <section
+            className="assistant-conversation-context"
+            aria-label="Pending reviewed source"
+          >
+            <strong>Reviewed source report for next conversation</strong>
+            <span>
+              Report {reviewedSource.analysis_id.slice(0, 8)} ·{" "}
+              {reviewedSource.analysis_component_ids.length}{" "}
+              {reviewedSource.analysis_component_ids.length === 1
+                ? "component"
+                : "components"}
+            </span>
+            <span>
+              {pendingRequests && pendingSourceChange
+                ? "Inspect the unconfirmed request before changing source context."
+                : "Existing conversations keep their recorded context. This report is used only for a new conversation."}
+            </span>
+            {newDraft && !historyOpen && draftSource ? (
+              <button
+                type="button"
+                className="secondary"
+                disabled={locked}
+                onClick={() => void createReviewedConversation()}
+              >
+                Create conversation with reviewed source
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="secondary"
+                disabled={busy || pendingRequests}
+                onClick={() => {
+                  setNewDraft(true);
+                  setHistoryOpen(false);
+                }}
+              >
+                Prepare a new conversation
+              </button>
+            )}
+          </section>
+        )}
       {!current && !historyOpen && (
         <div className="assistant-task-choice">
           <label htmlFor="assistant-task">New conversation</label>
@@ -502,6 +617,45 @@ export function ProductAssistant({
           </span>
         </p>
       )}
+      {current && !historyOpen && (
+        <details className="assistant-file-guidance">
+          <summary>
+            {actualSource
+              ? `Recorded source report ${actualSource.analysis_id.slice(0, 8)}`
+              : "No reviewed source context recorded for this conversation"}
+          </summary>
+          {actualSource && (
+            <>
+              <p>
+                {actualSource.components.length}{" "}
+                {actualSource.components.length === 1
+                  ? "component"
+                  : "components"}{" "}
+                · {actualSource.included_facts} included ·{" "}
+                {actualSource.omitted_facts} omitted
+              </p>
+              <p>
+                Source inspection only; customer journeys and live behavior
+                remain unverified.
+              </p>
+              {actualSource.citations.map((citation) => (
+                <p
+                  key={citation.id}
+                  title={`${citation.id} · ${citation.commit}`}
+                >
+                  {citation.path}:{citation.line}
+                </p>
+              ))}
+            </>
+          )}
+          {invalidRecordedSource && (
+            <span role="alert">
+              The recorded source context could not be verified. Refresh before
+              sending.
+            </span>
+          )}
+        </details>
+      )}
       {historyOpen && (
         <section
           className="assistant-history"
@@ -523,10 +677,18 @@ export function ProductAssistant({
                 value={creationUncertain ? "" : (id ?? "")}
                 disabled={busy}
                 onChange={(event) => {
+                  if (!Object.keys(uncertainRequests).length) {
+                    lastSource.current = sourceKey;
+                    setDraftSource(
+                      reviewedSource
+                        ? structuredClone(reviewedSource)
+                        : undefined,
+                    );
+                  }
                   setSelected(event.target.value);
                   setConversation(null);
                   setNewDraft(false);
-                  setCreationUncertain(false);
+                  custody.selectRecordedConversation();
                   setHistoryOpen(false);
                   setRevision((value) => value + 1);
                 }}

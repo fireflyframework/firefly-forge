@@ -54,6 +54,10 @@ import {
 import { ProcessEditor } from "./ProcessEditor";
 import { buildStepPrompt } from "./ProductStepContext";
 import { ProductAssistant } from "./ProductAssistant";
+import {
+  assistantRequestCustody,
+  type ReviewedSourceContext,
+} from "./SourceAnalysisContext";
 import { DesignReview } from "./DesignReview";
 import { Wizard } from "./Wizard";
 import { ProductWorkspace } from "./ProductWorkspace";
@@ -124,7 +128,9 @@ export function ProductDefinition({
   onStart,
   drafts,
   onRepositoryChange,
+  reviewedSource,
 }: {
+  reviewedSource?: ReviewedSourceContext;
   drafts?: ProductDraftBook;
   onRepositoryChange?: (repositoryId: string) => void;
   connection: Connection;
@@ -169,6 +175,11 @@ export function ProductDefinition({
     conversation_id: string;
     turn_id: string;
   }>();
+  useEffect(() => {
+    if (!reviewedSource) return;
+    setSourceTarget(undefined);
+    setReveal((value) => value + 1);
+  }, [reviewedSource]);
   const [pendingProposal, setPendingProposal] = useState<DraftProposal | null>(
     null,
   );
@@ -225,6 +236,13 @@ export function ProductDefinition({
       : null;
   const origin =
     saved && !dirty && savedOrigin ? savedOrigin : (draftSource ?? savedOrigin);
+  const logicalProjectId =
+    logicalProject &&
+    selected?.id ===
+      (logicalProject.definition.product_repository_id ||
+        logicalProject.definition.components[0].repository_id)
+      ? logicalProject.id
+      : undefined;
   return (
     <section className="product-definition">
       {(!connected || !selected) && (
@@ -403,14 +421,13 @@ export function ProductDefinition({
                 key={selected.id}
                 connection={connection}
                 repository={selected.id}
-                projectId={
-                  logicalProject &&
-                  selected.id ===
-                    (logicalProject.definition.product_repository_id ||
-                      logicalProject.definition.components[0].repository_id)
-                    ? logicalProject.id
-                    : undefined
-                }
+                projectId={logicalProjectId}
+                reviewedSource={reviewedSource}
+                custody={assistantRequestCustody(
+                  book,
+                  selected.id,
+                  logicalProjectId,
+                )}
                 sourceTarget={sourceTarget}
                 onConfigure={onConfigure}
                 onUse={(definition, source) => {

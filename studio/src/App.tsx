@@ -85,6 +85,7 @@ import { Operations } from "./Operations";
 import { Projects } from "./Projects";
 import { MobileNavigation } from "./MobileNavigation";
 import { WorkspaceNavigationItems } from "./WorkspaceNavigationItems";
+import type { ReviewedSourceContext } from "./SourceAnalysisContext";
 import { FactoryWelcome } from "./FactoryWelcome";
 import { FactoryProcessGuide } from "./FactoryProcessGuide";
 import {
@@ -287,6 +288,10 @@ export default function App() {
   const [productProject, setProductProject] = useState<ProjectSnapshot | null>(
     null,
   );
+  const [reviewedSource, setReviewedSource] = useState<{
+    identityScope: string;
+    value: ReviewedSourceContext;
+  } | null>(null);
   const [accessUser, setAccessUser] = useState<string>();
   const [connection, setConnection] = useState<Connection>({
     base: "/api/v1",
@@ -392,6 +397,8 @@ export default function App() {
       setDetailError("");
       setBusy(false);
       setNotice("");
+      setProductProject(null);
+      setReviewedSource(null);
     }
     currentScope.current = readScope;
     currentIdentityScope.current = identityScope;
@@ -652,8 +659,12 @@ export default function App() {
   function navigate(next: Page) {
     setPage(next);
     setError("");
-    if (next === "product") setProductProject(null);
     if (next === "settings") setSetupStep(null);
+  }
+  function startNewProduct() {
+    setProductProject(null);
+    setReviewedSource(null);
+    navigate("product");
   }
   function startStandalone(repository: string) {
     selectStandaloneRunSource(runDrafts, repository);
@@ -931,6 +942,8 @@ export default function App() {
                     navigate("settings");
                   }}
                   onProduct={() => {
+                    setProductProject(null);
+                    setReviewedSource(null);
                     setSetupGoal("product");
                     navigate("settings");
                   }}
@@ -942,10 +955,7 @@ export default function App() {
                     <div>
                       <h1>Factory</h1>
                     </div>
-                    <button
-                      className="primary"
-                      onClick={() => navigate("product")}
-                    >
+                    <button className="primary" onClick={startNewProduct}>
                       <Plus size={17} />
                       New product
                     </button>
@@ -977,10 +987,15 @@ export default function App() {
                   connected={connected}
                   repositories={repositories}
                   onOpen={(run) => void openRun(run)}
-                  onProduct={(id, project) => {
+                  onProduct={(id, project, source) => {
                     setRunProject(id);
-                    navigate("product");
                     setProductProject(project);
+                    setReviewedSource(
+                      source?.project_id === project.id && identityScope
+                        ? { identityScope, value: source }
+                        : null,
+                    );
+                    navigate("product");
                   }}
                   onStart={(context) => {
                     setRunProject(context.component.repository_id);
@@ -995,6 +1010,12 @@ export default function App() {
                   drafts={productDrafts}
                   onRepositoryChange={setRunProject}
                   logicalProject={productProject}
+                  reviewedSource={
+                    reviewedSource?.identityScope === identityScope &&
+                    reviewedSource.value.project_id === productProject?.id
+                      ? reviewedSource.value
+                      : undefined
+                  }
                   onConfigure={() => {
                     navigate("settings");
                     setSetupStep(1);
