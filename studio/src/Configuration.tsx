@@ -1,5 +1,6 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { AgentLifecycle } from "./AgentLifecycle";
+import { FormField } from "./FormPrimitives";
 import {
   BridgeRecoveryChoices,
   bridgeRecoveryValues,
@@ -208,10 +209,11 @@ export function ProviderConfiguration({
                 !["completion_recovery", "checkpoints"].includes(field.key),
             )
             .map((field) => (
-              <div className="field" key={field.key}>
-                <label htmlFor={`${current.id}-${field.key}`}>
-                  {field.label}
-                </label>
+              <FormField
+                id={`${current.id}-${field.key}`}
+                label={field.label}
+                key={field.key}
+              >
                 <input
                   id={`${current.id}-${field.key}`}
                   name={field.key}
@@ -235,7 +237,7 @@ export function ProviderConfiguration({
                       Remove the stored {field.label.toLowerCase()}
                     </label>
                   )}
-              </div>
+              </FormField>
             ))}
           {current.id === "bridge" &&
             (current.fields ?? []).some(

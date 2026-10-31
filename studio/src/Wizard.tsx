@@ -12,7 +12,7 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
-import { Check } from "lucide-react";
+import { ProgressHeader, ScrollRegion, StepIndicator } from "./FormPrimitives";
 
 export function Wizard({
   steps,
@@ -80,7 +80,12 @@ export function Wizard({
       const remaining = Math.max(0, available - offset - clearance);
       const content = element.querySelector<HTMLElement>(".wizard-content");
       const padding = content ? getComputedStyle(content) : null;
-      const chrome = [".wizard-steps", ".wizard-heading", ".wizard-actions"]
+      const chrome = [
+        ".wizard-steps",
+        ".wizard-heading",
+        ".wizard-actions",
+        ".form-scroll-status",
+      ]
         .map((selector) => {
           const part = element.querySelector<HTMLElement>(selector);
           if (!part) return 0;
@@ -171,10 +176,14 @@ export function Wizard({
         form,
         { className: `${form.props.className ?? ""} wizard-form` },
         <>
-          <div className="wizard-field-scroll">
+          <ScrollRegion label={`${title} fields`}>
             {nodes.filter((item) => item !== actions)}
-          </div>
-          {actions}
+          </ScrollRegion>
+          {isValidElement(actions)
+            ? cloneElement(actions as ReactElement<{ className: string }>, {
+                className: `${(actions.props as { className?: string }).className ?? ""} form-divider`,
+              })
+            : actions}
         </>,
       );
     });
@@ -188,10 +197,14 @@ export function Wizard({
   );
   const content = directActions ? (
     <div className="wizard-form">
-      <div className="wizard-field-scroll">
+      <ScrollRegion label={`${title} fields`}>
         {body(directNodes.filter((node) => node !== directActions))}
-      </div>
-      {directActions}
+      </ScrollRegion>
+      {isValidElement(directActions)
+        ? cloneElement(directActions as ReactElement<{ className: string }>, {
+            className: `${(directActions.props as { className?: string }).className ?? ""} form-divider`,
+          })
+        : directActions}
     </div>
   ) : (
     body(children)
@@ -220,10 +233,6 @@ export function Wizard({
           if (c.right > p.right) progress.scrollLeft += c.right - p.right + 8;
           else if (c.left < p.left) progress.scrollLeft -= p.left - c.left + 8;
         }
-      } else {
-        frame.current
-          ?.querySelector('[aria-current="step"]')
-          ?.scrollIntoView({ block: "nearest", inline: "nearest" });
       }
     }
     previous.current = active;
@@ -242,7 +251,7 @@ export function Wizard({
         } as CSSProperties
       }
     >
-      <ol className="wizard-steps" aria-label="Setup progress">
+      <ol className="wizard-steps form-grid" aria-label="Setup progress">
         {steps.map((label, index) => (
           <li key={label}>
             <button
@@ -259,13 +268,18 @@ export function Wizard({
               }
               onClick={() => onStep(index)}
             >
-              <span className="step-number">
-                {index < active && progressMode === "validated" ? (
-                  <Check size={16} />
-                ) : (
-                  index + 1
-                )}
-              </span>
+              <StepIndicator
+                ordinal={index + 1}
+                state={
+                  index === active
+                    ? "current"
+                    : index < active
+                      ? progressMode === "validated"
+                        ? "completed"
+                        : "visited"
+                      : "upcoming"
+                }
+              />
               <span>{label}</span>
             </button>
           </li>
@@ -273,13 +287,12 @@ export function Wizard({
       </ol>
       <div className={"wizard-body" + (guide ? " has-guide" : "")}>
         <div className="wizard-content">
-          <div className="wizard-heading">
-            <h2 ref={heading} tabIndex={-1}>
-              {title}
-            </h2>
-            <p>{description}</p>
-            {headingAction}
-          </div>
+          <ProgressHeader
+            title={title}
+            description={description}
+            action={headingAction}
+            headingRef={heading}
+          />
           {content}
         </div>
         {guide && <aside className="wizard-guide">{guide}</aside>}

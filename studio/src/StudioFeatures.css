@@ -789,7 +789,7 @@
   }
 }
 .wizard-frame {
-  height: var(--wizard-frame-height, 640px);
+  height: var(--wizard-frame-height, auto);
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   width: 100%;
@@ -803,7 +803,7 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-  padding: 24px 28px;
+  padding: 24px var(--wizard-inline-inset);
 }
 .wizard-frame .wizard-heading {
   flex: 0 0 auto;
@@ -835,7 +835,6 @@
   position: relative;
   z-index: 2;
   background: var(--surface);
-  border-top: 1px solid var(--line);
   margin: 0;
   padding: 16px 0 0;
   flex-wrap: wrap;
@@ -862,7 +861,7 @@
     flex-wrap: wrap;
     gap: 4px;
     overflow: visible;
-    padding: 12px;
+    padding: 12px var(--wizard-inline-inset);
     min-height: 62px;
     align-items: center;
   }
@@ -886,7 +885,7 @@
     overflow: hidden;
   }
   .wizard-frame .wizard-content {
-    padding: 16px;
+    padding: 16px var(--wizard-inline-inset);
   }
   .wizard-frame .wizard-heading h2 {
     font-size: 21px;
@@ -1198,6 +1197,11 @@
   margin-top: 8px;
 }
 @media (max-height: 600px) {
+  .wizard-frame:not(.access-member-dialog *, [data-layout="parent"])
+    .form-scroll-region {
+    display: block;
+    overflow: visible;
+  }
   .wizard-frame:not(.access-member-dialog *, [data-layout="parent"]) {
     height: auto;
   }
@@ -1227,8 +1231,7 @@
       [data-layout="flow"]
     )
     .wizard-actions {
-    position: sticky;
-    bottom: 0;
+    position: static;
     padding: 12px 0;
   }
   .feature-dialog {

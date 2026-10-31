@@ -128,6 +128,7 @@ import { ExternalTools } from "./ExternalTools";
 import { BrowserConnections } from "./BrowserConnections";
 import { readResume, resumeKey } from "./ConnectionOAuthSettings";
 import { Collaboration } from "./Collaboration";
+import { PageScrollStatus } from "./FormPrimitives";
 import "./Integrations.css";
 import "./UsabilityRefinements.css";
 import {
@@ -1363,6 +1364,7 @@ export default function App() {
             </>
           )}
         </main>
+        <PageScrollStatus />
         <FoundationFooter version={studioVersion} documentation />
       </div>
       {dialog && (

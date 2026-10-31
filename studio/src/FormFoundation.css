@@ -1,0 +1,107 @@
+/* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+:root {
+  --form-space-1: 4px;
+  --form-space-2: 8px;
+  --form-space-3: 12px;
+  --form-space-4: 16px;
+  --form-space-5: 20px;
+  --form-space-6: 24px;
+  --form-space-7: 28px;
+}
+.form-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--form-gap, var(--form-space-2));
+}
+.field.form-stack {
+  --form-gap: var(--form-space-2);
+}
+.form-grid {
+  display: grid;
+  gap: var(--form-gap, var(--form-space-4));
+  min-width: 0;
+}
+.form-divider {
+  border-block-start: 1px solid var(--line);
+}
+.wizard {
+  --wizard-inline-inset: var(--form-space-7);
+}
+.step-number {
+  position: relative;
+}
+.step-completion {
+  position: absolute;
+  inset-block-start: -3px;
+  inset-inline-end: -5px;
+  background: var(--surface);
+  color: var(--accent-ink);
+  border: 1px solid var(--accent-line);
+  border-radius: 50%;
+  width: 16px;
+  height: 16px;
+  padding: 1px;
+}
+.wizard-heading.form-stack {
+  --form-gap: 8px;
+}
+.wizard-heading.form-stack > p {
+  margin-top: 0;
+}
+.form-scroll-region {
+  --form-gap: 0px;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
+}
+.form-scroll-status {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 6px 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.form-scroll-status svg {
+  flex: 0 0 auto;
+}
+.form-scroll-status[hidden] {
+  display: none;
+}
+.page-scroll-status {
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+  padding: 6px var(--content-gutter);
+}
+.page-scroll-status > span {
+  flex: 1 1 0;
+}
+.page-scroll-status .text-button {
+  min-height: 28px;
+  padding: 0;
+  color: var(--accent-ink);
+  font-size: 12px;
+  white-space: normal;
+  text-align: right;
+}
+.wizard-field-scroll:focus-visible {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: -2px;
+}
+.workspace-main > main,
+.wizard-field-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--muted) var(--surface-subtle);
+}
+.wizard[data-layout="flow"] .form-scroll-region {
+  overflow: visible;
+  display: block;
+}
+@media (max-width: 600px) {
+  .wizard {
+    --wizard-inline-inset: var(--form-space-4);
+  }
+}
