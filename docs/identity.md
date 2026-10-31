@@ -77,7 +77,31 @@ These project roles differ from the [factory's agent instruction roles](agent-ro
 
 A denied request needs current administrator or project membership-management authority. A missing user needs local registration or provisioning. Assign another owner before removing the project's last active owner. After access changes, verify the affected user's actual permitted action; queued work also rechecks its authority before protected effects. Repository operations spanning several projects require permission in every project sharing that repository.
 
+## Personal project API tokens
+
+Studio places your account at the bottom of the sidebar. Open it to inspect your registered profile, change the appearance preference, manage personal tokens, open project access or sign out. On mobile, the same account is available at the bottom of **Menu**. Appearance uses the portal's existing saved preference; profile values come from your organization and are read-only here.
+
+<figure class="forge-shot" markdown="1">
+
+![Profile and appearance in the sidebar account panel](assets/screenshots/account-profile-desktop-light.png)
+
+<figcaption>Review your signed-in profile, choose an appearance and open your tokens or project access. The profile comes from your organization. Shown with a controlled Studio fixture.</figcaption>
+</figure>
+
+Factory administration is available only to a current factory administrator. Project owners use **Project access** from their account without gaining factory-wide settings or user administration. Project catalogs remain available through **Agents & skills** and **Structured analytics** in the workspace navigation.
+
+<figure class="forge-shot" markdown="1">
+
+![Factory settings grouped by responsibility](assets/screenshots/administration-settings-desktop-light.png)
+
+<figcaption>Factory administrators manage people, connections and execution settings in separate groups. The server checks access when you open a setting. Shown with a controlled Studio fixture.</figcaption>
+</figure>
+
+Signed-in OIDC users can issue [personal project API tokens](personal-api-tokens.md) for read-only REST and Python SDK observations. Each credential selects explicit current project memberships and an expiry. Creation and rotation disclose its secret once; the server retains only a digest. Personal tokens cannot execute work, approve decisions or administer the factory. Official stdio MCP observation tools share the same read-only REST scope; they cannot manage these credentials.
+
 ## Local bootstrap
+
+For local organization sign-in, the repository includes a [branded Keycloak sandbox](https://github.com/fireflyframework/firefly-forge/tree/main/deploy/keycloak). Its preparation command generates private client credentials and a matching server environment without starting any services. The realm has exact loopback callbacks, PKCE and a separate API audience. Users and project memberships are assigned deliberately. This development sandbox does not replace the production identity configuration above.
 
 `local_bootstrap` is an explicit loopback-only development mode. Submit the configured operator credential once to the login endpoint; the server issues the same opaque, durable cookie. Do not persist that credential in browser storage. An explicitly configured loopback API bearer credential remains available for development tooling.
 

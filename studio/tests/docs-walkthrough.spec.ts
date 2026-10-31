@@ -613,6 +613,9 @@ for (const device of ["desktop", "mobile"])
       await expect(
         page.getByText("Your run has been opened.", { exact: true }),
       ).toBeVisible();
+      await page
+        .getByRole("button", { name: "Dismiss notification", exact: true })
+        .click();
       await navigate(page, "Factory");
       await page.evaluate(() => document.fonts.ready);
       const floorBounds = await page
@@ -693,12 +696,6 @@ for (const device of ["desktop", "mobile"])
             .evaluate((element) => element.scrollIntoView({ block: "start" }));
         await capture(page, `evidence-${tab.toLowerCase()}`, theme, device);
       }
-      await expect(
-        page.getByText("Your run has been opened.", { exact: true }),
-      ).toBeVisible();
-      await page
-        .getByRole("button", { name: "Dismiss notification", exact: true })
-        .click();
       await navigate(page, "Administration");
       await page
         .locator("main")

@@ -79,6 +79,7 @@ class WalkthroughTests(unittest.TestCase):
                 "studio/tests/coding-check-recovery-browser-fixture.ts": "fixture coding routes",
                 "studio/tests/git-delivery-contract-fixture.json": "fixture Git delivery contract",
                 "studio/tests/framework-knowledge-fixture.ts": "fixture exact framework corpus",
+                "studio/tests/factory-dashboard-fixture.ts": "fixture scoped factory observations",
                 "studio/tests/docs-walkthrough.spec.ts": "fixture console producer",
                 "studio/tests/external-tools.spec.ts": "fixture MCP producer",
                 "studio/tests/docs-provider-allowance.spec.ts": "fixture allowance producer",
@@ -141,6 +142,7 @@ class WalkthroughTests(unittest.TestCase):
                     "studio/tests/coding-check-recovery-browser-fixture.ts",
                     "studio/tests/git-delivery-contract-fixture.json",
                     "studio/tests/framework-knowledge-fixture.ts",
+                    "studio/tests/factory-dashboard-fixture.ts",
                 )
             }
             producers = {name: sha(root / name) for name in paths if name.endswith(".spec.ts")}
@@ -222,7 +224,12 @@ class WalkthroughTests(unittest.TestCase):
                 with self.subTest(checkpoint_stage=stage):
                     hook._load_walkthrough({"docs_dir": str(docs)}, root)
                 if stage.startswith("verification-reuse-"):
-                    for key, invalid in (("observation_only", False), ("observation_only", 1), ("action", {}), ("captured_action", {})):
+                    for key, invalid in (
+                        ("observation_only", False),
+                        ("observation_only", 1),
+                        ("action", {}),
+                        ("captured_action", {}),
+                    ):
                         previous = capture[key]
                         capture[key] = invalid
                         save()
@@ -576,6 +583,7 @@ class WalkthroughTests(unittest.TestCase):
                 "studio/tests/coding-check-recovery-browser-fixture.ts",
                 "studio/tests/git-delivery-contract-fixture.json",
                 "studio/tests/framework-knowledge-fixture.ts",
+                "studio/tests/factory-dashboard-fixture.ts",
             ]
             for name in operator_inputs:
                 (root / name).parent.mkdir(parents=True, exist_ok=True)
