@@ -82,18 +82,19 @@ These checks use authority already recorded by forge. They do not claim instant 
 
 ## How the read is built
 
+<div class="forge-flow forge-flow--dependencies" role="region" aria-label="Factory observation diagram" aria-describedby="factory-observation-guide" tabindex="0" markdown="1">
+
 ```mermaid
 flowchart LR
-    A[Factory, project or run scope] --> B[Current native identity and grants]
-    B --> C[Read-only repeatable-read snapshot]
-    C --> D[Projects and component repository counts]
-    C --> E[Scoped run totals and paged records]
-    C --> F[Latest plans and current task states]
-    D --> G[Fresh native authority check]
-    E --> G
-    F --> G
-    G -->|Unchanged| H[Studio floor, inspector and board]
-    G -->|Revoked or changed| I[Discard response and refresh access]
+    A["Scope and<br/>current identity"] --> B["Read-only<br/>snapshot"]
+    B --> C["Projects, runs<br/>counts and tasks"]
+    C --> D["Fresh<br/>authority check"]
+    D -->|Unchanged| E["Show<br/>observation"]
+    D -->|Changed| F["Discard<br/>response"]
 ```
+
+</div>
+
+<p class="forge-flow-caption" id="factory-observation-guide">Read from left to right. On a narrow screen, focus the diagram and scroll with the arrow keys.</p>
 
 `FactoryDashboard` uses native pyfly services and repositories over the existing PostgreSQL entities. Visibility predicates, totals and pages share a read-only repeatable-read transaction. SQL aggregates produce counts without loading every run or component into application memory. Reads do not acquire runner invocation locks, renew leases, dispatch work or change execution authority. The database read time is returned as `observed_at`; it is not a worker heartbeat.
