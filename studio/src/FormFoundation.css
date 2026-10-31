@@ -50,26 +50,9 @@
 }
 .form-scroll-region {
   --form-gap: 0px;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   min-height: 0;
   overflow: hidden;
-}
-.form-scroll-status {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 8px;
-  margin: 0;
-  padding: 6px 0;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.5;
-}
-.form-scroll-status svg {
-  flex: 0 0 auto;
-}
-.form-scroll-status[hidden] {
-  display: none;
 }
 .wizard-field-scroll:focus-visible {
   outline: 2px solid var(--accent-ink);
@@ -79,8 +62,4 @@
 .wizard-field-scroll {
   scrollbar-width: thin;
   scrollbar-color: var(--muted) var(--surface-subtle);
-}
-.wizard[data-layout="flow"] .form-scroll-region {
-  overflow: visible;
-  display: block;
 }

@@ -226,15 +226,17 @@ export function SourceAnalysis({
           else setOpen(false);
         }}
       >
-        <button
-          className="quiet source-dialog-close"
-          disabled={busy}
-          onClick={() => setOpen(false)}
-          aria-label="Close source inspection"
-        >
-          <X size={18} />
-          Close
-        </button>
+        <header className="source-dialog-heading">
+          <h2>Source inspection</h2>
+          <button
+            className="quiet source-dialog-close"
+            disabled={busy}
+            onClick={() => setOpen(false)}
+            aria-label="Close source inspection"
+          >
+            <X size={18} />
+          </button>
+        </header>
         {open && (
           <Wizard
             steps={["Scope", "Receipt", "Evidence", "Review"]}

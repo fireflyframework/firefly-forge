@@ -4364,6 +4364,9 @@ for (const device of ["desktop", "mobile"])
         producer: "studio/tests/docs-walkthrough.spec.ts",
         actionSelector: ".identity-account-actions button.primary",
       });
+      await page.screenshot({
+        path: test.info().outputPath("personal-account-short-dialog.png"),
+      });
       await page
         .getByRole("button", { name: "Personal API tokens", exact: true })
         .click();
