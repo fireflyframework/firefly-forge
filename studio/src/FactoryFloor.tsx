@@ -174,11 +174,11 @@ export function FactoryFloor({
           <h2>{title}</h2>
           <p>
             {selection.kind === "project" && data.snapshot?.scope.project
-              ? `${data.snapshot.scope.project.component_count.toLocaleString()} components across ${data.snapshot.scope.project.repository_count.toLocaleString()} repositories`
+              ? `${data.snapshot.scope.project.component_count.toLocaleString()} ${data.snapshot.scope.project.component_count === 1 ? "component" : "components"} across ${data.snapshot.scope.project.repository_count.toLocaleString()} ${data.snapshot.scope.project.repository_count === 1 ? "repository" : "repositories"}`
               : selection.kind === "run"
                 ? "One recorded execution, its plan and source-control links"
                 : data.snapshot
-                  ? `${data.snapshot.associations.projects.toLocaleString()} product projects · ${data.snapshot.associations.standalone_runs.toLocaleString()} standalone runs`
+                  ? `${data.snapshot.associations.projects.toLocaleString()} product ${data.snapshot.associations.projects === 1 ? "project" : "projects"} · ${data.snapshot.associations.standalone_runs.toLocaleString()} standalone ${data.snapshot.associations.standalone_runs === 1 ? "run" : "runs"}`
                   : "Reading project and run records"}
           </p>
         </div>

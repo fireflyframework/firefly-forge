@@ -171,8 +171,12 @@ export function FactoryWorkDrawer({
               <span>
                 <strong>{project.name}</strong>
                 <small>
-                  {project.component_count.toLocaleString()} components ·{" "}
-                  {project.repository_count.toLocaleString()} repositories
+                  {project.component_count.toLocaleString()}{" "}
+                  {project.component_count === 1 ? "component" : "components"} ·{" "}
+                  {project.repository_count.toLocaleString()}{" "}
+                  {project.repository_count === 1
+                    ? "repository"
+                    : "repositories"}
                 </small>
               </span>
               <ChevronRight size={16} />
