@@ -158,7 +158,8 @@ test("operator configures an AI without reading back its key and selects version
     .getByLabel("API key", { exact: true })
     .fill("private-provider-key");
   await page
-    .getByRole("button", { name: "Save Firefly Agentic settings" })
+    .getByRole("region", { name: "Configure Firefly Agentic", exact: true })
+    .getByRole("button", { name: "Save settings", exact: true })
     .click();
   expect(saved).toEqual({
     values: { model: "openai:new-model", api_key: "private-provider-key" },

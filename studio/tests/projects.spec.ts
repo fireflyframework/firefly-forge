@@ -299,7 +299,7 @@ test("AS-IS source evidence requires an explicit digest review and never claims 
     .getByRole("button", { name: "Open source inspection", exact: true })
     .click();
   await page
-    .getByRole("button", { name: "Inspect configured source", exact: true })
+    .getByRole("button", { name: /^Inspect \d+ components?$/, exact: true })
     .click();
   await expect(
     page.getByText("1 inspected component · 1 observed declaration", {
@@ -317,24 +317,24 @@ test("AS-IS source evidence requires an explicit digest review and never claims 
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   await expect(
     page.getByRole("button", {
-      name: "Acknowledge this report digest",
+      name: "Confirm source review",
       exact: true,
     }),
   ).toBeDisabled();
   await page
     .getByLabel(
-      "I reviewed the source evidence and open questions. This does not claim observed runtime behavior.",
+      "I reviewed the source findings and open questions. Runtime behavior still needs testing.",
     )
     .check();
   await page
     .getByRole("button", {
-      name: "Acknowledge this report digest",
+      name: "Confirm source review",
       exact: true,
     })
     .click();
   expect(review).toEqual({ digest: "e".repeat(64), reviewed: true });
   await expect(
-    page.getByText("reviewed · source inspection", { exact: true }),
+    page.getByText("Source findings reviewed", { exact: true }),
   ).toBeVisible();
   const fieldGeometry = [];
   for (const theme of ["light", "dark"]) {
@@ -346,30 +346,33 @@ test("AS-IS source evidence requires an explicit digest review and never claims 
     ]) {
       await page.setViewportSize({ width, height });
       fieldGeometry.push(
-        await page.locator("dialog[open] .wizard-field-scroll").evaluate(
-          (element, context) => ({
-            ...context,
-            clientWidth: element.clientWidth,
-            scrollWidth: element.scrollWidth,
-          }),
-          { width, theme },
-        ),
+        await page
+          .locator(".source-inspection-page .wizard-field-scroll")
+          .evaluate(
+            (element, context) => ({
+              ...context,
+              clientWidth: element.clientWidth,
+              scrollWidth: element.scrollWidth,
+            }),
+            { width, theme },
+          ),
       );
       const geometry = await page
-        .locator("dialog[open] .wizard-actions")
+        .locator(".source-inspection-page .wizard-actions")
         .evaluate((element) => {
+          const owner = element.closest("main")!;
+          owner.scrollTop = owner.scrollHeight;
+          const main = owner.getBoundingClientRect();
           const actions = element.getBoundingClientRect();
-          const dialog = element.closest("dialog")!.getBoundingClientRect();
           return {
-            inside:
-              actions.top >= dialog.top && actions.bottom <= dialog.bottom,
+            inside: actions.top >= main.top && actions.bottom <= main.bottom,
             buttons: [...element.querySelectorAll("button")].every((button) => {
               const box = button.getBoundingClientRect();
               return (
                 box.top >= actions.top &&
                 box.bottom <= actions.bottom &&
-                box.left >= dialog.left &&
-                box.right <= dialog.right
+                box.left >= main.left &&
+                box.right <= main.right
               );
             }),
           };

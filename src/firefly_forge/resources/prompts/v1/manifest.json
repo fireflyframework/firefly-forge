@@ -2941,6 +2941,70 @@
       "variables": {
         "pin": "string"
       }
+    },
+    {
+      "id": "mcp/configure_github_projects",
+      "version": "1.0.0",
+      "path": "mcp/configure_github_projects.yaml",
+      "sha256": "36faa98815b5d9be0150039e99852cc3d52f854777235d75d3d28da243b805b7",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/discover_github_projects",
+      "version": "1.0.0",
+      "path": "mcp/discover_github_projects.yaml",
+      "sha256": "cad812fda5398e00cd499d9df1413553dc9e400a68ddfffdf12f0cd0bd043c68",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_github_projects_connection",
+      "version": "1.0.0",
+      "path": "mcp/get_github_projects_connection.yaml",
+      "sha256": "04fdd1998f7ae5b8d34be2628676d8317370e74969cff0bbb84678fa45c9e1f7",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_github_projects_request",
+      "version": "1.0.0",
+      "path": "mcp/get_github_projects_request.yaml",
+      "sha256": "45dde8597ef63247b46c1283661730c0b148bb87428e3b28804176f2c9743d06",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/observe_github_projects",
+      "version": "1.0.0",
+      "path": "mcp/observe_github_projects.yaml",
+      "sha256": "dd252ff82ed3f6d16799d55208b84c9dfbc62a0e4c4e11e2ae58d609cbe0d13a",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/sync_github_projects",
+      "version": "1.0.0",
+      "path": "mcp/sync_github_projects.yaml",
+      "sha256": "c471d41d6a65896197056d5e7ae4d8a8c37f37c42843f07a10407e3be64d6bed",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/create_github_projects",
+      "version": "1.0.0",
+      "path": "mcp/create_github_projects-1.0.0.yaml",
+      "sha256": "247562e9519d60ad613fd48e4564295f865897b14b439ff0ffbb8dafd4258a95",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_github_projects_creation",
+      "version": "1.0.0",
+      "path": "mcp/get_github_projects_creation-1.0.0.yaml",
+      "sha256": "f35d8578f12763f9343e085dc7b5925be8cb996af687f51f090ea86f508145e5",
+      "field": "user",
+      "variables": {}
     }
   ]
 }

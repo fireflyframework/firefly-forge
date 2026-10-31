@@ -1191,7 +1191,11 @@ if (process.env.MCP_STUDIO_PROOF === "1" || process.env.UPDATE_DOC_SCREENSHOTS)
           await page.evaluate(() => document.fonts.ready);
           const wizard = page.locator(".external-tools-wizard");
           if ((await wizard.count()) && composition !== "grants-detail") {
-            await expect(wizard).not.toHaveAttribute("data-layout", "flow");
+            await expect(wizard).toHaveAttribute("data-layout", "flow");
+            await expect(wizard.locator(".wizard-field-scroll")).toHaveCSS(
+              "overflow-y",
+              "visible",
+            );
             await expect
               .poll(() =>
                 wizard
@@ -1201,41 +1205,36 @@ if (process.env.MCP_STUDIO_PROOF === "1" || process.env.UPDATE_DOC_SCREENSHOTS)
                   ),
               )
               .toBeGreaterThanOrEqual(64);
-            if (composition === "initial")
+            expect(
               await wizard
                 .locator(".wizard-field-scroll")
-                .evaluate((element) => {
-                  element.scrollTop = 0;
-                });
-            await expect
-              .poll(() =>
-                page
-                  .locator(".workspace-main>main")
-                  .evaluate((element) => element.scrollTop),
-              )
-              .toBe(0);
-            const heading = await page
-                .getByRole("heading", { name: "External tools", exact: true })
-                .boundingBox(),
-              header = await page
-                .locator(".workspace-main>header")
-                .boundingBox();
-            expect(heading!.y).toBeGreaterThanOrEqual(
-              header!.y + header!.height,
-            );
-            await expect
-              .poll(() =>
-                page.evaluate(() => {
-                  const actions = document
-                    .querySelector(".external-tools-wizard .wizard-actions")!
-                    .getBoundingClientRect();
-                  const footer = document
-                    .querySelector(".workspace-main>footer")!
-                    .getBoundingClientRect();
-                  return actions.bottom <= footer.top;
-                }),
-              )
-              .toBe(true);
+                .evaluate(
+                  (element) =>
+                    element.scrollHeight <= element.clientHeight + 1 &&
+                    element.scrollTop === 0,
+                ),
+            ).toBe(true);
+            if (composition === "initial") {
+              await expect(page.locator(".workspace-main>main")).toHaveCSS(
+                "overflow-y",
+                "auto",
+              );
+              const heading = await wizard
+                  .locator(".wizard-heading h2")
+                  .boundingBox(),
+                header = await page
+                  .locator(".workspace-main>header")
+                  .boundingBox(),
+                footer = await page
+                  .locator(".workspace-main>footer")
+                  .boundingBox();
+              expect(heading!.y).toBeGreaterThanOrEqual(
+                header!.y + header!.height,
+              );
+              expect(heading!.y + heading!.height).toBeLessThanOrEqual(
+                footer!.y,
+              );
+            }
           }
           expect(
             await page.evaluate(
@@ -1245,23 +1244,21 @@ if (process.env.MCP_STUDIO_PROOF === "1" || process.env.UPDATE_DOC_SCREENSHOTS)
           await expect(page.locator(".workspace-main>footer")).toContainText(
             `v${studioPackage.version}`,
           );
-          if (process.env.UPDATE_DOC_SCREENSHOTS) {
-            await captureWalkthrough(
-              page,
-              `external-${stage}`,
-              theme,
-              width === 1440 ? "desktop" : "mobile",
-              {
-                producer: "studio/tests/external-tools.spec.ts",
-                resetFields: false,
-                actionSelector:
-                  composition === "grants-detail"
-                    ? ".external-grants button"
-                    : ".wizard-actions button",
-              },
-            );
-            return;
-          }
+          await captureWalkthrough(
+            page,
+            `external-${stage}`,
+            theme,
+            width === 1440 ? "desktop" : "mobile",
+            {
+              producer: "studio/tests/external-tools.spec.ts",
+              resetFields: false,
+              actionSelector:
+                composition === "grants-detail"
+                  ? ".external-grants button"
+                  : ".wizard-actions button",
+            },
+          );
+          if (process.env.UPDATE_DOC_SCREENSHOTS) return;
           const filename = `forge-mcp-fixture-${stage}-${width}-${theme}-draft.png`;
           await page.screenshot({
             path: join(output, filename),

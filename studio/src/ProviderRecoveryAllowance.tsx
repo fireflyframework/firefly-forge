@@ -466,6 +466,7 @@ export function ProviderRecoveryAllowance({
             </button>
           </div>
           <Wizard
+            layout="flow"
             steps={["Failed attempt", "Mitigation", "Review"]}
             active={step}
             onStep={(next) => {

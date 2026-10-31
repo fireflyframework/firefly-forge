@@ -13,6 +13,17 @@ from uuid import UUID
 import httpx
 from pydantic import BaseModel
 
+from firefly_forge.github_projects_models import (
+    BoardConnectionInputV1,
+    BoardConnectionViewV1,
+    BoardCreateInputV1,
+    BoardCreationReceiptV1,
+    BoardDiscoveryInputV1,
+    BoardDiscoveryV1,
+    BoardObserveInputV1,
+    BoardRequestReceiptV1,
+    BoardSyncInputV1,
+)
 from firefly_forge.models import RepositoryInput, RunInput
 
 if TYPE_CHECKING:
@@ -1249,6 +1260,110 @@ class ForgeClient:
 
     def git_delivery_policy(self, project_id: str) -> dict[str, Any]:
         return dict(self.request("GET", f"projects/{self._id(project_id)}/git-delivery-policy"))
+
+    def _board_path(self, project_id: str, repository_id: str) -> str:
+        return f"projects/{self._id(project_id)}/repositories/{self._id(repository_id)}/github-projects"
+
+    @staticmethod
+    def _board_scope(
+        result: BoardConnectionViewV1 | BoardCreationReceiptV1 | BoardRequestReceiptV1,
+        project_id: str,
+        repository_id: str,
+        *,
+        request_id: str | None = None,
+        run_id: str | None = None,
+    ) -> None:
+        if (
+            result.project_id != project_id
+            or result.repository_id != repository_id
+            or request_id is not None
+            and getattr(result, "id", None) != request_id
+            or run_id is not None
+            and getattr(result, "run_id", None) != run_id
+        ):
+            raise ValueError("GitHub board response leaves its requested native scope")
+
+    def create_github_projects(
+        self, project_id: str, repository_id: str, request: BoardCreateInputV1 | dict[str, Any]
+    ) -> BoardCreationReceiptV1:
+        body = BoardCreateInputV1.model_validate(request)
+        result = BoardCreationReceiptV1.model_validate(
+            self.request(
+                "POST",
+                self._board_path(project_id, repository_id) + "/creations",
+                json=body.model_dump(mode="json"),
+            )
+        )
+        self._board_scope(result, project_id, repository_id, request_id=body.request_id)
+        return result
+
+    def github_projects_creation(self, project_id: str, repository_id: str, request_id: str) -> BoardCreationReceiptV1:
+        result = BoardCreationReceiptV1.model_validate(
+            self.request(
+                "GET",
+                self._board_path(project_id, repository_id) + "/creations/" + self._id(request_id),
+            )
+        )
+        self._board_scope(result, project_id, repository_id, request_id=request_id)
+        return result
+
+    def github_projects_connection(self, project_id: str, repository_id: str) -> BoardConnectionViewV1:
+        result = BoardConnectionViewV1.model_validate(
+            self.request("GET", self._board_path(project_id, repository_id) + "/connection")
+        )
+        self._board_scope(result, project_id, repository_id)
+        return result
+
+    def discover_github_projects(
+        self, project_id: str, repository_id: str, request: BoardDiscoveryInputV1 | dict[str, Any]
+    ) -> BoardDiscoveryV1:
+        body = BoardDiscoveryInputV1.model_validate(request).model_dump(mode="json")
+        return BoardDiscoveryV1.model_validate(
+            self.request("POST", self._board_path(project_id, repository_id) + "/discover", json=body)
+        )
+
+    def configure_github_projects(
+        self, project_id: str, repository_id: str, request: BoardConnectionInputV1 | dict[str, Any]
+    ) -> BoardConnectionViewV1:
+        body = BoardConnectionInputV1.model_validate(request).model_dump(mode="json")
+        result = BoardConnectionViewV1.model_validate(
+            self.request("PUT", self._board_path(project_id, repository_id) + "/connection", json=body)
+        )
+        self._board_scope(result, project_id, repository_id)
+        return result
+
+    def sync_github_projects(
+        self, project_id: str, repository_id: str, run_id: str, request: BoardSyncInputV1 | dict[str, Any]
+    ) -> BoardRequestReceiptV1:
+        body = BoardSyncInputV1.model_validate(request).model_dump(mode="json")
+        result = BoardRequestReceiptV1.model_validate(
+            self.request(
+                "POST", self._board_path(project_id, repository_id) + f"/runs/{self._id(run_id)}/sync", json=body
+            )
+        )
+        self._board_scope(result, project_id, repository_id, request_id=body["request_id"], run_id=run_id)
+        return result
+
+    def github_projects_request(self, project_id: str, repository_id: str, request_id: str) -> BoardRequestReceiptV1:
+        result = BoardRequestReceiptV1.model_validate(
+            self.request("GET", self._board_path(project_id, repository_id) + f"/requests/{self._id(request_id)}")
+        )
+        self._board_scope(result, project_id, repository_id, request_id=request_id)
+        return result
+
+    def observe_github_projects(
+        self, project_id: str, repository_id: str, request_id: str, request: BoardObserveInputV1 | dict[str, Any]
+    ) -> BoardRequestReceiptV1:
+        body = BoardObserveInputV1.model_validate(request).model_dump(mode="json")
+        result = BoardRequestReceiptV1.model_validate(
+            self.request(
+                "POST",
+                self._board_path(project_id, repository_id) + f"/requests/{self._id(request_id)}/observe",
+                json=body,
+            )
+        )
+        self._board_scope(result, project_id, repository_id, request_id=request_id)
+        return result
 
     def configure_git_deliveries(
         self, project_id: str, request: GitDeliveryPolicyInputV1 | dict[str, Any]

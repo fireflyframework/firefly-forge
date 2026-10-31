@@ -1,0 +1,76 @@
+/* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+import { renderToStaticMarkup } from "react-dom/server";
+import { expect, it } from "vitest";
+import {
+  FormField,
+  ProgressHeader,
+  ScrollRegion,
+  StepIndicator,
+} from "./FormPrimitives";
+it("omits an absent optional step description without leaving an empty paragraph", () => {
+  const html = renderToStaticMarkup(
+    <ProgressHeader title="Choose source roots" description="" />,
+  );
+  expect(html).toContain("Choose source roots");
+  expect(html).not.toContain("<p");
+});
+it("preserves the native input and binds its label and combined hint", () => {
+  const html = renderToStaticMarkup(
+    <FormField id="endpoint" label="Endpoint" hint="Use the configured API.">
+      <input id="endpoint" aria-describedby="existing-help" required />
+    </FormField>,
+  );
+  expect(html).toContain('for="endpoint"');
+  expect(html).toContain('aria-describedby="existing-help endpoint-hint"');
+  expect(html).toContain("<input");
+  expect(html).toContain('required=""');
+});
+it("does not invent completed validation for a visited step", () => {
+  const html = renderToStaticMarkup(
+    <StepIndicator ordinal={2} state="visited" />,
+  );
+  expect(html).toContain('aria-label="Step 2, visited"');
+  expect(html).toContain(">2<");
+  expect(html).not.toContain("<svg");
+});
+it("keeps one named keyboard-focusable field region without a scroll-status band", () => {
+  const html = renderToStaticMarkup(
+    <ScrollRegion label="Provider fields" bounded>
+      <input aria-label="API endpoint" />
+    </ScrollRegion>,
+  );
+  expect(html).toContain('aria-label="Provider fields"');
+  expect(html.match(/class="wizard-field-scroll"/g)).toHaveLength(1);
+  expect(html).toContain('tabindex="0"');
+  expect(html).not.toContain("form-scroll-status");
+  expect(html).not.toContain("Form:");
+  expect(html).not.toContain("aria-describedby");
+});
+it("keeps page fields in native document flow without a second scroll region", () => {
+  const html = renderToStaticMarkup(
+    <ScrollRegion>
+      <input aria-label="Model" />
+    </ScrollRegion>,
+  );
+  expect(html).not.toContain('role="region"');
+  expect(html).not.toContain("form-scroll-region");
+  expect(html).not.toContain("form-scroll-status");
+});
+it("retains the field wrapper only when explicitly requested, without flow-region semantics", () => {
+  const html = renderToStaticMarkup(
+    <ScrollRegion preserveFieldStructure label="Consent fields">
+      <input aria-label="Person" />
+    </ScrollRegion>,
+  );
+  expect(html).toContain("form-scroll-region");
+  expect(html).not.toContain('role="region"');
+  expect(html).not.toContain('tabindex="0"');
+  expect(html).not.toContain('aria-label="Consent fields"');
+  expect(
+    renderToStaticMarkup(
+      <ScrollRegion>
+        <input aria-label="Person" />
+      </ScrollRegion>,
+    ),
+  ).toBe('<div class="wizard-field-scroll"><input aria-label="Person"/></div>');
+});

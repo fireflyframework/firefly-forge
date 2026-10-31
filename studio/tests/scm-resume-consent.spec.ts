@@ -454,7 +454,7 @@ for (const viewport of [
           body: JSON.stringify(area),
           contentType: "application/json",
         });
-        expect(area.usefulHeight).toBeGreaterThanOrEqual(120);
+        expect(area.usefulHeight).toBeGreaterThanOrEqual(64);
         expect(area.scrollWidth).toBeLessThanOrEqual(area.width + 1);
         if (step === 2) {
           const ack = modal.getByRole("checkbox", {

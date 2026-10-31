@@ -31,7 +31,11 @@ Data = dict[str, Any]
 
 class AnalysisInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    component_ids: list[str] = Field(default_factory=list, max_length=50)
+    component_ids: list[str] = Field(default_factory=list)
+    expected_project_revision: int | None = Field(default=None, ge=1, exclude_if=lambda value: value is None)
+    expected_project_digest: str | None = Field(
+        default=None, pattern=r"^[a-f0-9]{64}$", exclude_if=lambda value: value is None
+    )
 
 
 class AnalysisReview(BaseModel):
@@ -102,10 +106,15 @@ class ReverseEngineering:
 
     async def analyze(self, project_id: str, request: AnalysisInput) -> Data:
         project = await self.projects.project(project_id)
+        if (
+            request.expected_project_revision is not None and request.expected_project_revision != project["revision"]
+        ) or (request.expected_project_digest is not None and request.expected_project_digest != project["digest"]):
+            raise ValueError("Project changed; review component scope again")
         components = project["definition"]["components"]
-        if set(request.component_ids) - {item["id"] for item in components}:
+        requested = set(request.component_ids)
+        if requested - {item["id"] for item in components}:
             raise ValueError("Choose components from this product project")
-        selected = [item for item in components if not request.component_ids or item["id"] in request.component_ids]
+        selected = [item for item in components if not requested or item["id"] in requested]
         data: Data = {
             "id": uuid.uuid4().hex,
             "project_id": project_id,

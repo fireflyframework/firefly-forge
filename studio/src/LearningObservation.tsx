@@ -621,6 +621,7 @@ export function LearningObservation({
             </button>
           </div>
           <Wizard
+            layout="flow"
             steps={["Source", "Review"]}
             active={step}
             onStep={(value) => {

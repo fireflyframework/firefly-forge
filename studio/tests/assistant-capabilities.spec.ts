@@ -76,11 +76,12 @@ test("image support is read for the selected frozen conversation and late replie
     .click();
   await navigate(page, "Product definition");
   await expect.poll(() => Boolean(pending)).toBe(true);
-  await page.locator(".assistant-settings>summary").click();
+  await page
+    .getByRole("button", { name: "Conversation history", exact: true })
+    .click();
   await page
     .getByLabel("Recorded conversation", { exact: true })
     .selectOption(second);
-  await page.locator(".assistant-settings>summary").click();
   await pending!
     .fulfill({ json: { image_input: { status: "verified" } } })
     .catch(() => undefined);
