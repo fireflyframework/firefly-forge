@@ -260,6 +260,29 @@ async def test_fixed_exporter_rejects_child_environment_credentials_without_copy
     assert token.encode() not in raw and parent_token.encode() not in raw
 
 
+@pytest.mark.parametrize("location,offset", [("content", 0), ("content", 8177), ("path", 0)])
+async def test_fixed_exporter_rejects_personal_tokens_without_child_credentials(tmp_path, location, offset):
+    import sys
+
+    from firefly_forge.runner_backends import _bounded_process
+    from firefly_forge.runner_pool_launcher import workspace_collector
+
+    workspace = tmp_path / "result"
+    workspace.mkdir()
+    token = "forge_pat_" + "a" * 32 + "." + "b" * 43
+    name = token + ".txt" if location == "path" else "main.py"
+    content = "retained result" if location == "path" else "x" * offset + "value = " + repr(token)
+    (workspace / name).write_text(content)
+    script = workspace_collector(1_048_576)
+    assert token not in script
+    local_script = script.replace("Path('/workspace')", "Path(" + repr(str(workspace)) + ")")
+    code, raw = await _bounded_process(
+        [sys.executable, "-I", "-S", "-c", local_script], tmp_path, 5, 2_000_000, environment={}
+    )
+    assert code != 0 and b"configured credential" in raw
+    assert token.encode() not in raw
+
+
 async def test_parent_artifact_admission_rejects_parent_only_token_returned_by_fixed_exporter(tmp_path):
     import sys
 
