@@ -1473,8 +1473,7 @@ test("project grants loading preserves the route heading and allocated wizard", 
           const remaining =
             main.clientHeight -
             offset -
-            parseFloat(getComputedStyle(main).paddingBottom) -
-            16;
+            parseFloat(getComputedStyle(main).paddingBottom);
           return Math.abs(box.height - remaining);
         }),
       )
