@@ -39,7 +39,23 @@ In Studio, open **Product projects**, select the product and its GitHub reposito
 
 The guided setup reuses a project-scoped connection from **Connected accounts**; it does not ask for a GitHub token. **Verify connected account** reads the current GitHub viewer and the registered repository before board selection. Account verification is read-only and grants no new permissions.
 
+These screenshots use controlled API fixtures with synthetic account, repository and board data. They show the setup interface without requesting OAuth consent, creating a live board or saving a live configuration. Light and dark images follow the documentation appearance; select an image to open the full capture.
+
+<figure class="forge-shot" markdown="1">
+
+![The Account step shows the selected project connection, verified viewer and repository.](assets/screenshots/github-projects-account-desktop-light.png)
+
+<figcaption>Account: verify the connected viewer for the selected project and repository before choosing a board.</figcaption>
+</figure>
+
 Continue to **Private board**. To connect a board, choose its owner type, enter the organization login if needed, and enter the board number. Then select **Find private board**. The number is the last part of its GitHub Projects URL. Discovery displays the board title, owner, private visibility and current update permission. Personal boards use the verified account's owner; organization boards require that account's current update permission.
+
+<figure class="forge-shot" markdown="1">
+
+![The Private board step shows a discovered private board and its current update permission.](assets/screenshots/github-projects-private-board-desktop-light.png)
+
+<figcaption>Private board: this fixture finds Delivery under the verified account. Finding a board does not create one or save its mapping.</figcaption>
+</figure>
 
 To create a board, choose **Create a private personal board**, enter its title and confirm creation under the displayed account. Creation is a separate action from saving the status mapping. It does not add issues or grant repository access. Setup remains unavailable when current factory administrator or project/repository release access is absent.
 
@@ -88,6 +104,42 @@ If discovery cannot find a usable single-select field with options, add or corre
 These are examples, not options that forge creates. Use the names and meanings on your board. A successful unit does not establish whole-product acceptance.
 
 Choose whether to enable **Sync future run updates** and include runs recorded before the first configuration. Review **Allow forge to update only this field for linked issues and pull requests**, then select **Save board settings**. Changing a field, mapping or synchronization choice clears that acknowledgement. If someone changes this field in GitHub, forge holds a conflicting update for review.
+
+<figure class="forge-shot" markdown="1">
+
+![The final mapping rows lead to synchronization choices, managed-field consent and Save board settings.](assets/screenshots/github-projects-board-statuses-desktop-light.png)
+
+<figcaption>Board statuses: the end of the seven-row mapping shows the review meaning of completed runs, synchronization choices and field consent. The fixture stops before Save board settings.</figcaption>
+</figure>
+
+<details class="forge-gallery" markdown="1">
+<summary>Follow board setup on a phone</summary>
+
+<div class="forge-shot-grid" markdown="1">
+
+<figure class="forge-shot forge-shot--phone" markdown="1">
+
+![The mobile Account step shows the verified viewer and repository before Continue.](assets/screenshots/github-projects-account-mobile-light.png)
+
+<figcaption>Account: confirm the current viewer and repository. The step selector lets you revisit the setup.</figcaption>
+</figure>
+
+<figure class="forge-shot forge-shot--phone" markdown="1">
+
+![The mobile Private board step displays the discovered board before Continue.](assets/screenshots/github-projects-private-board-mobile-light.png)
+
+<figcaption>Private board: inspect the discovered private board and its current update permission.</figcaption>
+</figure>
+
+<figure class="forge-shot forge-shot--phone" markdown="1">
+
+![The last mobile mapping row is followed by synchronization choices, field consent and the save action.](assets/screenshots/github-projects-board-statuses-mobile-light.png)
+
+<figcaption>Board statuses: scroll through the seven source-to-destination rows to reach field consent and Save board settings. This capture shows the final row and controls; no save is sent.</figcaption>
+</figure>
+
+</div>
+</details>
 
 Save `BoardConnectionInputV1` through `forge project github-projects configure PROJECT REPOSITORY connection.json`. Its discovery fields are extended with:
 
