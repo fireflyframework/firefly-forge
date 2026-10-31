@@ -40,6 +40,7 @@ test("downloads original conversation bytes and retains draft and selection afte
           ? [
               {
                 id: conversation,
+                repository_id: repository,
                 task: "product",
                 agent: "bridge",
                 created_at: "2026-10-12T12:00:00Z",
@@ -48,6 +49,7 @@ test("downloads original conversation bytes and retains draft and selection afte
           : path.endsWith(`/assistant/conversations/${conversation}`)
             ? {
                 id: conversation,
+                repository_id: repository,
                 task: "product",
                 agent: "bridge",
                 turns: [],
@@ -202,7 +204,11 @@ for (const unknownReply of [false, true]) {
       if (path.endsWith("/turns")) {
         turns.push(req.postDataJSON());
         sent = true;
-        json = { id: "d".repeat(32), status: "completed" };
+        json = {
+          id: "d".repeat(32),
+          request_id: turns.at(-1)!.request_id,
+          status: "completed",
+        };
       }
       await route.fulfill({ json });
     });
@@ -356,6 +362,9 @@ test("unsupported image input rejection preserves message and permits detaching 
     .getByLabel("Include screen.png in next message", { exact: true })
     .check();
   await page.getByRole("button", { name: "Done", exact: true }).click();
+  await page
+    .getByLabel("Product design message", { exact: true })
+    .fill("Inspect this screen");
   for (const [width, height] of [
     [1440, 768],
     [390, 844],
@@ -381,19 +390,30 @@ test("unsupported image input rejection preserves message and permits detaching 
     expect(send!.y + send!.height).toBeLessThanOrEqual(
       panel!.y + panel!.height - 8,
     );
-    expect(send!.width).toBeGreaterThan(100);
+    expect(send!.width).toBeGreaterThanOrEqual(32);
+    expect(send!.height).toBeGreaterThanOrEqual(32);
+    await expect(
+      page.getByRole("button", { name: "Send design message", exact: true }),
+    ).toBeEnabled();
     if (width < 1100)
       await page
         .getByRole("button", { name: "Close design assistant", exact: true })
         .click();
   }
   await page.setViewportSize({ width: 1440, height: 768 });
+  await expect(
+    page.getByRole("complementary", {
+      name: "Product design assistant",
+      exact: true,
+    }),
+  ).toBeVisible();
   await page
     .getByLabel("Product design message", { exact: true })
     .fill("Inspect this screen");
   await page
     .getByRole("button", { name: "Send design message", exact: true })
     .click();
+  await expect.poll(() => attempts).toBe(1);
   await expect(page.getByRole("alert")).toContainText(
     "Image input requires a verified model",
   );

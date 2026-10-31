@@ -141,11 +141,14 @@ export function ProductAssistant({
     [task, setTask] = useState<AssistantTask>("product"),
     [message, setMessage] = useState(""),
     [busy, setBusy] = useState(false),
-    [error, setError] = useState(""),
+    [actionError, setActionError] = useState(""),
+    [listError, setListError] = useState(""),
+    [readError, setReadError] = useState(""),
     [revision, setRevision] = useState(0),
     [listReady, setListReady] = useState(false),
     [historyOpen, setHistoryOpen] = useState(false),
     [newDraft, setNewDraft] = useState(false);
+  const error = actionError || listError || readError;
   const [recoveryTurn, setRecoveryTurn] = useState<Turn | null>(null);
   const [imageCapability, setImageCapability] = useState<{
     conversation: string;
@@ -185,7 +188,7 @@ export function ProductAssistant({
           throw new Error(
             "The conversation list could not be read. Refresh the recorded conversations.",
           );
-        setError("");
+        setListError("");
         setListReady(true);
         setSessions(
           values.filter(
@@ -194,7 +197,7 @@ export function ProductAssistant({
         );
       })
       .catch((cause) => {
-        if (!controller.signal.aborted) setError(failure(cause));
+        if (!controller.signal.aborted) setListError(failure(cause));
       });
     return () => controller.abort();
   }, [connection, repository, projectId, revision]);
@@ -218,7 +221,7 @@ export function ProductAssistant({
         .then((value) => {
           if (controller.signal.aborted) return;
           setConversation(value);
-          setError("");
+          setReadError("");
           if (
             recordedUncertain &&
             value.turns?.some((turn) => turn.request_id === recordedUncertain)
@@ -226,7 +229,7 @@ export function ProductAssistant({
             custody.confirmTurn(id, recordedUncertain);
         })
         .catch((cause) => {
-          if (!controller.signal.aborted) setError(failure(cause));
+          if (!controller.signal.aborted) setReadError(failure(cause));
         });
     void refresh();
     const timer = setInterval(() => void refresh(), 3000);
@@ -358,7 +361,7 @@ export function ProductAssistant({
     pending.current?.abort();
     pending.current = controller;
     setBusy(true);
-    setError("");
+    setActionError("");
     return controller;
   }
   function finish(controller: AbortController) {
@@ -421,7 +424,7 @@ export function ProductAssistant({
     try {
       await createSession(controller);
     } catch (cause) {
-      if (!controller.signal.aborted) setError(failure(cause));
+      if (!controller.signal.aborted) setActionError(failure(cause));
     } finally {
       finish(controller);
     }
@@ -438,7 +441,7 @@ export function ProductAssistant({
       await createSession(controller);
       if (!controller.signal.aborted) setFilesOpen(true);
     } catch (cause) {
-      if (!controller.signal.aborted) setError(failure(cause));
+      if (!controller.signal.aborted) setActionError(failure(cause));
     } finally {
       finish(controller);
     }
@@ -487,7 +490,7 @@ export function ProductAssistant({
         const rejected =
           cause instanceof ApiError && [409, 422].includes(cause.status);
         if (rejected && requestId) custody.confirmTurn(targetId, requestId);
-        setError(
+        setActionError(
           rejected || !requestId
             ? failure(cause)
             : `${failure(cause)} Refresh the recorded conversation before requesting another turn.`,
@@ -509,6 +512,8 @@ export function ProductAssistant({
             title="New conversation"
             disabled={busy || creationUncertain || !listReady}
             onClick={() => {
+              setActionError("");
+              setReadError("");
               setNewDraft(true);
               setHistoryOpen(false);
               editor.current?.focus();
@@ -677,6 +682,8 @@ export function ProductAssistant({
                 value={creationUncertain ? "" : (id ?? "")}
                 disabled={busy}
                 onChange={(event) => {
+                  setActionError("");
+                  setReadError("");
                   if (!Object.keys(uncertainRequests).length) {
                     lastSource.current = sourceKey;
                     setDraftSource(

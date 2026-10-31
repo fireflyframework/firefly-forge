@@ -27,6 +27,7 @@ test("collapsing the assistant releases editor space without losing the chat dra
       json = [
         {
           id: conversation,
+          repository_id: repository,
           task: "product",
           agent: "bridge",
           created_at: "2026-10-12T12:00:00Z",
@@ -35,6 +36,7 @@ test("collapsing the assistant releases editor space without losing the chat dra
     if (path.endsWith(`/assistant/conversations/${conversation}`))
       json = {
         id: conversation,
+        repository_id: repository,
         task: "product",
         agent: "bridge",
         turns: [],
