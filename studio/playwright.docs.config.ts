@@ -16,8 +16,9 @@ export default defineConfig({
     "verification-reuse.spec.ts",
     "verification-adoption.spec.ts",
     "github-projects.spec.ts",
+    "scm-protected-consents.spec.ts",
   ],
-  grep: /guided fixture journey|actual fixture review frames|actual fixture final allowance frames|actual fixture configured-check recovery frames|actual fixture development workflow frames|generation activation keeps exact corpus|review uses four acknowledgements|guided checkpoint continuation frames|guided runner process setup frames|saved final-result wizard fits|reused verification fits|verification approval wizard fits|guided private board setup frames/,
+  grep: /guided fixture journey|actual fixture review frames|actual fixture final allowance frames|actual fixture configured-check recovery frames|actual fixture development workflow frames|generation activation keeps exact corpus|review uses four acknowledgements|guided checkpoint continuation frames|guided runner process setup frames|saved final-result wizard fits|reused verification fits|verification approval wizard fits|guided private board setup frames|guided protected consent frames/,
   workers: 1,
   timeout: 90000,
   use: {

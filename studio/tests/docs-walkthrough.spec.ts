@@ -3163,12 +3163,14 @@ for (const device of ["desktop", "mobile"])
       await dialog
         .getByLabel("Find a registered person", { exact: true })
         .fill("Warehouse");
-      await dialog
-        .getByRole("button", { name: "Find person", exact: true })
-        .click();
-      await dialog
-        .getByLabel("Registered person", { exact: true })
-        .selectOption(nativeUser);
+      await dialog.getByRole("button", { name: "Search", exact: true }).click();
+      await dialog.getByRole("radio", { name: /Warehouse reviewer/ }).click();
+      await expect(
+        dialog.getByRole("group", {
+          name: "Selected registered person",
+          exact: true,
+        }),
+      ).toContainText("Warehouse reviewer");
       await dialog
         .getByRole("checkbox", { name: "Inventory API", exact: true })
         .check();
@@ -3176,9 +3178,8 @@ for (const device of ["desktop", "mobile"])
         .getByRole("checkbox", { name: "Answer agent questions", exact: true })
         .check();
       await dialog
-        .getByLabel("Registered person", { exact: true })
-        .locator("..")
-        .evaluate((node) => node.scrollIntoView({ block: "start" }));
+        .locator(".wizard-field-scroll")
+        .evaluate((node) => (node.scrollTop = 0));
       await shot("scm-delegation-scope", false);
       await dialog
         .getByRole("button", { name: "Review delegation", exact: true })

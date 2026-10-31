@@ -92,6 +92,7 @@ class WalkthroughTests(unittest.TestCase):
                 "studio/tests/verification-reuse.spec.ts": "fixture verification reuse producer",
                 "studio/tests/verification-adoption.spec.ts": "fixture verification approval producer",
                 "studio/tests/github-projects.spec.ts": "fixture private board setup producer",
+                "studio/tests/scm-protected-consents.spec.ts": "fixture protected consent producer",
                 "studio/playwright.docs.config.ts": "fixture capture config",
             }
             for name, content in paths.items():
@@ -200,9 +201,18 @@ class WalkthroughTests(unittest.TestCase):
                 "github-projects-account",
                 "github-projects-private-board",
                 "github-projects-board-statuses",
+                "scm-protected-delegation-search",
+                "scm-protected-delegation-scope",
+                "scm-protected-delegation-review",
+                "scm-protected-resume-scope",
+                "scm-protected-resume-review",
+                "scm-protected-product-edit-scope",
+                "scm-protected-product-edit-review",
             ):
                 producer = (
-                    "studio/tests/github-projects.spec.ts"
+                    "studio/tests/scm-protected-consents.spec.ts"
+                    if stage.startswith("scm-protected-")
+                    else "studio/tests/github-projects.spec.ts"
                     if stage.startswith("github-projects-")
                     else "studio/tests/verification-adoption.spec.ts"
                     if stage.startswith("verification-approval-")
@@ -273,6 +283,19 @@ class WalkthroughTests(unittest.TestCase):
             }
             save()
             with self.assertRaisesRegex(ValueError, "Unknown GitHub Projects capture stage"):
+                hook._load_walkthrough({"docs_dir": str(docs)}, root)
+            del manifest["captures"][unknown_name]
+            unknown_name = "scm-protected-unknown-mobile-light.png"
+            (asset.parent / unknown_name).write_bytes(asset.read_bytes())
+            manifest["captures"][unknown_name] = {
+                **record,
+                "stage": "scm-protected-unknown",
+                "path": "assets/screenshots/" + unknown_name,
+                "producer": "studio/tests/scm-protected-consents.spec.ts",
+                "producer_sha256": producers["studio/tests/scm-protected-consents.spec.ts"],
+            }
+            save()
+            with self.assertRaisesRegex(ValueError, "Unknown protected consent capture stage"):
                 hook._load_walkthrough({"docs_dir": str(docs)}, root)
             del manifest["captures"][unknown_name]
             record["observation_only"] = True
@@ -629,6 +652,8 @@ class WalkthroughTests(unittest.TestCase):
             approval_capture.write_text("fixture verification approval producer")
             board_capture = root / "studio/tests/github-projects.spec.ts"
             board_capture.write_text("fixture private board setup producer")
+            consent_capture = root / "studio/tests/scm-protected-consents.spec.ts"
+            consent_capture.write_text("fixture protected consent producer")
             capture_config = root / "studio/playwright.docs.config.ts"
             capture_config.write_text("fixture capture config")
 
@@ -657,6 +682,7 @@ class WalkthroughTests(unittest.TestCase):
                     "studio/tests/verification-reuse.spec.ts": sha(reuse_capture),
                     "studio/tests/verification-adoption.spec.ts": sha(approval_capture),
                     "studio/tests/github-projects.spec.ts": sha(board_capture),
+                    "studio/tests/scm-protected-consents.spec.ts": sha(consent_capture),
                 },
                 "capture_helpers": {
                     "studio/tests/walkthrough-capture.ts": sha(helper),
