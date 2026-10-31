@@ -37,7 +37,7 @@ def test_native_oauth_metadata_configuration_handoff_sdk_cli_mcp_parity(tmp_path
         connection.http = http
         monkeypatch.setattr(cli, "client", lambda: contextlib.nullcontext(connection))
         assert http.put(BASE.removeprefix("/api/v1/") + "/" + PROVIDER, json=registration()).status_code == 200
-        assert len(connection.connection_oauth_providers()) == 6
+        assert len(connection.connection_oauth_providers()) == 8
         key = tmp_path / "client.secret"
         key.write_text("fixture-private-client-secret")
         key.chmod(0o600)

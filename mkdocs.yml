@@ -122,6 +122,7 @@ nav:
       - Agent bridge connection: bridge.md
   - Integrations:
       - Connect Git repositories: scm.md
+      - Track delivery in GitHub Projects: github-projects.md
       - Repository conversations: repository-workflow.md
       - Cited knowledge and memory: knowledge.md
       - Refresh framework references, in development: framework-knowledge-refresh.md

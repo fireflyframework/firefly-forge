@@ -1,0 +1,9 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/sync_github_projects
+version: 1.0.0
+description: Authenticated factory MCP tool description.
+system_template: ''
+user_template: "Admit an idempotent native worker request to link retained issue/PR evidence and project scoped progress through the configured managed field. The original run supplies content and state; successful test/maintenance units do not certify product completion. Unknown writes are held, never replayed."
+required_variables: []
+metadata:
+  defaults: {}

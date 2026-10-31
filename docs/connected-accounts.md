@@ -10,7 +10,7 @@ Open **Administration → Connected accounts** as a current factory administrato
 
 The four native captures below show Studio 0.2.4 at its recorded source revision, during an isolated API-only qualification with an owned provider and synthetic data. The broader walkthrough uses its separately identified API fixtures. The execution warning reflects that API-only topology; worker readiness is a separate check.
 
-The supported `local-repository-tools` provider is for explicit local development. GitHub, Figma, Sentry, Grafana and external Playwright OAuth remain at **Prerequisite required**. Native GitHub App SCM, the fixed GitHub token MCP adapter and the native BrowserRunner retain their own setup paths.
+The supported `local-repository-tools` provider is for explicit local development. GitHub, Figma, Sentry, Grafana and external Playwright OAuth remain at **Prerequisite required**. Native GitHub App SCM, the fixed GitHub token MCP adapter and the native BrowserRunner retain their own setup paths. The separate [GitHub Projects profiles](github-projects.md) admit project-scoped OAuth consent for board operations.
 
 ## Prepare the local service
 

@@ -38,6 +38,12 @@ from firefly_forge.connection_oauth_persistence import (
 from firefly_forge.engine_activity_persistence import ForgeEngineActivityEntity
 from firefly_forge.execution_request_persistence import ForgeExecutionRequestEntity, ForgeExecutionRequestEventEntity
 from firefly_forge.framework_knowledge_persistence import FrameworkKnowledgeRecord
+from firefly_forge.github_projects_persistence import (
+    ForgeGitHubProjectsBindingEntity,
+    ForgeGitHubProjectsConfigurationEntity,
+    ForgeGitHubProjectsCreationEntity,
+    ForgeGitHubProjectsCreationReceiptEntity,
+)
 from firefly_forge.identity_persistence import (
     ForgeIdentityAttemptEntity,
     ForgeIdentitySessionEntity,
@@ -87,7 +93,7 @@ from firefly_forge.user_administration_persistence import (
     ForgeIdentityAdminOperationEntity,
 )
 
-SCHEMA_REVISION = 33
+SCHEMA_REVISION = 34
 
 
 async def migrate(session: AsyncSession, schema: str) -> None:
@@ -136,6 +142,10 @@ async def migrate(session: AsyncSession, schema: str) -> None:
                 ForgeProjectEntity,
                 ForgeAnalyticsBindingEntity,
                 ForgeAnalyticsConfigurationReceiptEntity,
+                ForgeGitHubProjectsBindingEntity,
+                ForgeGitHubProjectsConfigurationEntity,
+                ForgeGitHubProjectsCreationEntity,
+                ForgeGitHubProjectsCreationReceiptEntity,
                 ForgeProjectRevisionEntity,
                 ForgeAnalysisEntity,
                 ForgeAssistantSessionEntity,
@@ -175,6 +185,7 @@ async def migrate(session: AsyncSession, schema: str) -> None:
             )
         ]
         await connection.run_sync(lambda sync: ForgeRunEntity.metadata.create_all(sync, tables=tables))
+        await session.execute(text("ALTER TABLE forge_oauth_grants ALTER COLUMN expires_at DROP NOT NULL"))
         await session.execute(
             text("ALTER TABLE forge_identity_users ADD COLUMN IF NOT EXISTS contact_email VARCHAR(320)")
         )
@@ -240,6 +251,9 @@ async def migrate(session: AsyncSession, schema: str) -> None:
             "forge_product_definitions",
             "forge_project_revisions",
             "forge_analytics_configuration_receipts",
+            "forge_github_projects_configuration_receipts",
+            "forge_github_projects_creations",
+            "forge_github_projects_creation_receipts",
             "forge_assistant_events",
             "forge_assistant_attachments",
             "forge_event_content",
@@ -277,6 +291,19 @@ async def migrate(session: AsyncSession, schema: str) -> None:
                 "CREATE OR REPLACE TRIGGER forge_execution_request_admission "
                 "BEFORE UPDATE ON forge_execution_requests FOR EACH ROW "
                 "EXECUTE FUNCTION forge_guard_execution_request()"
+            )
+        )
+        await session.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS forge_github_board_history_scope ON forge_execution_requests "
+                "((data['request'] ->> 'board_id'), (data['request'] ->> 'remote_repository_id'), created_at, id) "
+                "WHERE kind='github_board'"
+            )
+        )
+        await session.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS forge_github_board_history_contents ON forge_execution_requests "
+                "USING gin ((data['request']['contents']) jsonb_path_ops) WHERE kind='github_board'"
             )
         )
         await session.execute(

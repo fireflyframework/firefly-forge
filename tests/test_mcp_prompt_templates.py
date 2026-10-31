@@ -12,6 +12,14 @@ from firefly_forge.mcp_server import create_server
 from firefly_forge.prompts import prompt_catalog
 
 NEW_TOOLS = {
+    "create_github_projects",
+    "get_github_projects_creation",
+    "get_github_projects_connection",
+    "discover_github_projects",
+    "configure_github_projects",
+    "sync_github_projects",
+    "get_github_projects_request",
+    "observe_github_projects",
     "get_framework_knowledge_status",
     "check_framework_updates",
     "refresh_framework_knowledge",
@@ -64,7 +72,7 @@ def _baseline():
 
 async def test_original_mcp_wire_metadata_keeps_reviewed_configuration_extensions():
     tools = await create_server().list_tools()
-    assert len(tools) == 185
+    assert len(tools) == 193
     original = [tool for tool in tools if tool.name not in NEW_TOOLS]
     assert len(original) == 142
     actual = ListToolsResult(tools=original).model_dump_json(by_alias=True, exclude_none=True)

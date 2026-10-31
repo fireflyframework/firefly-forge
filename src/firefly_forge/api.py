@@ -121,6 +121,11 @@ from firefly_forge.git_delivery_policy import GitDeliveryPolicies
 from firefly_forge.git_delivery_requests import GitDeliveryRequests
 from firefly_forge.git_diff_archive import GitDiffArchive
 from firefly_forge.git_diff_controllers import GitDiffController
+from firefly_forge.github_projects import GitHubProjects
+from firefly_forge.github_projects_controllers import GitHubProjectsController
+from firefly_forge.github_projects_persistence import ForgeGitHubProjectsBindingRepository
+from firefly_forge.github_projects_requests import GitHubProjectsRequests
+from firefly_forge.github_projects_worker import GitHubProjectsWorker
 from firefly_forge.identity import AUTH_PREFIX, SESSION_COOKIE, IdentityConfiguration, IdentityService
 from firefly_forge.identity_controllers import IdentityController
 from firefly_forge.identity_persistence import (
@@ -1115,6 +1120,34 @@ class FactoryConfiguration:
         return OAuthResources(connections, access)
 
     @bean
+    def github_projects(
+        self,
+        store: Store,
+        access: ProjectAccess,
+        resources: OAuthResources,
+        records: ForgeGitHubProjectsBindingRepository,
+    ) -> GitHubProjects:
+        return GitHubProjects(store, access, resources, records)
+
+    @bean
+    def github_projects_requests(
+        self,
+        manager: GitHubProjects,
+        requests: ExecutionRequests,
+        deliveries: GitDeliveries,
+        collaboration: Collaboration,
+    ) -> GitHubProjectsRequests:
+        return GitHubProjectsRequests(manager, requests, deliveries, collaboration)
+
+    @bean
+    def github_projects_worker(
+        self, tickets: GitHubProjectsRequests, requests: ExecutionRequests
+    ) -> GitHubProjectsWorker:
+        worker = GitHubProjectsWorker(tickets)
+        requests.github_projects = worker
+        return worker
+
+    @bean
     def analytics_connection(self, private: ConfigurationStore) -> AnalyticsConnection:
         return AnalyticsConnection(private)
 
@@ -1510,6 +1543,8 @@ def create_runtime(
         CampaignDeliveryPlanController,
         ProjectCampaignController,
         CampaignExecutionPolicyController,
+        ForgeGitHubProjectsBindingRepository,
+        GitHubProjectsController,
     ]:
         container.register(component)
 
