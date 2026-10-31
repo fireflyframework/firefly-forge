@@ -334,3 +334,31 @@ async def test_native_concurrent_reader_revoke_discards_repeatable_read_snapshot
             )
             await c.observe(c.owner, selected, DashboardPageInput())
     assert mutations == [revoke]
+
+
+@pytest.mark.parametrize("revoke", ["membership", "identity", "session"])
+async def test_native_reader_revoke_during_final_project_check_discards_snapshot(factory_records, revoke):
+    c = factory_records
+    original = c.dashboard.access.require_project
+    mutations = []
+
+    async def revoke_after_permission(*args):
+        await original(*args)
+        async with c.store._unit():
+            if revoke == "membership":
+                row = (await ForgeMembershipRepository().for_user(c.owner.id))[0]
+                row.active, row.revision = False, row.revision + 1
+            elif revoke == "identity":
+                user = await ForgeIdentityUserRepository().find_by_id(c.owner.id)
+                assert user is not None
+                user.enabled = False
+            else:
+                row = await ForgeIdentitySessionRepository().cookie(digest("fictional-dashboard-cookie"))
+                assert row is not None
+                row.status, row.revision = "revoked", row.revision + 1
+            mutations.append(revoke)
+
+    c.dashboard.access.require_project = revoke_after_permission
+    with pytest.raises(AccessDenied, match="changed"):
+        await c.observe(c.owner, DashboardScope(kind="project", project_id=c.projects[0].hex), DashboardPageInput())
+    assert mutations == [revoke]

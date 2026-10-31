@@ -181,6 +181,7 @@ class FactoryDashboard:
             required = {scope.project_id} if scope.project_id else set(allowed_projects or ())
             if not required <= current:
                 raise AccessDenied("Personal project access changed during the observation")
+        await self._fresh_authority(actor, authority, session_hash)
         counts = {name: raw["counts"].get(name, 0) for name in (*RUN_BUCKETS, "unknown")}
         counts["total"] = sum(counts.values())
         stages = {

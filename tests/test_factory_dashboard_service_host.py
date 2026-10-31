@@ -283,7 +283,7 @@ async def test_cookie_reader_requires_exact_current_native_session_binding(dashb
         await dashboard.service.observe(actor, DashboardScope(), DashboardPageInput())
     assert dashboard.records.calls == []
     await dashboard.service.observe(actor, DashboardScope(), DashboardPageInput(), session_hash="d" * 64)
-    assert dashboard.records.witness_reads == ["d" * 64, "d" * 64]
+    assert dashboard.records.witness_reads == ["d" * 64] * 3
 
 
 async def test_missing_fresh_witness_does_not_return_old_snapshot(dashboard):
@@ -332,3 +332,18 @@ def test_controller_binds_cookie_digest_only_from_authenticated_transport():
         )
         is None
     )
+
+
+@pytest.mark.parametrize("changed", [None, ("changed-current-identity",), ("changed-current-membership",)])
+async def test_final_scope_permission_await_cannot_return_a_revoked_reader_snapshot(dashboard, changed):
+    original = dashboard.service.access.require_project
+
+    async def revoke_after_permission(*args):
+        await original(*args)
+        dashboard.records.witness = changed
+
+    dashboard.service.access.require_project = revoke_after_permission
+    with pytest.raises(AccessDenied, match="changed"):
+        await dashboard.service.observe(
+            dashboard.actor, DashboardScope(kind="project", project_id="a" * 32), DashboardPageInput()
+        )
