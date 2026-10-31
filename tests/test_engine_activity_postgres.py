@@ -292,7 +292,7 @@ async def test_native_pat_reader_observes_engine_stage_without_execution_or_fore
         user = await ForgeIdentityUserRepository().find_by_id(c.user)
         user.issuer, user.subject = "https://id.example", "observer"
         user.api_roles_audience = "forge-api"
-        user.api_roles_issued_at = datetime.now(UTC)
+        user.api_roles_issued_at = datetime.now(UTC).timestamp()
         user.api_roles_expires_at = datetime.now(UTC) + timedelta(hours=1)
         await ForgeMembershipRepository().save(
             ForgeMembershipEntity(project_id=project, user_id=c.user, active=True, role="developer")
