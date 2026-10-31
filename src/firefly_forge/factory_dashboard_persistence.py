@@ -16,6 +16,8 @@ from firefly_forge.factory_dashboard_models import RUN_BUCKETS, DashboardScope
 from firefly_forge.identity import Principal
 from firefly_forge.identity_persistence import ForgeIdentitySessionEntity, ForgeIdentityUserEntity
 from firefly_forge.persistence import ForgePlanEntity, ForgeRepositoryEntity, ForgeRunEntity, ForgeTaskEntity
+from firefly_forge.personal_token_persistence import ForgePersonalTokenEntity
+from firefly_forge.product_provenance import content_digest
 from firefly_forge.project_access import ROLE_PERMISSIONS
 from firefly_forge.project_persistence import ForgeProjectEntity
 
@@ -152,6 +154,32 @@ def authorization_witness_statement(actor: Principal, session_hash: str | None =
         if session_hash is not None
         else literal(None)
     )
+    token = ForgePersonalTokenEntity
+    token_state = (
+        select(
+            func.jsonb_build_array(
+                token.id,
+                token.owner_id,
+                token.owner_identity_digest,
+                token.secret_digest,
+                token.project_ids,
+                token.permissions,
+                token.expires_at,
+                token.revoked_at,
+            )
+        )
+        .where(
+            token.id == actor.personal_token_id,
+            token.owner_id == actor.id,
+            token.owner_identity_digest == content_digest({"issuer": actor.issuer, "subject": actor.subject}),
+            token.permissions == ["read"],
+            token.revoked_at.is_(None),
+            token.expires_at > func.clock_timestamp(),
+        )
+        .scalar_subquery()
+        if actor.authentication_method == "personal_token"
+        else literal(None)
+    )
     statement = (
         select(
             user.id,
@@ -163,6 +191,7 @@ def authorization_witness_statement(actor: Principal, session_hash: str | None =
             user.api_roles_issued_at,
             user.api_roles_expires_at,
             session_state.label("session_state"),
+            token_state.label("token_state"),
             *membership_state.c,
         )
         .select_from(user)
@@ -176,6 +205,8 @@ def authorization_witness_statement(actor: Principal, session_hash: str | None =
         )
     if session_hash is not None:
         statement = statement.where(session_state.is_not(None))
+    if actor.authentication_method == "personal_token":
+        statement = statement.where(token_state.is_not(None))
     return statement
 
 

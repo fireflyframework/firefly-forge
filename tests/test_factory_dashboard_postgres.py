@@ -362,3 +362,40 @@ async def test_native_reader_revoke_during_final_project_check_discards_snapshot
     with pytest.raises(AccessDenied, match="changed"):
         await c.observe(c.owner, DashboardScope(kind="project", project_id=c.projects[0].hex), DashboardPageInput())
     assert mutations == [revoke]
+
+
+async def test_native_token_revoke_during_final_grant_discards_snapshot(factory_records):
+    c = factory_records
+    issued = await c.tokens.create(
+        c.owner,
+        PersonalTokenInput(
+            request_id=uuid4().hex,
+            name="Final-boundary observer",
+            project_ids=[c.projects[0].hex],
+            expires_at=datetime.now(UTC) + timedelta(hours=1),
+        ),
+    )
+    assert issued.secret is not None
+    principal = (await c.tokens.resolve(issued.secret.get_secret_value())).principal
+    required = c.dashboard.access.require_project
+    memberships = c.dashboard.access.memberships
+    after_required_project = False
+    revoked = []
+
+    async def require_project(*args):
+        nonlocal after_required_project
+        await required(*args)
+        after_required_project = True
+
+    async def revoke_after_final_grant(actor):
+        value = await memberships(actor)
+        if after_required_project:
+            await asyncio.create_task(c.tokens.revoke(c.owner, issued.credential["id"]), context=Context())
+            revoked.append(True)
+        return value
+
+    c.dashboard.access.require_project = require_project
+    c.dashboard.access.memberships = revoke_after_final_grant
+    with pytest.raises(AccessDenied, match="changed"):
+        await c.observe(principal, DashboardScope(kind="project", project_id=c.projects[0].hex), DashboardPageInput())
+    assert revoked == [True]

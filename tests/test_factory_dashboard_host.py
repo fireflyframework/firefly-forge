@@ -83,3 +83,30 @@ def test_authority_witness_is_constant_space_and_binds_current_identity_session_
     )
     for forbidden in ("string_agg", "array_agg", "jsonb_agg", "FOR UPDATE", "FOR SHARE", "LIMIT"):
         assert forbidden not in sql
+
+
+def test_personal_reader_witness_binds_current_credential_and_its_selected_scope():
+    from uuid import UUID
+
+    from firefly_forge.factory_dashboard_persistence import authorization_witness_statement
+    from firefly_forge.identity import Principal
+    from firefly_forge.product_provenance import content_digest
+
+    actor = Principal(
+        UUID(int=9),
+        "https://id.example",
+        "person",
+        authentication_method="personal_token",
+        kind="service",
+        personal_token_id=UUID(int=10),
+    )
+    compiled = authorization_witness_statement(actor).compile(dialect=postgresql.dialect())
+    sql = str(compiled)
+    for column in ("id", "owner_id", "owner_identity_digest", "project_ids", "permissions", "expires_at", "revoked_at"):
+        assert f"forge_personal_tokens.{column}" in sql
+    assert "forge_personal_tokens.revoked_at IS NULL" in sql
+    assert "forge_personal_tokens.expires_at > clock_timestamp()" in sql
+    assert "token_state" in sql and "IS NOT NULL" in sql
+    assert content_digest({"issuer": actor.issuer, "subject": actor.subject}) in compiled.params.values()
+    assert ["read"] in compiled.params.values()
+    assert "FOR UPDATE" not in sql and "FOR SHARE" not in sql
