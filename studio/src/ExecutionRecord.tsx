@@ -13,6 +13,8 @@ import { CodingCheckRecovery } from "./CodingCheckRecovery";
 import { RunnerContinuation } from "./RunnerContinuation";
 import { AgentCheckpointRecovery } from "./AgentCheckpointRecovery";
 import { InvalidReadRecovery } from "./InvalidReadRecovery";
+import { ConsumedTerminalReconciliation } from "./ConsumedTerminalReconciliation";
+import { hasClaimedConsumedTerminal } from "./ConsumedTerminalData";
 import { RunGitDeliveries } from "./RunGitDeliveries";
 import type { IdentitySession } from "./Identity";
 import { asRecord } from "./ExecutionFormat";
@@ -73,7 +75,8 @@ export function ContinueRun({
       setBusy(false);
     }
   }
-  if (activeVerificationRequest(run)) return null;
+  if (activeVerificationRequest(run) || hasClaimedConsumedTerminal(run))
+    return null;
   if (
     !unknownOutcome &&
     !["paused", "needs_reconciliation", "interrupted"].includes(run.status)
@@ -226,6 +229,29 @@ export function ExecutionRecord({
   }, [connection, run.id]);
   return (
     <div className="execution-record">
+      {session && hasClaimedConsumedTerminal(run) && (
+        <ConsumedTerminalReconciliation
+          key={JSON.stringify([
+            "consumed-terminal",
+            connection.base,
+            connection.token,
+            session,
+            run.id,
+            run.repository_id,
+            run.project_id,
+            run.attempt,
+            run.status,
+            run.source_tree,
+            run.checkpoint_revision,
+            run.base_revision,
+            run.cancel_request,
+            run.consumed_terminal_recovery,
+          ])}
+          run={run}
+          connection={connection}
+          session={session}
+        />
+      )}
       {run.verification_handoff !== undefined && (
         <VerificationHandoff value={run.verification_handoff} />
       )}
@@ -239,6 +265,7 @@ export function ExecutionRecord({
           />
         )}
       {session &&
+        !hasClaimedConsumedTerminal(run) &&
         (!run.invalid_read_continuity ||
           run.status === "running" ||
           run.worker_request?.status === "pending") && (
@@ -262,7 +289,7 @@ export function ExecutionRecord({
             session={session}
           />
         )}
-      {session && (
+      {session && !hasClaimedConsumedTerminal(run) && (
         <InvalidReadRecovery
           key={JSON.stringify([
             "invalid-read-recovery",
@@ -282,27 +309,29 @@ export function ExecutionRecord({
           session={session}
         />
       )}
-      {session && run.invalid_read_continuity == null && (
-        <AgentCheckpointRecovery
-          key={JSON.stringify([
-            "agent-checkpoint-recovery",
-            connection.base,
-            connection.token,
-            session.user.id,
-            session.global_admin,
-            session.memberships,
-            run.id,
-            run.repository_id,
-            run.project_id,
-            run.publish,
-            run.status,
-            run.cancel_request?.status,
-          ])}
-          run={run}
-          connection={connection}
-          session={session}
-        />
-      )}
+      {session &&
+        !hasClaimedConsumedTerminal(run) &&
+        run.invalid_read_continuity == null && (
+          <AgentCheckpointRecovery
+            key={JSON.stringify([
+              "agent-checkpoint-recovery",
+              connection.base,
+              connection.token,
+              session.user.id,
+              session.global_admin,
+              session.memberships,
+              run.id,
+              run.repository_id,
+              run.project_id,
+              run.publish,
+              run.status,
+              run.cancel_request?.status,
+            ])}
+            run={run}
+            connection={connection}
+            session={session}
+          />
+        )}
       {session && (
         <CodingCheckRecovery
           key={JSON.stringify([
