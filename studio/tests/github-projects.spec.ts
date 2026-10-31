@@ -318,10 +318,9 @@ test("verified account and private discovery precede explicit state mapping", as
         .evaluate((element) => {
           element.scrollTop = 0;
         });
-      if (width !== 320)
-        await page.screenshot({
-          path: info.outputPath(`board-mapping-${width}-${theme}.png`),
-        });
+      await page.screenshot({
+        path: info.outputPath(`board-mapping-${width}-${theme}.png`),
+      });
     }
   }
   await page
