@@ -38,6 +38,8 @@ AUTHORITY_MODULES = (
     "collaboration_feedback.py",
     "scm_conversation_models.py",
     "collaboration.py",
+    "engine_activity.py",
+    "engine_activity_persistence.py",
 )
 CONTRACTS = (
     (

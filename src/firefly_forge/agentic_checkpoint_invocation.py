@@ -262,6 +262,8 @@ def runtime_contract() -> str:
                     "collaboration_feedback.py",
                     "scm_conversation_models.py",
                     "collaboration.py",
+                    "engine_activity.py",
+                    "engine_activity_persistence.py",
                 )
             },
         }

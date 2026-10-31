@@ -31,6 +31,7 @@ from firefly_forge.diagnostic_recipes import (
     profile_observation,
     trace_observation,
 )
+from firefly_forge.engine_activity import EngineActivity
 from firefly_forge.git_diff_models import GitDiffBudget
 from firefly_forge.git_workspace import git_environment, metadata_digest, trusted_git
 from firefly_forge.models import Command, NewWorkCommand, configured_commands
@@ -143,12 +144,14 @@ class Engine:
         concurrency: int = 2,
         connections: Any = None,
         journal: Any = None,
+        stage_activity: EngineActivity | None = None,
     ) -> None:
         if not 1 <= concurrency <= 64:
             raise ValueError("Execution concurrency must be between 1 and 64")
         self.store = store
         self.connections = connections
         self.journal = journal
+        self.stage_activity = stage_activity
         from firefly_forge.communication import CommunicationWriter
 
         self.communication_writer = CommunicationWriter(store)
@@ -280,6 +283,8 @@ class Engine:
             self.ownership_failure = "Execution consumers have not drained; storage ownership remains fenced"
             self.execution_state = "degraded"
             return
+        if self.stage_activity is not None:
+            await self.stage_activity.close()
         if self.enforce_ownership:
             try:
                 await self.store.release_ownership()
@@ -1682,6 +1687,8 @@ class Engine:
                 (await self.store.update(identifier, publication_error=safe(str(exc))))
                 await emit("publication", f"Publication failed: {exc}")
         finally:
+            if self.stage_activity is not None:
+                await self.stage_activity.end(identifier)
             await credential_scopes.aclose()
 
     async def _worker_feedback(
@@ -1865,6 +1872,8 @@ class Engine:
             payload.update(reason="verification_repair", failed_checks=failed_checks)
         intent = await self.journal.intent(identifier, task_id, attempt=attempt, payload=payload)
         if intent["disposition"] != "needs_reconciliation":
+            if intent["disposition"] == "execute" and self.stage_activity is not None:
+                await self.stage_activity.begin(identifier, task_id, intent["idempotency_key"])
             return dict(intent)
         run = await self.store.get_run(identifier)
         if not run.get("resume_existing"):
@@ -1893,6 +1902,8 @@ class Engine:
                 await self.journal._receipt(identifier, key, evidence, checkpoint=checkpoint, terminal=terminal)
             else:
                 await self.journal.receipt(identifier, key, evidence, checkpoint=checkpoint)
+            if self.stage_activity is not None:
+                await self.stage_activity.end(identifier, key)
 
     @staticmethod
     def component_directory(run: dict[str, Any], workspace: Path, *, create: bool = False) -> Path:
