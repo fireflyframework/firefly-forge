@@ -34,6 +34,7 @@ for (const width of [1440, 390, 375]) {
         "search-providers",
         "external-tools-tour",
         "github-projects",
+        "scm",
         "sandbox",
         "quickstart",
         "guide",
@@ -84,6 +85,7 @@ for (const width of [1440, 390, 375]) {
               "search-providers",
               "external-tools-tour",
               "github-projects",
+              "scm",
               "sandbox",
             ].includes(guide),
           );

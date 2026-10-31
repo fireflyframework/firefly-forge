@@ -332,6 +332,40 @@ A factory administrator can explicitly map a verified provider account to an exi
 enabled Forge user for selected components and actions in one project and repository.
 The mapping grants no project membership or global administrator privileges.
 
+### Choose the person and scope in Studio
+
+1. Open the account menu in the sidebar, choose **Project access**, and select
+   the project and component repository.
+2. Under **Source-control delegation**, choose **Review a delegation**. In
+   **Account**, select the **Webhook-reported account** from a retained signed
+   delivery, then choose **Continue to scope**.
+3. Search for an existing forge user by name or email. Enter at least three
+   characters and select **Search**. Check the name and any available email before
+   selecting a result. **Change** returns to the search.
+4. Choose the components and allowed actions. Continue to **Review** and check the
+   selected person, components and requests.
+5. Review the application connection and sender trust. If you trust the assertion,
+   select **I trust this webhook assertion.**, then choose **Save delegation** once.
+
+The search reads registered people; it does not create an account or add project
+membership. forge checks the person's current project and repository permissions
+when processing each later request. Provision a missing account through
+[user administration](user-administration.md) before returning to this form.
+
+<figure class="forge-shot" markdown="1">
+
+![The Scope step shows a compact person search and a matching registered account with its name and email.](assets/screenshots/scm-protected-delegation-search-desktop-light.png)
+
+<figcaption>Find and select the person before choosing the delegation scope. This screenshot uses controlled API fixtures and synthetic identities.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+
+![The delegation review shows the registered person, components, allowed actions and webhook trust acknowledgement.](assets/screenshots/scm-protected-delegation-review-desktop-light.png)
+
+<figcaption>Review the person and permitted requests before saving. The displayed fixture does not grant live access.</figcaption>
+</figure>
+
 The first scoped adapters support answering a paused worker question, reading a specific
 run's status, and requesting cancellation through the existing delivery-request runtime.
 Answering leaves the run paused. It does not resume work. Cancellation is admission of a
