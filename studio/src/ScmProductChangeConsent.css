@@ -55,3 +55,8 @@
 .access-member-dialog.scm-product-change-dialog .scm-delegation-check {
   min-height: 44px;
 }
+
+.access-member-dialog.scm-product-change-dialog[data-fit="flow"]
+  .wizard-content {
+  padding-inline: 0;
+}
