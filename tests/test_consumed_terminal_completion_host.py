@@ -463,15 +463,25 @@ async def test_named_historical_runtime_requires_the_exact_measured_profile_and_
         "fireflyframework-agentic": "26.10.1",
         "pydantic-ai-slim": "2.55.0",
     }
-    _runtime(RECORDED_V30_RUNTIME, checkpoint, "f" * 64)
-    with pytest.raises(ValueError, match="compatibility"):
-        _runtime("a" * 64, checkpoint, "f" * 64)
     dependencies = {
-        "pyfly": "26.10.7",
+        "pyfly": "26.10.21",
         "fireflyframework-agentic": "26.10.1",
         "pydantic-ai-slim": "2.55.0",
         "openai": "3.29.0",
     }
+    assert {name: recovery.version(name) for name in dependencies} == dependencies
+    _runtime(RECORDED_V30_RUNTIME, checkpoint, "f" * 64)
+    with pytest.raises(ValueError, match="compatibility"):
+        _runtime("a" * 64, checkpoint, "f" * 64)
+    for unreviewed_pyfly in ("26.10.7", "26.10.20", "26.10.22"):
+        with monkeypatch.context() as patch:
+            patch.setattr(
+                recovery,
+                "version",
+                lambda name, observed=unreviewed_pyfly: observed if name == "pyfly" else dependencies[name],
+            )
+            with pytest.raises(ValueError, match="compatibility"):
+                _runtime(RECORDED_V30_RUNTIME, checkpoint, "f" * 64)
     for changed in dependencies:
         with monkeypatch.context() as patch:
             patch.setattr(
