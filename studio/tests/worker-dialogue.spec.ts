@@ -438,7 +438,7 @@ test("a queued reply claim cannot retain or dispatch after navigation changes it
   await expect.poll(() => pendingReplyClaims(page, lockName)).toBe(1);
   await navigate(page, "Connections");
   await expect(
-    page.getByRole("heading", { name: "Connect the factory", exact: true }),
+    page.getByRole("heading", { name: "Connections", exact: true }),
   ).toBeVisible();
   await releaseReplyScope(page);
   await expect.poll(() => pendingReplyClaims(page, lockName)).toBe(0);
@@ -665,7 +665,7 @@ test("late historical mapping responses cannot repaint a different view", async 
   await expect.poll(() => state.bindingReads).toBe(1);
   await navigate(page, "Connections");
   await expect(
-    page.getByRole("heading", { name: "Connect the factory", exact: true }),
+    page.getByRole("heading", { name: "Connections", exact: true }),
   ).toBeVisible();
   const delivery = page.waitForResponse((response) =>
     response.url().includes("/scm-actor-bindings/requests/"),
@@ -758,7 +758,7 @@ test("late API-observed consent reads cannot repaint another view", async ({
   await expect.poll(() => state.bindingReads).toBe(1);
   await navigate(page, "Connections");
   await expect(
-    page.getByRole("heading", { name: "Connect the factory", exact: true }),
+    page.getByRole("heading", { name: "Connections", exact: true }),
   ).toBeVisible();
   const delivery = page.waitForResponse((response) =>
     response.url().includes("/scm-polling/bindings/requests/"),

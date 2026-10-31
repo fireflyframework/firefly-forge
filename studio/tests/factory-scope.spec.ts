@@ -334,7 +334,8 @@ for (const mode of ["actor", "API"] as const)
       else {
         await navigate(page, "Connections");
         await page
-          .getByRole("button", { name: "Workspace", exact: true })
+          .getByRole("list", { name: "Setup progress" })
+          .getByRole("button", { name: /Workspace/ })
           .click();
         const base = new URL("/second/api/v1", page.url()).href;
         await page.getByLabel("API address", { exact: true }).fill(base);
@@ -474,10 +475,9 @@ test("failed identity validation keeps retained actor data hidden", async ({
     await expect(page.locator(".production-floor")).toHaveCount(0);
     auth.release();
     await navigate(page, "Connections");
-    const workspace = page.getByRole("button", {
-      name: "Workspace",
-      exact: true,
-    });
+    const workspace = page
+      .getByRole("list", { name: "Setup progress" })
+      .getByRole("button", { name: /Workspace/ });
     if (await workspace.isVisible()) await workspace.click();
     await expect(
       page.getByText("Public fixture session read unavailable", {

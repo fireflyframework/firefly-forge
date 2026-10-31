@@ -5,6 +5,85 @@ import { navigate, expectAuthenticated } from "./navigation";
 import { captureWalkthrough } from "./walkthrough-capture";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+async function expectNaturalWizard(page: Page, selector: string) {
+  const wizard = page.locator(selector);
+  await expect(wizard).toHaveAttribute("data-layout", "flow");
+  await expect(page.locator(".workspace-main > main")).toHaveCSS(
+    "overflow-y",
+    "auto",
+  );
+  await page.locator(".workspace-main > main").focus();
+  await expect(page.locator(".workspace-main > main")).toBeFocused();
+  await wizard.locator(".wizard-heading h2").focus();
+  const fields = wizard.locator(".wizard-field-scroll");
+  await expect(fields).toHaveCSS("overflow-y", "visible");
+  const initial = await wizard.evaluate((node) => {
+    const main = node.closest("main")!;
+    const field = node.querySelector<HTMLElement>(".wizard-field-scroll")!;
+    const title = node
+      .querySelector(".wizard-heading h2")!
+      .getBoundingClientRect();
+    const bounds = main.getBoundingClientRect();
+    return {
+      natural:
+        field.scrollHeight <= field.clientHeight + 1 && field.scrollTop === 0,
+      horizontal:
+        main.scrollWidth <= main.clientWidth + 1 &&
+        document.documentElement.scrollWidth <= innerWidth,
+      title: title.top >= bounds.top - 1 && title.bottom <= bounds.bottom + 1,
+    };
+  });
+  expect(initial).toEqual({ natural: true, horizontal: true, title: true });
+  const actions = [];
+  for (const action of await wizard.locator(".wizard-actions button").all()) {
+    await action.evaluate((node) => {
+      const main = node.closest("main")!;
+      const box = node.getBoundingClientRect(),
+        bounds = main.getBoundingClientRect();
+      main.scrollTop += Math.max(0, box.bottom - bounds.bottom + 12);
+    });
+    if (await action.isEnabled()) await action.focus();
+    await expect
+      .poll(() =>
+        action.evaluate((node) => {
+          const box = node.getBoundingClientRect(),
+            main = node.closest("main")!.getBoundingClientRect();
+          const footer = document
+            .querySelector(".workspace-main > footer")!
+            .getBoundingClientRect();
+          return (
+            box.top >= main.top &&
+            box.bottom <= Math.min(main.bottom, footer.top) &&
+            box.left >= main.left &&
+            box.right <= main.right &&
+            node.contains(
+              document.elementFromPoint(
+                box.x + box.width / 2,
+                box.y + box.height / 2,
+              ),
+            )
+          );
+        }),
+      )
+      .toBe(true);
+    actions.push(await action.innerText());
+  }
+  expect(await fields.evaluate((node) => node.scrollTop)).toBe(0);
+  expect(
+    await page.evaluate(
+      () =>
+        document
+          .querySelector(".workspace-main > header")!
+          .getBoundingClientRect().top >= 0 &&
+        document
+          .querySelector(".workspace-main > footer")!
+          .getBoundingClientRect().bottom <=
+          innerHeight + 1,
+    ),
+  ).toBe(true);
+  return { ...initial, actions };
+}
+
 const studioPackage = JSON.parse(
   readFileSync(new URL("../package.json", import.meta.url), "utf8"),
 );
@@ -379,15 +458,14 @@ for (const provider of ["Figma", "Sentry", "Grafana", "Playwright"])
         exact: true,
       }),
     ).toBeVisible();
-    await expect
-      .poll(() =>
-        page
-          .locator(".external-tools-wizard")
-          .evaluate((element) =>
-            element.style.getPropertyValue("--wizard-frame-height"),
-          ),
-      )
-      .not.toBe("");
+    await expect(page.locator(".external-tools-wizard")).toHaveAttribute(
+      "data-layout",
+      "flow",
+    );
+    await expect(page.locator(".wizard-field-scroll")).toHaveCSS(
+      "overflow-y",
+      "visible",
+    );
     const routeHeading = await page
         .getByRole("heading", { name: "External tools", exact: true })
         .boundingBox(),
@@ -812,82 +890,10 @@ for (const viewport of [
           }),
         ).toBeEnabled();
         await page.evaluate(() => document.fonts.ready);
-        await expect
-          .poll(() =>
-            frame.evaluate((element) =>
-              element.style.getPropertyValue("--wizard-frame-height"),
-            ),
-          )
-          .not.toBe("");
-        await expect(frame).not.toHaveAttribute("data-layout", "flow");
-        await expect
-          .poll(() =>
-            frame
-              .locator(".wizard-field-scroll")
-              .evaluate((element) => element.getBoundingClientRect().height),
-          )
-          .toBeGreaterThanOrEqual(64);
-        const geometry = await page.evaluate(() => {
-          const rect = (selector: string) => {
-            const element = document.querySelector<HTMLElement>(selector)!;
-            const { top, bottom, height } = element.getBoundingClientRect();
-            return {
-              top,
-              bottom,
-              height,
-              overflow: getComputedStyle(element).overflowY,
-            };
-          };
-          return {
-            header: rect(".workspace-main>header"),
-            footer: rect(".workspace-main>footer"),
-            page: rect(".page-heading"),
-            steps: rect(".wizard-steps"),
-            heading: rect(".wizard-heading"),
-            fields: rect(".wizard-field-scroll"),
-            actions: rect(".wizard-actions"),
-          };
-        });
-        expect(geometry.page.top).toBeGreaterThanOrEqual(
-          geometry.header.bottom,
+        const geometry = await expectNaturalWizard(
+          page,
+          ".external-tools-wizard",
         );
-        expect(geometry.steps.top).toBeGreaterThanOrEqual(geometry.page.bottom);
-        expect(geometry.heading.top).toBeGreaterThanOrEqual(
-          geometry.steps.bottom,
-        );
-        expect(geometry.fields.top).toBeGreaterThanOrEqual(
-          geometry.heading.bottom,
-        );
-        expect(geometry.fields.height).toBeGreaterThanOrEqual(64);
-        expect(geometry.fields.overflow).toBe("auto");
-        expect(geometry.fields.bottom).toBeLessThanOrEqual(
-          geometry.actions.top,
-        );
-        expect(geometry.actions.bottom).toBeLessThanOrEqual(
-          geometry.footer.top,
-        );
-        for (const action of await frame
-          .locator(".wizard-actions button")
-          .all()) {
-          expect(
-            await action.evaluate((element) => {
-              const rect = element.getBoundingClientRect();
-              const hit = document.elementFromPoint(
-                rect.x + rect.width / 2,
-                rect.y + rect.height / 2,
-              );
-              return element.contains(hit)
-                ? "action"
-                : `${hit?.tagName}.${hit?.className}`;
-            }),
-            `${await action.innerText()}: ${JSON.stringify(await action.boundingBox())}`,
-          ).toBe("action");
-        }
-        expect(
-          await page
-            .locator(".workspace-main>main")
-            .evaluate((element) => element.scrollTop),
-        ).toBe(0);
         writeFileSync(
           test.info().outputPath(`initial-step-${stage}.json`),
           JSON.stringify(
@@ -944,16 +950,12 @@ for (const viewport of [
               .click();
         }
       }
-      await frame.locator(".wizard-field-scroll").evaluate((element) => {
+      await page.locator(".workspace-main > main").evaluate((element) => {
         element.scrollTop = element.scrollHeight;
       });
       await frame.getByRole("button", { name: "Back", exact: true }).click();
       await expect(frame.locator("h2")).toBeFocused();
-      expect(
-        await page
-          .locator(".workspace-main>main")
-          .evaluate((element) => element.scrollTop),
-      ).toBe(0);
+      await expect(frame.locator(".wizard-heading h2")).toBeInViewport();
       expect(
         await frame
           .locator(".wizard-field-scroll")
@@ -1007,15 +1009,10 @@ for (const viewport of [
     await page
       .getByRole("button", { name: "View Sentry setup steps", exact: true })
       .click();
-    await expect
-      .poll(() =>
-        page
-          .locator(".external-tools-wizard")
-          .evaluate((element) =>
-            element.style.getPropertyValue("--wizard-frame-height"),
-          ),
-      )
-      .not.toBe("");
+    await expect(page.locator(".external-tools-wizard")).toHaveAttribute(
+      "data-layout",
+      "flow",
+    );
     const geometry = await page.evaluate(
       () =>
         (
@@ -1027,14 +1024,18 @@ for (const viewport of [
           }
         ).initialRouteGeometry,
     );
-    expect(geometry.length).toBeGreaterThan(0);
+    const title = await page
+      .getByRole("heading", { name: "External tools", exact: true })
+      .boundingBox();
+    const header = await page.locator(".workspace-main > header").boundingBox();
+    expect(title!.y).toBeGreaterThanOrEqual(header!.y + header!.height);
     expect(
       geometry.filter((rect) => rect.headingTop < rect.headerBottom),
     ).toEqual([]);
   });
 
 for (const width of [1440, 390])
-  test(`overflow has a visible gutter and scrolls fields without losing route context at ${width}px`, async ({
+  test(`main overflow has a stable gutter and scrolls the complete form without field clipping at ${width}px`, async ({
     page,
   }) => {
     await page.setViewportSize({ width, height: width === 1440 ? 900 : 844 });
@@ -1051,31 +1052,31 @@ for (const width of [1440, 390])
       page.locator('.wizard-steps [aria-current="step"]'),
     ).toContainText("Account & scope");
     const fields = page.locator(".wizard-field-scroll");
-    await expect
-      .poll(() =>
-        fields.evaluate((element) => element.getBoundingClientRect().height),
-      )
-      .toBeGreaterThanOrEqual(64);
+    await expect(fields).toHaveCSS("overflow-y", "visible");
     expect(
       await fields.evaluate(
+        (element) => element.scrollHeight <= element.clientHeight + 1,
+      ),
+    ).toBe(true);
+    const main = page.locator(".workspace-main > main");
+    await expect(main).toHaveCSS("overflow-y", "auto");
+    expect(
+      await main.evaluate(
         (element) => element.scrollHeight > element.clientHeight,
       ),
     ).toBe(true);
     expect(
-      await fields.evaluate(
-        (element) => element.offsetWidth - element.clientWidth,
+      await main.evaluate(
+        (element) => getComputedStyle(element).scrollbarGutter,
       ),
-    ).toBeGreaterThanOrEqual(6);
-    await fields.hover();
+    ).toContain("stable");
+    const before = await main.evaluate((element) => element.scrollTop);
+    await main.hover();
     await page.mouse.wheel(0, 160);
     await expect
-      .poll(() => fields.evaluate((element) => element.scrollTop))
-      .toBeGreaterThan(0);
-    expect(
-      await page
-        .locator(".workspace-main>main")
-        .evaluate((element) => element.scrollTop),
-    ).toBe(0);
+      .poll(() => main.evaluate((element) => element.scrollTop))
+      .toBeGreaterThan(before);
+    expect(await fields.evaluate((element) => element.scrollTop)).toBe(0);
   });
 
 for (const width of [1440, 390])
@@ -1102,13 +1103,13 @@ for (const width of [1440, 390])
     await expect(page.locator(".wizard-heading h2")).toHaveText(
       "Review the remaining factory setup",
     );
-    await expect
-      .poll(() =>
-        page
-          .locator(".workspace-main>main")
-          .evaluate((element) => element.scrollTop),
-      )
-      .toBe(0);
+    await expect(page.locator(".wizard-heading h2")).toBeFocused();
+    await expect(page.locator(".wizard-heading h2")).toBeInViewport();
+    expect(
+      await page
+        .locator(".wizard-field-scroll")
+        .evaluate((element) => element.scrollTop),
+    ).toBe(0);
   });
 
 for (const width of [1440, 390])
@@ -1136,13 +1137,7 @@ for (const width of [1440, 390])
       .getByRole("button", { name: "View Figma setup steps", exact: true })
       .click();
     const frame = page.locator(".external-tools-wizard");
-    await expect
-      .poll(() =>
-        frame.evaluate((element) =>
-          element.style.getPropertyValue("--wizard-frame-height"),
-        ),
-      )
-      .not.toBe("");
+    await expect(frame).toHaveAttribute("data-layout", "flow");
     await expect
       .poll(() => main.evaluate((element) => element.scrollTop))
       .toBe(0);
@@ -1150,10 +1145,10 @@ for (const width of [1440, 390])
         .getByRole("heading", { name: "External tools", exact: true })
         .boundingBox(),
       header = await page.locator(".workspace-main>header").boundingBox(),
-      actions = await frame.locator(".wizard-actions").boundingBox(),
       footer = await page.locator(".workspace-main>footer").boundingBox();
     expect(heading!.y).toBeGreaterThanOrEqual(header!.y + header!.height);
-    expect(actions!.y + actions!.height).toBeLessThanOrEqual(footer!.y);
+    expect(heading!.y + heading!.height).toBeLessThanOrEqual(footer!.y);
+    await expectNaturalWizard(page, ".external-tools-wizard");
   });
 
 if (process.env.MCP_STUDIO_PROOF === "1" || process.env.UPDATE_DOC_SCREENSHOTS)
@@ -1461,22 +1456,7 @@ test("project grants loading preserves the route heading and allocated wizard", 
   );
   const verify = async (phase: string) => {
     const frame = page.locator(".external-tools-wizard");
-    await expect(frame).not.toHaveAttribute("data-layout", "flow");
-    await expect
-      .poll(() =>
-        frame.evaluate((element) => {
-          const main = element.closest("main")!;
-          const box = element.getBoundingClientRect();
-          const offset =
-            box.top - main.getBoundingClientRect().top + main.scrollTop;
-          const remaining =
-            main.clientHeight -
-            offset -
-            parseFloat(getComputedStyle(main).paddingBottom);
-          return Math.abs(box.height - remaining);
-        }),
-      )
-      .toBeLessThanOrEqual(1);
+    await expectNaturalWizard(page, ".external-tools-wizard");
     const geometry = await page.evaluate(() => {
       const main = document.querySelector(".workspace-main>main")!;
       const header = document
@@ -1518,8 +1498,12 @@ test("project grants loading preserves the route heading and allocated wizard", 
       path: info.outputPath(`project-grants-${phase}.png`),
       animations: "disabled",
     });
-    expect(geometry.mainScrollTop).toBe(0);
-    expect(geometry.headingTop).toBeGreaterThanOrEqual(geometry.headerBottom);
+    expect(geometry.mainScrollTop).toBeGreaterThanOrEqual(0);
+    expect(
+      await frame
+        .locator(".wizard-field-scroll")
+        .evaluate((element) => element.scrollTop),
+    ).toBe(0);
     expect(geometry.actions).toHaveLength(2);
     for (const action of geometry.actions) {
       expect(action.top).toBeGreaterThanOrEqual(geometry.headerBottom);

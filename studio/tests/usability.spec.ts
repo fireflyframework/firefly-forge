@@ -94,7 +94,7 @@ test("repository action keeps the chosen source and test purpose explains model-
   );
 });
 
-test("phone run and deployment wizards expose their initial action without moving the page", async ({
+test("phone run and deployment wizards keep natural fields and keyboard actions accessible", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
@@ -104,48 +104,51 @@ test("phone run and deployment wizards expose their initial action without movin
       .locator(".workspace-main>main")
       .evaluate((element) => (element.scrollTop = 0));
     const next = page.getByRole("button", { name: "Continue", exact: true });
-    await expect
-      .poll(() =>
-        next.evaluate((button) =>
-          (
-            button.closest(".wizard-frame") as HTMLElement
-          ).style.getPropertyValue("--wizard-frame-height"),
-        ),
-      )
-      .toMatch(/^[0-9]/);
+    const frame = page.locator(".wizard-frame").filter({ has: next });
+    await expect(frame).toHaveAttribute("data-layout", "flow");
+    const fields = frame.locator(".wizard-field-scroll");
+    await expect(fields).toHaveCSS("overflow-y", "visible");
+    expect(
+      await fields.evaluate(
+        (node) => node.scrollHeight <= node.clientHeight + 1,
+      ),
+    ).toBe(true);
+    await frame.locator(".wizard-heading h2").focus();
+    await expect(frame.locator(".wizard-heading h2")).toBeInViewport();
+    await next.evaluate((node) => {
+      const main = node.closest("main")!;
+      main.scrollTop += Math.max(
+        0,
+        node.getBoundingClientRect().bottom -
+          main.getBoundingClientRect().bottom +
+          12,
+      );
+    });
+    if (await next.isEnabled()) {
+      await next.focus();
+      await expect(next).toBeFocused();
+    }
     const geometry = await next.evaluate((button) => {
-      const r = button.getBoundingClientRect(),
-        footer = document
-          .querySelector(".workspace-main>footer")!
-          .getBoundingClientRect();
-      const frame = button.closest(".wizard-frame")!;
+      const box = button.getBoundingClientRect(),
+        main = button.closest("main")!.getBoundingClientRect();
+      const footer = document
+        .querySelector(".workspace-main > footer")!
+        .getBoundingClientRect();
       return {
-        top: r.top,
-        bottom: r.bottom,
-        footer: footer.top,
-        layout: frame.getAttribute("data-layout"),
-        frameHeight: frame.getBoundingClientRect().height,
-        allocated: (frame as HTMLElement).style.getPropertyValue(
-          "--wizard-frame-height",
+        fits:
+          box.top >= main.top &&
+          box.bottom <= Math.min(main.bottom, footer.top),
+        hit: button.contains(
+          document.elementFromPoint(
+            box.x + box.width / 2,
+            box.y + box.height / 2,
+          ),
         ),
-        chrome: [".wizard-steps", ".wizard-heading", ".wizard-actions"].map(
-          (selector) => ({
-            selector,
-            height: frame.querySelector(selector)!.getBoundingClientRect()
-              .height,
-          }),
-        ),
-        fieldsHeight: frame
-          .querySelector(".wizard-field-scroll")!
-          .getBoundingClientRect().height,
+        horizontal: document.documentElement.scrollWidth <= innerWidth,
       };
     });
-    expect(geometry.top).toBeGreaterThanOrEqual(0);
-    expect(Math.round(geometry.fieldsHeight)).toBeGreaterThanOrEqual(160);
-    expect(
-      geometry.bottom,
-      `${name}: ${JSON.stringify(geometry)}`,
-    ).toBeLessThanOrEqual(geometry.footer - 8);
+    expect(geometry, name).toEqual({ fits: true, hit: true, horizontal: true });
+    expect(await fields.evaluate((node) => node.scrollTop)).toBe(0);
   }
 });
 

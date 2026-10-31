@@ -303,19 +303,27 @@ for (const viewport of [
         .getByRole("button", { name: "Edit learning settings" })
         .click();
       for (let step = 0; step < 3; step++) {
-        await expect
-          .poll(async () => {
-            const fields = await page
-              .locator(".learning-wizard .wizard-field-scroll")
-              .boundingBox();
-            return fields?.height ?? 0;
-          })
-          .toBeGreaterThanOrEqual(120);
+        const fields = page.locator(".learning-wizard .wizard-field-scroll");
+        await expect(page.locator(".learning-wizard")).toHaveAttribute(
+          "data-layout",
+          "flow",
+        );
+        await expect(fields).toHaveCSS("overflow-y", "visible");
+        expect(
+          await fields.evaluate(
+            (node) =>
+              node.scrollHeight <= node.clientHeight + 1 &&
+              node.scrollTop === 0,
+          ),
+        ).toBe(true);
+        const title = page.locator(".learning-wizard .wizard-heading h2");
+        await title.focus();
+        await expect(title).toBeInViewport();
         const action = page.getByRole("button", {
           name: step === 2 ? "Save learning settings" : "Continue",
           exact: true,
         });
-        await action.scrollIntoViewIfNeeded();
+        await action.focus();
         const geometry = await action.evaluate((button) => {
           const main = button.closest("main")!,
             box = button.getBoundingClientRect(),
@@ -323,9 +331,7 @@ for (const viewport of [
           const footer = document
             .querySelector(".workspace-main > footer")!
             .getBoundingClientRect();
-          const heading = main
-            .querySelector(".learning-wizard .wizard-heading")!
-            .getBoundingClientRect();
+
           return {
             fits:
               box.left >= bounds.left &&
@@ -334,13 +340,22 @@ for (const viewport of [
               box.bottom <= bounds.bottom &&
               box.bottom <= footer.top,
             horizontal: main.scrollWidth <= main.clientWidth + 1,
-            context: innerHeight < 560 || heading.top >= bounds.top,
+            hit: button.contains(
+              document.elementFromPoint(
+                box.x + box.width / 2,
+                box.y + box.height / 2,
+              ),
+            ),
+            fieldsRemainNatural:
+              button.closest(".wizard")!.querySelector(".wizard-field-scroll")!
+                .scrollTop === 0,
           };
         });
         expect(geometry).toEqual({
           fits: true,
           horizontal: true,
-          context: true,
+          hit: true,
+          fieldsRemainNatural: true,
         });
         if (process.env.FORGE_LEARNING_CAPTURE_DIR) {
           await page.evaluate(() => document.fonts.ready);
