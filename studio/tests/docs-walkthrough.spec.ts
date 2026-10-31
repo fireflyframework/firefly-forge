@@ -479,10 +479,15 @@ for (const device of ["desktop", "mobile"])
       await page
         .getByRole("button", { name: "Save connection", exact: true })
         .click();
-      await page
-        .getByRole("list", { name: "Setup progress" })
-        .getByRole("button", { name: /Workspace$/ })
-        .click();
+      if (device === "mobile")
+        await page
+          .getByRole("combobox", { name: "Setup step" })
+          .selectOption("0");
+      else
+        await page
+          .getByRole("list", { name: "Setup progress" })
+          .getByRole("button", { name: /Workspace/ })
+          .click();
       for (const [index, stage] of [
         "workspace",
         "coding-ai",
