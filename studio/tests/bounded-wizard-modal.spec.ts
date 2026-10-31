@@ -4,6 +4,9 @@ import { expect, test } from "@playwright/test";
 import { writeFile } from "node:fs/promises";
 import { mockIdentity } from "./auth-fixture";
 import { navigate } from "./navigation";
+test.use({
+  launchOptions: { ignoreDefaultArgs: ["--hide-scrollbars"] },
+});
 for (const viewport of [
   { width: 1440, height: 900 },
   { width: 320, height: 568 },
@@ -91,11 +94,18 @@ for (const viewport of [
         "bounded",
       );
       await expect(dialog.getByRole("checkbox")).toHaveCount(60);
+      await expect(
+        dialog.getByRole("heading", { name: "Source inspection", exact: true }),
+      ).toBeVisible();
+      await expect(page.locator(".form-scroll-status")).toHaveCount(0);
+      await expect(dialog.locator(".form-scroll-region > *")).toHaveCount(1);
       const geometry = await fields.evaluate((node) => ({
         client: node.clientHeight,
         full: node.scrollHeight,
         overflow: getComputedStyle(node).overflowY,
         wrapper: getComputedStyle(node.parentElement!).overflowY,
+        wrapperHeight: node.parentElement!.clientHeight,
+        rows: getComputedStyle(node.parentElement!).gridTemplateRows,
       }));
       await writeFile(
         info.outputPath("initial-geometry.json"),
@@ -105,6 +115,8 @@ for (const viewport of [
         path: info.outputPath(`bounded-modal-initial-${theme}.png`),
       });
       expect(geometry.overflow).toBe("auto");
+      expect(geometry.wrapperHeight).toBe(geometry.client);
+      expect(geometry.rows.split(" ")).toHaveLength(1);
       expect(geometry.client).toBeLessThan(geometry.full);
       await expect(fields).toHaveAttribute("tabindex", "0");
       await fields.focus();

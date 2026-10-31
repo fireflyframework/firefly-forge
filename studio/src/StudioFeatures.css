@@ -1564,8 +1564,12 @@
   height: auto;
   min-height: 0;
 }
+.source-analysis-dialog > .source-dialog-heading {
+  gap: 16px;
+  margin-bottom: 16px;
+}
 .source-dialog-close {
-  margin-bottom: 12px;
+  margin: 0;
   flex: 0 0 auto;
 }
 .source-evidence-list {
@@ -1593,6 +1597,9 @@
     padding: 16px;
     height: calc(100dvh - 24px);
     max-height: calc(100dvh - 24px);
+  }
+  .source-dialog-heading h2 {
+    font-size: 20px;
   }
 }
 

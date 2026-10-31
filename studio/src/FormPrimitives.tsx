@@ -3,17 +3,12 @@ import {
   Children,
   cloneElement,
   isValidElement,
-  useEffect,
-  useId,
-  useRef,
-  useState,
   type HTMLAttributes,
   type ReactElement,
   type ReactNode,
   type Ref,
-  type RefObject,
 } from "react";
-import { ArrowDown, ArrowUp, Check } from "lucide-react";
+import { Check } from "lucide-react";
 import "./FormFoundation.css";
 
 export function StepIndicator({
@@ -89,91 +84,6 @@ export function FormField({
     </div>
   );
 }
-function useScrollState(
-  ref: RefObject<HTMLDivElement | null>,
-  enabled: boolean,
-) {
-  const [state, setState] = useState({
-    overflow: false,
-    above: false,
-    below: false,
-  });
-  useEffect(() => {
-    if (!enabled) return;
-    const element = ref.current;
-    if (!element) return;
-    let pending = 0;
-    const measure = () => {
-      pending = 0;
-      const overflow =
-        /auto|scroll/.test(getComputedStyle(element).overflowY) &&
-        element.scrollHeight > element.clientHeight + 1;
-      const next = {
-        overflow,
-        above: overflow && element.scrollTop > 1,
-        below:
-          overflow &&
-          element.scrollTop + element.clientHeight < element.scrollHeight - 1,
-      };
-      setState((prior) =>
-        prior.overflow === next.overflow &&
-        prior.above === next.above &&
-        prior.below === next.below
-          ? prior
-          : next,
-      );
-    };
-    const schedule = () => {
-      if (!pending) pending = requestAnimationFrame(measure);
-    };
-    const resize = new ResizeObserver(schedule);
-    const observe = () => {
-      resize.observe(element);
-      Array.from(element.children).forEach((child) => resize.observe(child));
-      schedule();
-    };
-    const mutations = new MutationObserver(observe);
-    mutations.observe(element, {
-      childList: true,
-      subtree: true,
-      characterData: true,
-    });
-    element.addEventListener("scroll", schedule, { passive: true });
-    observe();
-    return () => {
-      resize.disconnect();
-      mutations.disconnect();
-      element.removeEventListener("scroll", schedule);
-      cancelAnimationFrame(pending);
-    };
-  }, [ref, enabled]);
-  return state;
-}
-function ScrollStatus({
-  state,
-  id,
-}: {
-  state: { overflow: boolean; above: boolean; below: boolean };
-  id?: string;
-}) {
-  return (
-    <p id={id} className="form-scroll-status" hidden={!state.overflow}>
-      {state.below ? (
-        <ArrowDown size={14} aria-hidden="true" />
-      ) : (
-        <ArrowUp size={14} aria-hidden="true" />
-      )}
-      <span>
-        Form:{" "}
-        {state.below
-          ? state.above
-            ? "more content above and below"
-            : "more content below"
-          : "end of content; scroll up to review"}
-      </span>
-    </p>
-  );
-}
 export function ScrollRegion({
   children,
   label = "Form fields",
@@ -183,20 +93,14 @@ export function ScrollRegion({
   label?: string;
   bounded?: boolean;
 }) {
-  const ref = useRef<HTMLDivElement>(null),
-    id = useId(),
-    state = useScrollState(ref, bounded);
   if (!bounded) return <div className="wizard-field-scroll">{children}</div>;
   return (
     <div className="form-scroll-region form-grid">
-      <ScrollStatus state={state} id={id} />
       <div
-        ref={ref}
         className="wizard-field-scroll"
         role="region"
         aria-label={label}
-        aria-describedby={state.overflow ? id : undefined}
-        tabIndex={state.overflow ? 0 : undefined}
+        tabIndex={0}
       >
         {children}
       </div>

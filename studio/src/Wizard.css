@@ -50,6 +50,16 @@
   line-height: 1.35;
   letter-spacing: -0.025em;
 }
+.access-member-dialog .wizard-frame .wizard-heading h2,
+.feature-dialog .wizard-frame .wizard-heading h2 {
+  font-size: 18px;
+  line-height: 1.4;
+}
+.access-member-dialog .wizard-frame .wizard-heading p,
+.feature-dialog .wizard-frame .wizard-heading p {
+  font-size: 14px;
+  line-height: 1.5;
+}
 .wizard-mobile-progress {
   display: none;
 }

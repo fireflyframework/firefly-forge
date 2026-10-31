@@ -21,7 +21,7 @@ it("does not invent completed validation for a visited step", () => {
   expect(html).toContain(">2<");
   expect(html).not.toContain("<svg");
 });
-it("exposes one named native field region without inventing a scroll state before layout", () => {
+it("keeps one named keyboard-focusable field region without a scroll-status band", () => {
   const html = renderToStaticMarkup(
     <ScrollRegion label="Provider fields" bounded>
       <input aria-label="API endpoint" />
@@ -29,7 +29,10 @@ it("exposes one named native field region without inventing a scroll state befor
   );
   expect(html).toContain('aria-label="Provider fields"');
   expect(html.match(/class="wizard-field-scroll"/g)).toHaveLength(1);
-  expect(html).not.toContain('tabindex="0"');
+  expect(html).toContain('tabindex="0"');
+  expect(html).not.toContain("form-scroll-status");
+  expect(html).not.toContain("Form:");
+  expect(html).not.toContain("aria-describedby");
 });
 it("keeps page fields in native document flow without a second scroll region", () => {
   const html = renderToStaticMarkup(
