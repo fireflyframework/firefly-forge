@@ -2640,6 +2640,9 @@ body {
 .wizard-frame[data-layout="flow"] .provider-panel {
   padding: 0;
 }
+.wizard-frame[data-layout="flow"] .wizard-form {
+  flex: 0 0 auto;
+}
 .wizard-frame[data-layout="bounded"] {
   min-height: 0;
   grid-template-rows: auto minmax(0, 1fr);
@@ -2647,6 +2650,9 @@ body {
 .wizard-frame[data-layout="bounded"] .wizard-body,
 .wizard-frame[data-layout="bounded"] .wizard-form {
   overflow: hidden;
+}
+.wizard-frame[data-layout="bounded"] .wizard-content {
+  height: 100%;
 }
 .wizard-frame[data-layout="bounded"] .wizard-form {
   grid-template-rows: minmax(0, 1fr) auto;
@@ -2687,7 +2693,6 @@ body {
   overflow: hidden;
 }
 .feature-dialog .wizard-frame .wizard-content {
-  height: 100%;
   display: flex;
 }
 .feature-dialog .wizard-frame .wizard-form {

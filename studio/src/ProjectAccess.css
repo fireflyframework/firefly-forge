@@ -130,6 +130,9 @@
   flex: 1;
   height: auto;
 }
+.access-member-dialog:has(.wizard[data-layout="flow"]) {
+  overflow: auto;
+}
 .access-membership-review dl > div {
   display: grid;
   grid-template-columns: 120px minmax(0, 1fr);
