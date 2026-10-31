@@ -165,3 +165,19 @@ def test_reconciliation_module_bytes_belong_to_every_admission_hash(monkeypatch)
         policy_digest() != before[1],
         admission_contract_digest() != before[2],
     ] == [True, True, True]
+
+
+async def test_public_hash_admission_guards_remain_closed_inside_native_unit():
+    from pyfly.data.transaction import TransactionTemplate
+    from test_git_delivery_remote_uow_host import MemoryManager
+
+    from firefly_forge.agentic_checkpoint_invocation import _runtime_material_digest, runtime_contract
+    from firefly_forge.known_worker_completions import _policy_material_digest, policy_digest
+
+    expected = runtime_contract(), policy_digest()
+    async with TransactionTemplate(MemoryManager({})).transaction():
+        with pytest.raises(ValueError, match="no active caller transaction"):
+            runtime_contract()
+        with pytest.raises(ValueError, match="no active caller transaction"):
+            policy_digest()
+        assert (_runtime_material_digest(), _policy_material_digest()) == expected

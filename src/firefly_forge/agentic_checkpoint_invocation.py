@@ -57,6 +57,11 @@ def checkpoint_invocation(value: CheckpointInvocation | None) -> Iterator[None]:
 
 def runtime_contract() -> str:
     _outside_unit()
+    return _runtime_material_digest()
+
+
+def _runtime_material_digest() -> str:
+    """Bounded local fingerprint, without checkpoint admission or dispatch."""
     root = Path(__file__).parent
     return digest(
         {

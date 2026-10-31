@@ -27,7 +27,6 @@ pytest_plugins = ["test_invalid_read_retained_epoch_engine_host"]
 def memory_owner_identity(monkeypatch):
     from test_bridge_inflight_cancel import MemoryStore
 
-    monkeypatch.setattr(MemoryStore, "source_budget_admission_unit", MemoryStore._unit, raising=False)
     monkeypatch.setattr(
         MemoryStore,
         "execution_ownership_identity",
@@ -43,7 +42,18 @@ def memory_owner_identity(monkeypatch):
 
 
 async def stopped(env, *, held=True):
+    from contextlib import asynccontextmanager
+
+    from pyfly.data.transaction import TransactionTemplate
+
     from firefly_forge.consumed_terminal_completions import claimed_execution
+
+    @asynccontextmanager
+    async def native_memory_writer():
+        async with TransactionTemplate(env.manager).transaction():
+            yield None
+
+    env.store.source_budget_admission_unit = native_memory_writer
 
     env.store.run.data.setdefault("id", env.run_id)
     env.store.event_records = Rows()

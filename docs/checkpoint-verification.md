@@ -312,7 +312,10 @@ contains `candidate`, `request`, `record_digest`, and the original settlement
 receipt as `settlement`; inspect `settlement.state` for `claimed` or `accepted`.
 After uncertain delivery, use only the GET readback with the same identifier.
 A repeated POST with the identical input reads the saved record and cannot
-continue work again.
+continue work again. Native commit checks retain the original reviewed operator,
+owner, configuration, runtime, profile, policy, source and index through the final
+awaited lease validation. If authority changes after an admission has committed,
+its record remains available; the stale admission cannot start result acceptance.
 
 The Python SDK methods are
 `consumed_terminal_reconciliation_candidate(run_id, request_id)`,

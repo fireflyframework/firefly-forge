@@ -6,11 +6,19 @@ from __future__ import annotations
 import asyncio
 import copy
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from pyfly.data.transaction import UnitOfWork, current_unit_of_work
+from pyfly.data.transaction.synchronization import TransactionSynchronizationAdapter, register_synchronization
+
 from firefly_forge.agentic_checkpoint_boundary import BoundaryCheckpoint
-from firefly_forge.agentic_checkpoint_invocation import runtime_contract, workspace_source_capture
+from firefly_forge.agentic_checkpoint_invocation import (
+    _runtime_material_digest,
+    runtime_contract,
+    workspace_source_capture,
+)
 from firefly_forge.bridge_completions import _outside_unit
 from firefly_forge.checkpoint_mode_runtime import mode_execution_scope
 from firefly_forge.checkpoint_work_duration import checkpoint_payload
@@ -30,13 +38,25 @@ from firefly_forge.known_worker_completion_models import (
     ConsumedTerminalReconciliationInputV1,
     ConsumedTerminalReconciliationReceiptV1,
 )
-from firefly_forge.known_worker_completions import _actor, _entries, _task, policy_digest
+from firefly_forge.known_worker_completions import _actor, _entries, _policy_material_digest, _task, policy_digest
 from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied, ProjectAccess
 from firefly_forge.source_snapshot import git_index_identity
 from firefly_forge.store import identifier, prepared_credential_rejection
 
 Data = dict[str, Any]
 KIND = "consumed_terminal_reconciliation"
+
+
+@dataclass(frozen=True)
+class ReconciliationCommitFence(TransactionSynchronizationAdapter):
+    unit: UnitOfWork
+    owner_task: asyncio.Task[Any]
+    _current: Callable[[], None]
+
+    async def before_commit(self, read_only: bool) -> None:
+        if read_only or current_unit_of_work() is not self.unit or self.unit.owner_task is not self.owner_task:
+            raise AccessDenied("Reconciliation commit lost its exact native unit and owner task")
+        self._current()
 
 
 def _owner_digest(store: Any, generation: object) -> str:
@@ -358,7 +378,38 @@ async def reconcile(service: Any, run_id: str, request_id: str, body: ConsumedTe
                         or policy_digest() != prepared.candidate["policy_digest"]
                     ):
                         raise ValueError("Reconciliation current qualified authority changed")
+                    slot = asyncio.current_task()
+                    if slot is None or service.engine.active.get(run_id) is not slot:
+                        raise AccessDenied("Reconciliation lost its reserved native owner task")
+
+                    def final_fence() -> None:
+                        if (
+                            service.store.execution_ownership_token is not prepared.ownership
+                            or service.store.configuration.write_generation is not prepared.generation
+                            or CURRENT_PRINCIPAL.get() != actor
+                            or _owner_digest(service.store, prepared.generation) != prepared.candidate["owner_digest"]
+                            or service.engine.active.get(run_id) is not slot
+                            or slot.done()
+                            or service.engine.active_projects.get(run_id) != prepared.run["repository_id"]
+                        ):
+                            raise AccessDenied("Reconciliation lost captured authority before native commit")
+                        if (
+                            _runtime_material_digest() != prepared.candidate["runtime_contract"]
+                            or digest(current_profile_seal()) != prepared.candidate["profile_digest"]
+                            or _policy_material_digest() != prepared.candidate["policy_digest"]
+                        ):
+                            raise ValueError(
+                                "Reconciliation qualified runtime, profile or policy changed before commit"
+                            )
+                        prepared.source.fence.revalidate()
+                        if git_index_identity(service.engine.workspaces / run_id) != prepared.source.index:
+                            raise ValueError("Reconciliation index changed before native commit")
+
                     async with service.store.source_budget_admission_unit():
+                        unit = current_unit_of_work()
+                        if unit is None or unit.owner_task is None or unit.owner_task is not slot:
+                            raise AccessDenied("Reconciliation requires its exact native writer unit")
+                        register_synchronization(ReconciliationCommitFence(unit, slot, final_fence))
                         await service.completions._writer(prepared.run, actor)
                         await service.journal._run(run_id)
                         await service.store.assert_ownership()
@@ -399,7 +450,9 @@ async def reconcile(service: Any, run_id: str, request_id: str, body: ConsumedTe
                         [*prepared.entries, record],
                         prepared.claim,
                         prepared.final,
-                        reconciliation=PreparedConsumedReconciliationAuthority(record),
+                        reconciliation=PreparedConsumedReconciliationAuthority(
+                            record, prepared.ownership, prepared.generation, prepared.actor, slot
+                        ),
                     )
                     await service.engine.continue_agent_checkpoint(execution)
                 finally:
