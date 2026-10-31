@@ -55,6 +55,10 @@ The snapshot supports `bucket`, `cursor` and a per-page `limit` from 1 to 200. P
 
 Personal read tokens can observe an explicitly selected product project or run through their current project grants. They cannot enumerate the factory, standalone work or project choices through these endpoints. Token revocation and current membership are checked before and after the observation. Source-control actor mappings do not automatically become dashboard identities.
 
+The same boundary applies to signed-in users. After the read-only transaction closes, a fresh transaction rechecks the native user, current role audience and expiry, exact cookie session when used, and membership state. Explicit project and run reads also recheck canonical project permission. A concurrent logout, disabled user or changed membership discards the response, including project-choice pages. A fixed-size database witness detects changes without loading a user's complete membership list. It does not grant access: the native identity and project predicates remain authoritative.
+
+These checks use authority already recorded by forge. They do not claim instant revocation of an external identity-provider role that forge has not yet observed; access-token verification, refresh and local session revocation retain their existing behavior.
+
 ## How the read is built
 
 ```mermaid

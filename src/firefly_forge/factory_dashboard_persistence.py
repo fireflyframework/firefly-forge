@@ -8,13 +8,13 @@ from uuid import UUID
 
 from pyfly.container import repository
 from pyfly.data.relational.sqlalchemy import Repository
-from sqlalchemy import ColumnElement, Select, String, and_, case, cast, func, literal, select
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import BigInteger, ColumnElement, Numeric, Select, String, and_, case, cast, func, literal, select
+from sqlalchemy.dialects.postgresql import BIT, JSONB
 
 from firefly_forge.access_persistence import ForgeMembershipEntity
 from firefly_forge.factory_dashboard_models import RUN_BUCKETS, DashboardScope
 from firefly_forge.identity import Principal
-from firefly_forge.identity_persistence import ForgeIdentityUserEntity
+from firefly_forge.identity_persistence import ForgeIdentitySessionEntity, ForgeIdentityUserEntity
 from firefly_forge.persistence import ForgePlanEntity, ForgeRepositoryEntity, ForgeRunEntity, ForgeTaskEntity
 from firefly_forge.project_access import ROLE_PERMISSIONS
 from firefly_forge.project_persistence import ForgeProjectEntity
@@ -103,8 +103,90 @@ def project_summary_columns() -> tuple[Any, ...]:
     )
 
 
+def authorization_witness_statement(actor: Principal, session_hash: str | None = None) -> Select[Any]:
+    """A fixed-size change detector, never an alternative source of grants."""
+    user, membership, session = ForgeIdentityUserEntity, ForgeMembershipEntity, ForgeIdentitySessionEntity
+    material = cast(
+        func.jsonb_build_array(
+            membership.id, membership.project_id, membership.role, membership.active, membership.revision
+        ),
+        String,
+    )
+    fingerprint = func.encode(func.sha256(func.convert_to(material, "UTF8")), "hex")
+    # Four exact NUMERIC sums retain a 256-bit multiset fingerprint without
+    # loading or concatenating the user's potentially numerous memberships.
+    membership_state = (
+        select(
+            func.count().label("count"),
+            func.coalesce(func.sum(membership.revision), 0).label("revision"),
+            *[
+                func.coalesce(
+                    func.sum(
+                        cast(
+                            cast(cast(literal("x") + func.substr(fingerprint, offset, 16), BIT(64)), BigInteger),
+                            Numeric,
+                        )
+                    ),
+                    0,
+                ).label(f"fingerprint_{offset}")
+                for offset in (1, 17, 33, 49)
+            ],
+        )
+        .where(membership.user_id == actor.id)
+        .subquery()
+    )
+    session_state = (
+        select(
+            func.jsonb_build_array(
+                session.id, session.status, session.revision, session.expires_at, session.access_expires_at
+            )
+        )
+        .where(
+            session.user_id == actor.id,
+            session.cookie_hash == session_hash,
+            session.status == "active",
+            session.expires_at > func.clock_timestamp(),
+            session.access_expires_at > func.clock_timestamp(),
+        )
+        .scalar_subquery()
+        if session_hash is not None
+        else literal(None)
+    )
+    statement = (
+        select(
+            user.id,
+            user.issuer,
+            user.subject,
+            user.enabled,
+            cast(user.api_roles, String),
+            user.api_roles_audience,
+            user.api_roles_issued_at,
+            user.api_roles_expires_at,
+            session_state.label("session_state"),
+            *membership_state.c,
+        )
+        .select_from(user)
+        .join(membership_state, literal(True))
+        .where(user.id == actor.id, user.issuer == actor.issuer, user.subject == actor.subject, user.enabled.is_(True))
+    )
+    if actor.authentication_method in {"oidc_bearer", "oidc_session"}:
+        statement = statement.where(
+            user.api_roles_audience == actor.api_audience,
+            user.api_roles_expires_at > func.clock_timestamp(),
+        )
+    if session_hash is not None:
+        statement = statement.where(session_state.is_not(None))
+    return statement
+
+
 @repository
 class FactoryDashboardRepository(Repository[ForgeRunEntity, UUID]):
+    async def authorization_witness(self, actor: Principal, session_hash: str | None = None) -> tuple[Any, ...] | None:
+        row = (
+            await self._require_session().execute(authorization_witness_statement(actor, session_hash))
+        ).one_or_none()
+        return tuple(row) if row else None
+
     async def projects(
         self, actor: Principal, administrator: bool, *, after: str | None, search: str, limit: int
     ) -> list[dict[str, Any]]:
@@ -150,6 +232,11 @@ class FactoryDashboardRepository(Repository[ForgeRunEntity, UUID]):
         scoped = visible_runs_statement(
             scope, administrator=administrator, actor=actor, allowed_projects=allowed_projects
         ).subquery()
+        scope_project_id = (
+            await session.scalar(select(scoped.c.data["project_id"].as_string()).limit(1))
+            if scope.kind == "run"
+            else None
+        )
         category = bucket_expression(scoped.c.status)
         counts = {
             row.category: row.count
@@ -256,4 +343,10 @@ class FactoryDashboardRepository(Repository[ForgeRunEntity, UUID]):
             .mappings()
             .one()
         )
-        return {"counts": counts, "stages": stages, "rows": rows, "associations": dict(associations)}
+        return {
+            "counts": counts,
+            "stages": stages,
+            "rows": rows,
+            "associations": dict(associations),
+            "scope_project_id": scope_project_id,
+        }

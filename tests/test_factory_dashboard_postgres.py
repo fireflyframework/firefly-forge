@@ -1,6 +1,8 @@
 # Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
 """Native read projection acceptance; uses only the dedicated conftest PostgreSQL fixture."""
 
+import asyncio
+from contextvars import Context
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from uuid import uuid4
@@ -12,8 +14,13 @@ from firefly_forge.access_persistence import ForgeMembershipEntity, ForgeMembers
 from firefly_forge.factory_dashboard import FactoryDashboard
 from firefly_forge.factory_dashboard_models import DashboardPageInput, DashboardScope
 from firefly_forge.factory_dashboard_persistence import FactoryDashboardRepository
-from firefly_forge.identity import Principal
-from firefly_forge.identity_persistence import ForgeIdentityUserEntity, ForgeIdentityUserRepository
+from firefly_forge.identity import Principal, digest
+from firefly_forge.identity_persistence import (
+    ForgeIdentitySessionEntity,
+    ForgeIdentitySessionRepository,
+    ForgeIdentityUserEntity,
+    ForgeIdentityUserRepository,
+)
 from firefly_forge.persistence import (
     ForgePlanEntity,
     ForgePlanRepository,
@@ -38,7 +45,13 @@ class NativeObservationProbe(FactoryDashboardRepository):
 
 @pytest.fixture
 async def factory_records(store):
-    owner = Principal(uuid4(), "https://id.example/realms/forge", "owner", authentication_method="oidc_session")
+    owner = Principal(
+        uuid4(),
+        "https://id.example/realms/forge",
+        "owner",
+        authentication_method="oidc_session",
+        api_audience="forge-api",
+    )
     admin = Principal(
         uuid4(), "local:bootstrap", "operator", authentication_method="local_bootstrap", kind="local_bootstrap"
     )
@@ -49,9 +62,27 @@ async def factory_records(store):
         for actor in (owner, admin):
             await ForgeIdentityUserRepository().save(
                 ForgeIdentityUserEntity(
-                    id=actor.id, issuer=actor.issuer, subject=actor.subject, enabled=True, api_roles=[]
+                    id=actor.id,
+                    issuer=actor.issuer,
+                    subject=actor.subject,
+                    enabled=True,
+                    api_roles=[],
+                    api_roles_audience="forge-api",
+                    api_roles_issued_at=datetime.now(UTC).timestamp(),
+                    api_roles_expires_at=datetime.now(UTC) + timedelta(hours=1),
                 )
             )
+        await ForgeIdentitySessionRepository().save(
+            ForgeIdentitySessionEntity(
+                user_id=owner.id,
+                cookie_hash=digest("fictional-dashboard-cookie"),
+                expires_at=datetime.now(UTC) + timedelta(hours=1),
+                access_expires_at=datetime.now(UTC) + timedelta(hours=1),
+                status="active",
+                revision=1,
+                encrypted_data="fictional-unused-encrypted-token-envelope",
+            )
+        )
         for index, identifier in enumerate(repositories):
             await store.repository_records.save(
                 ForgeRepositoryEntity(id=identifier, data={"id": identifier.hex, "name": f"Repository {index}"})
@@ -114,7 +145,30 @@ async def factory_records(store):
             )
     tokens = PersonalTokens(store)
     store.personal_tokens = tokens
+    dashboard = FactoryDashboard(store, ProjectAccess(store, personal_tokens=tokens), NativeObservationProbe())
+
+    async def observe(actor, scope, page):
+        return await dashboard.observe(
+            actor,
+            scope,
+            page,
+            session_hash=digest("fictional-dashboard-cookie")
+            if actor.authentication_method == "oidc_session"
+            else None,
+        )
+
+    async def choices(actor, page):
+        return await dashboard.projects(
+            actor,
+            page,
+            session_hash=digest("fictional-dashboard-cookie")
+            if actor.authentication_method == "oidc_session"
+            else None,
+        )
+
     return SimpleNamespace(
+        observe=observe,
+        choices=choices,
         store=store,
         owner=owner,
         admin=admin,
@@ -122,7 +176,7 @@ async def factory_records(store):
         repositories=repositories,
         runs=runs,
         tokens=tokens,
-        dashboard=FactoryDashboard(store, ProjectAccess(store, personal_tokens=tokens), NativeObservationProbe()),
+        dashboard=dashboard,
     )
 
 
@@ -143,46 +197,40 @@ async def test_native_scope_spans_product_repositories_without_shared_repository
                 for n in range(201)
             ]
         )
-    value = await c.dashboard.observe(c.owner, DashboardScope(), DashboardPageInput(limit=1))
+    value = await c.observe(c.owner, DashboardScope(), DashboardPageInput(limit=1))
     assert value["counts"]["total"] == 2 and value["counts"]["active"] == 1 and value["counts"]["needs_action"] == 1
     assert value["associations"] == {"projects": 1, "standalone_runs": 0, "repositories_with_runs": 2}
     assert value["stages"][1]["active"] == 0 and value["stages"][1]["unknown"] == 2
     assert len(value["runs"]["items"]) == 1 and value["runs"]["next_cursor"]
-    second = await c.dashboard.observe(
+    second = await c.observe(
         c.owner, DashboardScope(), DashboardPageInput(limit=1, cursor=value["runs"]["next_cursor"])
     )
     assert {value["runs"]["items"][0]["id"], second["runs"]["items"][0]["id"]} == {run.hex for run in c.runs[:2]}
-    projects = await c.dashboard.projects(c.owner, DashboardPageInput())
+    projects = await c.choices(c.owner, DashboardPageInput())
     assert projects["items"] == [
         {"id": c.projects[0].hex, "name": "Product 0", "component_count": 2, "repository_count": 2}
     ]
     with pytest.raises(AccessDenied):
-        await c.dashboard.observe(
-            c.owner, DashboardScope(kind="project", project_id=c.projects[1].hex), DashboardPageInput()
-        )
+        await c.observe(c.owner, DashboardScope(kind="project", project_id=c.projects[1].hex), DashboardPageInput())
     with pytest.raises(KeyError):
-        await c.dashboard.observe(c.owner, DashboardScope(kind="run", run_id=c.runs[2].hex), DashboardPageInput())
-    standalone = await c.dashboard.observe(c.admin, DashboardScope(kind="standalone"), DashboardPageInput())
+        await c.observe(c.owner, DashboardScope(kind="run", run_id=c.runs[2].hex), DashboardPageInput())
+    standalone = await c.observe(c.admin, DashboardScope(kind="standalone"), DashboardPageInput())
     assert standalone["counts"]["total"] == 1 and standalone["runs"]["items"][0]["association"] == "standalone"
-    single = await c.dashboard.observe(c.owner, DashboardScope(kind="run", run_id=c.runs[0].hex), DashboardPageInput())
+    single = await c.observe(c.owner, DashboardScope(kind="run", run_id=c.runs[0].hex), DashboardPageInput())
     assert single["counts"]["total"] == 1 and single["stages"][1]["active"] == 0
-    all_runs = await c.dashboard.observe(c.admin, DashboardScope(), DashboardPageInput(limit=1))
+    all_runs = await c.observe(c.admin, DashboardScope(), DashboardPageInput(limit=1))
     assert all_runs["counts"]["total"] == 505 and len(all_runs["runs"]["items"]) == 1
     assert all_runs["associations"]["projects"] == 203
-    first_projects = await c.dashboard.projects(c.admin, DashboardPageInput(limit=200))
-    last_projects = await c.dashboard.projects(
-        c.admin, DashboardPageInput(limit=200, cursor=first_projects["next_cursor"])
-    )
+    first_projects = await c.choices(c.admin, DashboardPageInput(limit=200))
+    last_projects = await c.choices(c.admin, DashboardPageInput(limit=200, cursor=first_projects["next_cursor"]))
     assert len(first_projects["items"]) == 200 and len(last_projects["items"]) == 3
     assert not ({r["id"] for r in first_projects["items"]} & {r["id"] for r in last_projects["items"]})
     async with c.store._unit():
         membership = (await ForgeMembershipRepository().for_user(c.owner.id))[0]
         membership.active = False
-    assert (await c.dashboard.observe(c.owner, DashboardScope(), DashboardPageInput()))["counts"]["total"] == 0
+    assert (await c.observe(c.owner, DashboardScope(), DashboardPageInput()))["counts"]["total"] == 0
     with pytest.raises(AccessDenied):
-        await c.dashboard.observe(
-            c.owner, DashboardScope(kind="project", project_id=c.projects[0].hex), DashboardPageInput()
-        )
+        await c.observe(c.owner, DashboardScope(kind="project", project_id=c.projects[0].hex), DashboardPageInput())
 
 
 async def test_native_project_read_token_observation_and_current_revocation(factory_records):
@@ -198,31 +246,27 @@ async def test_native_project_read_token_observation_and_current_revocation(fact
     )
     assert issued.secret is not None
     principal = (await c.tokens.resolve(issued.secret.get_secret_value())).principal
-    value = await c.dashboard.observe(
+    value = await c.observe(
         principal, DashboardScope(kind="project", project_id=c.projects[0].hex), DashboardPageInput()
     )
     assert value["counts"]["total"] == 2 and value["standalone_available"] is False
-    single = await c.dashboard.observe(
-        principal, DashboardScope(kind="run", run_id=c.runs[0].hex), DashboardPageInput()
-    )
+    single = await c.observe(principal, DashboardScope(kind="run", run_id=c.runs[0].hex), DashboardPageInput())
     assert single["counts"]["total"] == 1
     with pytest.raises(KeyError):
-        await c.dashboard.observe(principal, DashboardScope(kind="run", run_id=c.runs[2].hex), DashboardPageInput())
+        await c.observe(principal, DashboardScope(kind="run", run_id=c.runs[2].hex), DashboardPageInput())
     for scope in (DashboardScope(), DashboardScope(kind="standalone")):
         with pytest.raises(AccessDenied):
-            await c.dashboard.observe(principal, scope, DashboardPageInput())
+            await c.observe(principal, scope, DashboardPageInput())
     await c.tokens.revoke(c.owner, issued.credential["id"])
     with pytest.raises(AccessDenied):
-        await c.dashboard.observe(
-            principal, DashboardScope(kind="project", project_id=c.projects[0].hex), DashboardPageInput()
-        )
+        await c.observe(principal, DashboardScope(kind="project", project_id=c.projects[0].hex), DashboardPageInput())
 
 
 async def test_native_factory_ownership_does_not_invent_per_run_liveness(factory_records):
     c = factory_records
     await c.store.acquire_ownership()
     scope = DashboardScope(kind="run", run_id=c.runs[0].hex)
-    value = await c.dashboard.observe(c.owner, scope, DashboardPageInput())
+    value = await c.observe(c.owner, scope, DashboardPageInput())
     assert value["counts"]["active"] == 1
     assert value["stages"][1]["recorded_running"] == 1
     assert value["stages"][1]["active"] == 0
@@ -232,3 +276,61 @@ async def test_native_factory_ownership_does_not_invent_per_run_liveness(factory
     async with c.store._unit() as session:
         assert await session.scalar(text("SELECT to_regclass('forge_runner_invocations')")) is None
     await c.store.release_ownership()
+
+
+@pytest.mark.parametrize(
+    ("revoke", "scope"),
+    [
+        ("membership", "factory"),
+        ("identity", "project"),
+        ("session", "run"),
+        ("membership", "projects"),
+        ("identity", "projects"),
+        ("session", "projects"),
+    ],
+)
+async def test_native_concurrent_reader_revoke_discards_repeatable_read_snapshot(factory_records, revoke, scope):
+    c = factory_records
+    mutations = []
+
+    async def revoke_current_reader():
+        async with c.store._unit() as session:
+            # This task has a clean native transaction context: it commits while
+            # the reader's repeatable-read snapshot still sees the old grants.
+            if revoke == "membership":
+                row = (await ForgeMembershipRepository().for_user(c.owner.id))[0]
+                row.active, row.revision = False, row.revision + 1
+            elif revoke == "identity":
+                user = await ForgeIdentityUserRepository().find_by_id(c.owner.id)
+                assert user is not None
+                user.enabled = False
+            else:
+                row = await ForgeIdentitySessionRepository().cookie(digest("fictional-dashboard-cookie"))
+                assert row is not None
+                row.status, row.revision = "revoked", row.revision + 1
+            assert await session.scalar(text("SHOW transaction_read_only")) == "off"
+            mutations.append(revoke)
+
+    class RevokeDuringRead(NativeObservationProbe):
+        async def snapshot(self, *args, **kwargs):
+            value = await super().snapshot(*args, **kwargs)
+            await asyncio.create_task(revoke_current_reader(), context=Context())
+            return value
+
+        async def projects(self, *args, **kwargs):
+            value = await super().projects(*args, **kwargs)
+            await asyncio.create_task(revoke_current_reader(), context=Context())
+            return value
+
+    c.dashboard.records = RevokeDuringRead()
+    with pytest.raises(AccessDenied, match="changed"):
+        if scope == "projects":
+            await c.choices(c.owner, DashboardPageInput())
+        else:
+            selected = DashboardScope(
+                kind=scope,
+                project_id=c.projects[0].hex if scope == "project" else None,
+                run_id=c.runs[0].hex if scope == "run" else None,
+            )
+            await c.observe(c.owner, selected, DashboardPageInput())
+    assert mutations == [revoke]

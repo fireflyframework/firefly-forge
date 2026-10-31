@@ -25,10 +25,18 @@ class Session:
 
 class Store:
     schema = "tenant_a"
+    units = 0
+    inside = False
 
     @asynccontextmanager
     async def _unit(self):
-        yield Session()
+        assert not self.inside
+        self.units += 1
+        self.inside = True
+        try:
+            yield Session()
+        finally:
+            self.inside = False
 
 
 class Access:
@@ -40,10 +48,22 @@ class Access:
     async def memberships(self, actor):
         return [{"project_id": "a" * 32, "role": "viewer", "revision": 1, "permissions": ["read"]}]
 
+    async def require_project(self, actor, project_id, permission):
+        assert project_id == "a" * 32 and permission == "read"
+
 
 class Records:
     def __init__(self):
         self.calls = []
+        self.witness = ("current-user", "current-session", "membership-revision", "current-admin")
+        self.witness_reads = []
+
+    async def authorization_witness(self, actor, session_hash=None):
+        self.witness_reads.append(session_hash)
+        return self.witness
+
+    async def projects(self, *args, **kwargs):
+        return [{"id": UUID(int=1), "name": "Customer product", "component_count": 2, "repository_count": 2}]
 
     async def project(self, actor, admin, project_id, **scope):
         return {"id": project_id, "name": "Customer product"} if project_id == "a" * 32 else None
@@ -57,6 +77,7 @@ class Records:
                 {"stage": "future_stage", "state": "unknown", "count": 300, "recorded_running": 300},
             ],
             "associations": {"projects": 1200, "standalone_runs": 0, "repositories_with_runs": 4},
+            "scope_project_id": "a" * 32,
             "rows": [
                 {
                     "id": UUID(int=n),
@@ -207,10 +228,107 @@ async def test_personal_credentials_cannot_enumerate_factory_or_standalone_scope
 
 async def test_empty_filtered_run_page_does_not_relabel_an_authorized_run_as_missing(dashboard):
     async def snapshot(*args, **kwargs):
-        return {"counts": {"active": 1}, "rows": [], "stages": [], "associations": {"projects": 1}}
+        return {
+            "counts": {"active": 1},
+            "rows": [],
+            "stages": [],
+            "associations": {"projects": 1},
+            "scope_project_id": "a" * 32,
+        }
 
     dashboard.records.snapshot = snapshot
     value = await dashboard.service.observe(
         dashboard.actor, DashboardScope(kind="run", run_id=UUID(int=1).hex), DashboardPageInput(bucket="queued")
     )
     assert value["counts"]["total"] == 1 and value["runs"]["items"] == []
+
+
+@pytest.mark.parametrize("changed", [0, 1, 2, 3])
+async def test_current_reader_authority_change_during_snapshot_discards_all_data(dashboard, changed):
+    original = dashboard.records.snapshot
+
+    async def revoke(*args, **kwargs):
+        value = await original(*args, **kwargs)
+        witness = list(dashboard.records.witness)
+        witness[changed] = "revoked"
+        dashboard.records.witness = tuple(witness)
+        return value
+
+    dashboard.records.snapshot = revoke
+    with pytest.raises(AccessDenied, match="changed"):
+        await dashboard.service.observe(dashboard.actor, DashboardScope(), DashboardPageInput())
+    assert dashboard.service.store.units == 2
+
+
+async def test_after_read_uses_new_transaction_before_canonical_project_recheck(dashboard):
+    observations = []
+
+    async def require_project(actor, project_id, permission):
+        observations.append((dashboard.service.store.inside, dashboard.service.store.units, project_id, permission))
+        raise AccessDenied("Membership was revoked while reading")
+
+    dashboard.service.access.require_project = require_project
+    with pytest.raises(AccessDenied, match="revoked"):
+        await dashboard.service.observe(
+            dashboard.actor, DashboardScope(kind="run", run_id=UUID(int=1).hex), DashboardPageInput(bucket="queued")
+        )
+    assert observations == [(False, 2, "a" * 32, "read")]
+
+
+async def test_cookie_reader_requires_exact_current_native_session_binding(dashboard):
+    actor = Principal(
+        dashboard.actor.id, dashboard.actor.issuer, dashboard.actor.subject, authentication_method="oidc_session"
+    )
+    with pytest.raises(AccessDenied, match="session"):
+        await dashboard.service.observe(actor, DashboardScope(), DashboardPageInput())
+    assert dashboard.records.calls == []
+    await dashboard.service.observe(actor, DashboardScope(), DashboardPageInput(), session_hash="d" * 64)
+    assert dashboard.records.witness_reads == ["d" * 64, "d" * 64]
+
+
+async def test_missing_fresh_witness_does_not_return_old_snapshot(dashboard):
+    original = dashboard.records.snapshot
+
+    async def disappear(*args, **kwargs):
+        value = await original(*args, **kwargs)
+        dashboard.records.witness = None
+        return value
+
+    dashboard.records.snapshot = disappear
+    with pytest.raises(AccessDenied):
+        await dashboard.service.observe(dashboard.actor, DashboardScope(), DashboardPageInput())
+
+
+async def test_project_choices_are_discarded_after_current_membership_changes(dashboard):
+    original = dashboard.records.projects
+
+    async def revoke(*args, **kwargs):
+        value = await original(*args, **kwargs)
+        dashboard.records.witness = ("revoked",)
+        return value
+
+    dashboard.records.projects = revoke
+    with pytest.raises(AccessDenied, match="changed"):
+        await dashboard.service.projects(dashboard.actor, DashboardPageInput())
+    assert dashboard.service.store.units == 2
+
+
+def test_controller_binds_cookie_digest_only_from_authenticated_transport():
+    from starlette.requests import Request
+
+    from firefly_forge.factory_dashboard_controllers import FactoryDashboardController
+    from firefly_forge.identity import digest
+
+    def request(headers):
+        return Request({"type": "http", "headers": headers, "query_string": b"session_hash=arbitrary-client-value"})
+
+    assert FactoryDashboardController._session_hash(
+        request([(b"cookie", b"forge_session=fictional-session")])
+    ) == digest("fictional-session")
+    assert FactoryDashboardController._session_hash(request([])) is None
+    assert (
+        FactoryDashboardController._session_hash(
+            request([(b"cookie", b"forge_session=ignored"), (b"authorization", b"Bearer fictional")])
+        )
+        is None
+    )

@@ -10,6 +10,7 @@ from starlette.responses import JSONResponse
 
 from firefly_forge.factory_dashboard import FactoryDashboard
 from firefly_forge.factory_dashboard_models import DashboardPageInput, DashboardScope
+from firefly_forge.identity import SESSION_COOKIE, digest
 from firefly_forge.project_access import CURRENT_PRINCIPAL
 
 
@@ -30,6 +31,11 @@ class FactoryDashboardController:
     def _response(value: dict[str, Any]) -> JSONResponse:
         return JSONResponse(value, headers={"Cache-Control": "private, no-store"})
 
+    @staticmethod
+    def _session_hash(request: Request) -> str | None:
+        cookie = request.cookies.get(SESSION_COOKIE, "")
+        return digest(cookie) if cookie and not request.headers.get("authorization") else None
+
     @get_mapping("")
     async def observe(
         self,
@@ -45,7 +51,9 @@ class FactoryDashboardController:
         scope = DashboardScope.model_validate({"kind": kind, "project_id": project_id, "run_id": run_id})
         page = DashboardPageInput.model_validate({"cursor": cursor, "limit": limit, "bucket": bucket})
         return self._response(
-            await self.dashboard.observe(self.dashboard._reader(CURRENT_PRINCIPAL.get()), scope, page)
+            await self.dashboard.observe(
+                self.dashboard._reader(CURRENT_PRINCIPAL.get()), scope, page, session_hash=self._session_hash(request)
+            )
         )
 
     @get_mapping("/projects")
@@ -59,5 +67,7 @@ class FactoryDashboardController:
         self._query(request, {"cursor", "limit", "search"})
         page = DashboardPageInput.model_validate({"cursor": cursor, "limit": limit})
         return self._response(
-            await self.dashboard.projects(self.dashboard._reader(CURRENT_PRINCIPAL.get()), page, search)
+            await self.dashboard.projects(
+                self.dashboard._reader(CURRENT_PRINCIPAL.get()), page, search, session_hash=self._session_hash(request)
+            )
         )

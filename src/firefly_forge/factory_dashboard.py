@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
@@ -59,8 +60,32 @@ class FactoryDashboard:
             await session.execute(text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY"))
             yield session
 
-    async def projects(self, actor: Principal, page: DashboardPageInput, search: str = "") -> dict[str, Any]:
+    @staticmethod
+    def _session(actor: Principal, session_hash: str | None) -> None:
+        if actor.authentication_method == "oidc_session" and session_hash is None:
+            raise AccessDenied("The current native session is required for this observation")
+        if session_hash is not None and not re.fullmatch(r"[a-f0-9]{64}", session_hash):
+            raise AccessDenied("The current native session is unavailable")
+
+    async def _fresh_authority(self, actor: Principal, before: tuple[Any, ...], session_hash: str | None) -> None:
+        # This unit starts only after the repeatable-read observation has exited.
+        # Reusing its snapshot would conceal a concurrent revoke or logout.
+        async with self.store._unit():
+            after = await self.records.authorization_witness(actor, session_hash)
+        if after is None or after != before:
+            raise AccessDenied("Your identity or project access changed during the observation; refresh to continue")
+
+    async def _authority(self, actor: Principal, session_hash: str | None) -> tuple[Any, ...]:
+        value = await self.records.authorization_witness(actor, session_hash)
+        if value is None:
+            raise AccessDenied("Your current identity or session is unavailable")
+        return value
+
+    async def projects(
+        self, actor: Principal, page: DashboardPageInput, search: str = "", *, session_hash: str | None = None
+    ) -> dict[str, Any]:
         actor = self._reader(actor)
+        self._session(actor, session_hash)
         if actor.authentication_method == "personal_token":
             raise AccessDenied("Use an explicit product-project or run scope with a personal credential")
         page = DashboardPageInput.model_validate(page.model_dump())
@@ -74,6 +99,7 @@ class FactoryDashboard:
             except ValueError:
                 raise ValueError("Invalid product-project page position") from None
         async with self._observation():
+            authority = await self._authority(actor, session_hash)
             administrator = await self.access.current_administrator(actor)
             rows = await self.records.projects(actor, administrator, after=after, search=search, limit=page.limit)
             items = [
@@ -85,16 +111,21 @@ class FactoryDashboard:
                 }
                 for row in rows[: page.limit]
             ]
-            return {
+            result = {
                 "version": 1,
                 "items": items,
                 "next_cursor": cursor_encode(binding, rows[page.limit - 1]["id"].hex)
                 if len(rows) > page.limit
                 else None,
             }
+        await self._fresh_authority(actor, authority, session_hash)
+        return result
 
-    async def observe(self, actor: Principal, scope: DashboardScope, page: DashboardPageInput) -> dict[str, Any]:
+    async def observe(
+        self, actor: Principal, scope: DashboardScope, page: DashboardPageInput, *, session_hash: str | None = None
+    ) -> dict[str, Any]:
         actor = self._reader(actor)
+        self._session(actor, session_hash)
         scope = DashboardScope.model_validate(scope.model_dump())
         personal = actor.authentication_method == "personal_token"
         if personal and scope.kind not in {"project", "run"}:
@@ -110,6 +141,7 @@ class FactoryDashboard:
         if position is not None and (not position.isdecimal() or int(position) < 1):
             raise ValueError("Invalid recorded run page position")
         async with self._observation() as session:
+            authority = await self._authority(actor, session_hash)
             administrator = await self.access.current_administrator(actor)
             if scope.kind == "standalone" and not administrator:
                 raise AccessDenied("Standalone work requires current factory-administrator access")
@@ -132,6 +164,18 @@ class FactoryDashboard:
             )
             if scope.kind == "run" and not sum(raw["counts"].values()):
                 raise KeyError("Recorded run not available")
+        await self._fresh_authority(actor, authority, session_hash)
+        required_project = (
+            scope.project_id
+            if scope.kind == "project"
+            else raw.get("scope_project_id")
+            if scope.kind == "run"
+            else None
+        )
+        if required_project:
+            await self.access.require_project(actor, required_project, "read")
+        elif scope.kind in {"standalone", "run"} and not await self.access.current_administrator(actor):
+            raise AccessDenied("Standalone work requires current factory-administrator access")
         if personal:
             current = {row["project_id"] for row in await self.access.memberships(actor)}
             required = {scope.project_id} if scope.project_id else set(allowed_projects or ())
