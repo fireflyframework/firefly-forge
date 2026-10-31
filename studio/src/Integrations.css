@@ -19,7 +19,7 @@
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   list-style: none;
-  padding: 20px 28px;
+  padding: 20px var(--wizard-inline-inset);
   margin: 0;
   gap: 16px;
   border-bottom: 1px solid var(--line);
@@ -33,7 +33,7 @@
   border: 0;
   background: none;
   color: var(--muted);
-  padding: 4px;
+  padding: 4px 0;
   font-size: 13px;
   line-height: 1.5;
   min-height: 40px;
@@ -73,7 +73,7 @@
   grid-template-columns: minmax(0, 1fr) minmax(240px, 0.5fr);
 }
 .wizard-content {
-  padding: 32px;
+  padding: 32px var(--wizard-inline-inset);
   min-width: 0;
 }
 .wizard-heading {
@@ -108,7 +108,7 @@
   gap: 20px;
 }
 .wizard-guide {
-  padding: 32px;
+  padding: 32px var(--wizard-inline-inset);
   border-left: 1px solid var(--line);
   background: var(--surface-subtle);
   min-width: 0;
@@ -136,7 +136,6 @@
   justify-content: space-between;
   gap: 16px;
   padding-top: 24px;
-  border-top: 1px solid var(--line);
 }
 .wizard-actions > span {
   color: var(--muted);
@@ -545,12 +544,12 @@
   }
   .wizard-steps {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    padding: 16px;
+    padding: 16px var(--wizard-inline-inset);
     gap: 12px;
   }
   .wizard-content,
   .wizard-guide {
-    padding: 24px;
+    padding: 24px var(--wizard-inline-inset);
   }
   .connection-welcome,
   .integration-grid {
@@ -578,7 +577,7 @@
 @media (max-width: 390px) {
   .wizard-content,
   .wizard-guide {
-    padding: 20px;
+    padding: 20px var(--wizard-inline-inset);
   }
   .connection-story,
   .connection-welcome .settings-form {

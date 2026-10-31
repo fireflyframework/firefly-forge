@@ -38,3 +38,16 @@ it("leaves a parent-managed wizard outside the global flow layout", () => {
   expect(html).toContain('aria-label="Scoped token"');
   expect(html).toContain("Continue");
 });
+it("keeps an ordinal and a separately named completion state for a completed step", () => {
+  const html = renderToStaticMarkup(<Wizard {...props} active={1} />);
+  expect(html).toContain('aria-label="Step 1, completed"');
+  expect(html).toContain(">1<");
+  expect(html).toContain('aria-current="step"');
+});
+it("does not describe a visited step as validated", () => {
+  const html = renderToStaticMarkup(
+    <Wizard {...props} active={1} progressMode="visited" />,
+  );
+  expect(html).toContain('aria-label="Step 1, visited"');
+  expect(html).not.toContain('aria-label="Step 1, completed"');
+});

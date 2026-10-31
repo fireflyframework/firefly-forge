@@ -854,6 +854,10 @@ dialog.product-assistant-panel::backdrop {
   background: rgb(0 0 0 / 0.5);
 }
 @media (max-width: 1099px), (max-height: 680px) {
+  .product-document .form-scroll-region {
+    display: block;
+    overflow: visible;
+  }
   dialog.product-assistant-panel {
     position: fixed;
     inset: 12px;
@@ -1110,6 +1114,7 @@ dialog.product-assistant-panel::backdrop {
   container: product-editor / inline-size;
 }
 .product-document > .wizard-frame {
+  --wizard-inline-inset: var(--form-space-5);
   flex: 1 1 0;
   height: 100%;
   min-height: 0;
@@ -1134,7 +1139,7 @@ dialog.product-assistant-panel::backdrop {
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  padding: 16px 20px;
+  padding: 16px var(--wizard-inline-inset);
   overflow: hidden;
 }
 .product-document .wizard-frame .wizard-heading {
@@ -1218,7 +1223,7 @@ dialog.product-assistant-panel::backdrop {
   gap: 12px;
   overflow-x: auto;
   min-height: 48px;
-  padding: 8px 16px;
+  padding: 8px var(--wizard-inline-inset);
 }
 .product-document .wizard-steps li {
   flex: 0 0 auto;
@@ -1408,7 +1413,7 @@ dialog.product-assistant-panel::backdrop {
     display: none;
   }
   .product-document .wizard-frame .wizard-content {
-    padding: 12px;
+    padding: 12px var(--wizard-inline-inset);
   }
   .product-document .wizard-frame .wizard-heading {
     margin-bottom: 8px;
@@ -1425,12 +1430,12 @@ dialog.product-assistant-panel::backdrop {
     padding: 4px;
   }
   .product-document .wizard-frame .wizard-steps {
-    padding: 4px 8px;
+    padding: 4px var(--wizard-inline-inset);
     min-height: 42px;
   }
   .product-document .wizard-steps button {
     min-height: 32px;
-    padding: 4px;
+    padding: 4px 0;
   }
   .product-document .step-number {
     width: 24px;
@@ -1507,4 +1512,10 @@ dialog.product-assistant-panel::backdrop {
   padding: 16px 20px;
   border-top: 1px solid var(--line);
   flex-wrap: wrap;
+}
+
+@media (max-width: 600px) {
+  .product-document > .wizard-frame {
+    --wizard-inline-inset: var(--form-space-3);
+  }
 }

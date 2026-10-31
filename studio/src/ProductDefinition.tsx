@@ -65,6 +65,7 @@ import {
 import { MarkdownEditor } from "./RichMarkdown";
 import { reconcileProductSave, saveProductDefinition } from "./ProductSave";
 import { ProductList, ProductJourneys } from "./ProductFields";
+import { FormField } from "./FormPrimitives";
 import "./ProductWorkspace.css";
 import { ProductIncrementalChange } from "./ProductIncrementalChange";
 import { safeExternalLink } from "./FeatureLinks";
@@ -84,11 +85,9 @@ const field = (
   children: ReactNode,
   hint?: string,
 ) => (
-  <div className="field">
-    <label htmlFor={id}>{label}</label>
+  <FormField id={id} label={label} hint={hint}>
     {children}
-    {hint && <small>{hint}</small>}
-  </div>
+  </FormField>
 );
 type Proposal = {
   method: string;
@@ -1026,21 +1025,6 @@ function DefinitionEditor({
         <form
           onSubmit={(event) => void submit(event)}
           onChangeCapture={onDirty}
-          onFocusCapture={(event) => {
-            const control = event.target as HTMLElement,
-              scroll = control.closest<HTMLElement>(".wizard-field-scroll");
-            if (!scroll || !control.matches("input,select,textarea,button"))
-              return;
-            const main = control.closest<HTMLElement>("main");
-            if (!main) return;
-            const target = control.getBoundingClientRect(),
-              bounds = main.getBoundingClientRect();
-            if (target.height > bounds.height - 32) return;
-            if (target.bottom > bounds.bottom - 16)
-              main.scrollTop += target.bottom - bounds.bottom + 16;
-            else if (target.top < bounds.top + 16)
-              main.scrollTop -= bounds.top - target.top + 16;
-          }}
         >
           <div className="product-step-purpose">
             <p>
