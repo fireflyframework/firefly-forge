@@ -41,9 +41,25 @@ The stage inspector describes **tasks** at the selected station. **Runs in this 
 
 **Recorded running** means the stored run state describes work in progress. It does not establish that a worker is currently alive. A task last recorded as running can have unknown current activity while its run still has a running state.
 
-The present projection cannot observe a fresh per-run worker lease. Execution-request claims are retained custody records; a factory-wide advisory lock is not a heartbeat for every task. The runner controller also owns a separate private ledger. The dashboard does not query that ledger by assuming a schema or adding cross-schema privileges. Machinery stays still when current activity cannot be established. Aggregate scopes never show a single package as if it represented every run.
+The dashboard can use a separate, current observation of an Engine-owned stage. Execution-request claims alone are retained custody records; a factory-wide advisory lock alone is not a heartbeat for every task. Remote runners own a separate private ledger, which the dashboard does not query by assuming a schema or adding cross-schema privileges. Machinery stays still when current stage activity cannot be established. Aggregate scopes never show a single package as if it represented every run.
 
 Worker liveness, queue-wait duration, deployment health and runtime metrics remain unavailable in this view. Recorded expired or quarantined run states are separate from unknown states; they are not inferred runner-lease diagnoses. Deployment and support evidence have their own views and recorded sources.
+
+## Engine stage observations
+
+An observed active stage means the factory's Engine still owns that task and its observation has not expired. The stage may be waiting on a runner or model; the display does not establish that the remote system is using CPU. A missing, expired or inconsistent observation stays unknown. Grouped activity expires when its earliest supporting observation expires.
+
+Signing out does not cancel a queued or running job. Execution uses its retained canonical identity and current grants. Suspend that identity or remove its required project permission to withdraw that authority; use the run's cancellation action when cancellation is intended. The person reading this page still needs current project access and an active browser session. SCM-mapped and personal-token execution actors are not treated as supported activity producers. A personal read token grants observation only.
+
+Administrators can configure these server settings before starting forge:
+
+| Setting | Default | Purpose |
+| --- | --- | --- |
+| `FORGE_ACTIVITY_HEARTBEAT_SECONDS` | `5` | Interval between samples for locally owned Engine stages. |
+| `FORGE_ACTIVITY_STALE_SECONDS` | `20` | Freshness window; it must exceed the heartbeat interval. |
+| `FORGE_ACTIVITY_SAMPLE_TIMEOUT_SECONDS` | `1` | Time allowed for an observation sample before it becomes unavailable. |
+
+These intervals govern telemetry, not the time allowed to implement a product. An unavailable observation does not stop or replay productive work. Worker health, external execution and final command outcomes retain their own evidence boundaries.
 
 ## Inspect a run
 
