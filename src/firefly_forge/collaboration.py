@@ -42,6 +42,7 @@ from firefly_forge.product_lifecycle import IntegrationContract, validate_integr
 from firefly_forge.product_provenance import AIOrigin, validate_origin
 from firefly_forge.prompts import prompt_text
 from firefly_forge.scm_connections import SCMConnections
+from firefly_forge.scm_gitlab_notes import GitLabNoteReadbackUncertain, GitLabNoteThread
 from firefly_forge.scm_product_change_models import SCMProductChangeCommandV1
 from firefly_forge.scm_provider_backoff import DeferredFeedbackChanged, ProviderRequestDeferred, retained_deferred
 from firefly_forge.scm_resume_models import SCMResumeCommandV2, SCMResumeStatusV2
@@ -1697,6 +1698,7 @@ class Collaboration:
         *,
         before_write: Callable[[], Awaitable[None]] | None = None,
         before_dispatch: Callable[[], Awaitable[None]] | None = None,
+        after_confirmation: Callable[[Data], Awaitable[None]] | None = None,
     ) -> Data:
         provider = str(repo["connection_provider"])
         ownership_required = self.store.execution_ownership_acquired or (
@@ -1723,15 +1725,41 @@ class Collaboration:
         ):
             await self.store.assert_ownership()
         self.store.reject_credentials(payload)
+        thread = GitLabNoteThread.prepare(repo, issue, api) if provider == "gitlab" and issue is not None else None
         dispatch = {"before_dispatch": before_dispatch} if before_dispatch is not None else {}
         response = await self.scm._request(
             "POST",
-            api + self._issue_path(provider, repo, issue),
+            thread.endpoint if thread else api + self._issue_path(provider, repo, issue),
             headers={"Authorization": "Bearer " + token, "Accept": "application/json"},
             json=payload,
             **dispatch,
         )
         result: Data = response.json()
+        if thread is not None:
+            remote, noteable_id = thread.confirm(result)
+            try:
+                if after_confirmation is not None:
+                    await after_confirmation(remote)
+                if ownership_required:
+                    await self.store.assert_ownership()
+                if before_write is not None:
+                    await before_write()
+                readback = await self.scm._request(
+                    "GET",
+                    thread.endpoint + "/" + str(remote["id"]),
+                    headers={"Authorization": "Bearer " + token, "Accept": "application/json"},
+                )
+                observed, observed_noteable_id = thread.confirm(readback.json())
+                if observed != remote or observed_noteable_id != noteable_id:
+                    raise ValueError("GitLab readback did not match the accepted note")
+                if ownership_required:
+                    await self.store.assert_ownership()
+                if before_write is not None:
+                    await before_write()
+            except Exception:
+                # POST already confirmed this identity; a deferred GET cannot make it safe to post again.
+                raise GitLabNoteReadbackUncertain(remote) from None
+            return remote
         return {
             "id": result.get("id"),
             "number": result.get("number", result.get("iid", result.get("id"))),
@@ -2276,12 +2304,19 @@ class Collaboration:
 
                 dispatch_check = maintain_dispatch_check
 
+            async def retain_confirmed_note(remote: Data) -> None:
+                async with self.store._unit():
+                    row = await self.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)
+                    assert row is not None
+                    await self._write_row(row, feedback_remote=remote)
+
             remote = await self._remote_write(
                 repo,
                 payload,
                 data["issue"],
                 before_write=retained_before_write if retained is not None else before_write,
                 before_dispatch=dispatch_check,
+                **({"after_confirmation": retain_confirmed_note} if data["provider"] == "gitlab" else {}),
             )
             if data.get("maintain_ticket") is not None:
                 from firefly_forge.scm_maintain_ticket_models import confirmed_remote
@@ -2317,8 +2352,13 @@ class Collaboration:
                 await self._write_row(
                     row,
                     feedback_status="held" if held else "needs_reconciliation",
-                    reason="deferred_feedback_authority_changed" if held else "remote_feedback_outcome_unknown",
+                    reason="deferred_feedback_authority_changed"
+                    if held
+                    else "gitlab_note_readback_unconfirmed"
+                    if isinstance(error, GitLabNoteReadbackUncertain)
+                    else "remote_feedback_outcome_unknown",
                     feedback_deferred=row.data.get("feedback_deferred") if held else None,
+                    **({"feedback_remote": error.remote} if isinstance(error, GitLabNoteReadbackUncertain) else {}),
                 )
         else:
             async with self.store._unit():

@@ -207,6 +207,19 @@ and [OAuth changes effective May 2026](https://community.developer.atlassian.com
 
 ## Protect and revoke access
 
+GitLab comment receipts use the positive note ID, project ID, per-project issue
+or merge-request IID and noteable type returned by the
+[Notes API](https://docs.gitlab.com/api/notes/). forge builds the `#note_ID` link
+from the grant-checked registered repository URL; response links do not select
+the destination. Self-managed HTTPS origins and ports are supported. Application
+hosts with a relative URL root remain unsupported and are refused.
+
+The accepted note reference is retained before reading that exact note back.
+If this read fails or returns another identity, the receipt needs reconciliation
+and keeps the known reference. Reprocessing or synchronization never posts it
+again. A lost POST response still has an unknown outcome and requires explicit
+provider inspection. These receipts do not imply GitLab board or field sync.
+
 Private keys, client secrets and OAuth grants stay in `configuration/` under the
 server's private data directory. Files have `0600` permissions and the directory
 has `0700` permissions. API summaries return configured flags for secrets;
