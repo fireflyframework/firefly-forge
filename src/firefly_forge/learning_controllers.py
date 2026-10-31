@@ -1,7 +1,7 @@
 # Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
 """Authenticated learning review and one-shot knowledge projection controls."""
 
-from typing import Any
+from typing import Any, cast
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 from pyfly.container import rest_controller
@@ -74,7 +74,7 @@ class LearningController:
 
     @get_mapping("/learning/records/{id}/projection/observations/{request_id}")
     async def observation_receipt(self, id: PathVar[str], request_id: PathVar[str]) -> LearningProjectionReceipt:
-        return TypeAdapter(LearningProjectionReceipt).validate_python(
+        return TypeAdapter[LearningProjectionReceipt](cast(Any, LearningProjectionReceipt)).validate_python(
             await self.projection.observation_receipt(id, request_id)
         )
 
