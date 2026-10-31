@@ -30,6 +30,9 @@ def test_client_carries_authentication_and_validated_run():
 async def test_mcp_tools_have_real_input_contracts():
     tools = {tool.name: tool for tool in await create_server().list_tools()}
     assert set(tools) == {
+        "get_consumed_terminal_candidate",
+        "request_consumed_terminal",
+        "get_consumed_terminal_status",
         "get_final_outcome_candidate",
         "request_final_outcome_continuation",
         "get_final_outcome_status",
@@ -257,6 +260,30 @@ async def test_mcp_tools_have_real_input_contracts():
     ):
         assert flag in final_request["required"]
         assert final_request["properties"][flag]["const"] is True
+    for name, required in (
+        ("get_consumed_terminal_candidate", ["identifier"]),
+        ("get_consumed_terminal_status", ["identifier", "request_id"]),
+    ):
+        assert tools[name].input_schema["required"] == required
+        assert tools[name].annotations.read_only_hint is True
+        assert tools[name].annotations.open_world_hint is False
+    consumed = tools["request_consumed_terminal"]
+    assert consumed.input_schema["required"] == ["identifier", "request_id", "request"]
+    assert consumed.annotations.read_only_hint is False and consumed.annotations.idempotent_hint is True
+    assert consumed.annotations.open_world_hint is True
+    consumed_request = consumed.input_schema["properties"]["request"]
+    assert consumed_request["additionalProperties"] is False
+    assert consumed_request["properties"]["version"]["const"] == 2
+    for field in ("candidate_digest", "policy_digest", "expected_run_digest", "journal_digest", "proof_digest"):
+        assert field in consumed_request["required"]
+        assert consumed_request["properties"][field]["pattern"] == "^[a-f0-9]{64}$"
+    for flag in (
+        "acknowledge_known_worker_output",
+        "acknowledge_no_execution_grant",
+        "acknowledge_local_postprocessing",
+    ):
+        assert flag in consumed_request["required"]
+        assert consumed_request["properties"][flag]["const"] is True
 
 
 def test_cli_version_and_command_help():

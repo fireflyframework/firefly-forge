@@ -899,8 +899,8 @@ class FactoryConfiguration:
         return BridgeCompletions(store, journal)
 
     @bean
-    def known_worker_completions(self, store: Store, journal: Journal) -> KnownWorkerCompletions:
-        return KnownWorkerCompletions(store, journal)
+    def known_worker_completions(self, store: Store, journal: Journal, engine: Engine) -> KnownWorkerCompletions:
+        return KnownWorkerCompletions(store, journal, engine)
 
     @bean
     def unknown_command_acknowledgements(

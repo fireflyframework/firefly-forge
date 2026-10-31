@@ -220,7 +220,7 @@ def test_invalid_route_identity_cannot_dispatch(method, arguments, monkeypatch):
 
 async def test_mcp_grants_have_strict_schema_and_do_not_offer_signed_command_fabrication():
     tools = {tool.name: tool for tool in await create_server().list_tools()}
-    assert len(tools) == 185
+    assert len(tools) == 188
     names = {"configure_scm_resume_grant", "get_scm_resume_grant", "get_current_scm_resume_grant"}
     write = tools["configure_scm_resume_grant"]
     Draft202012Validator.check_schema(write.input_schema)

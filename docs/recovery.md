@@ -91,7 +91,33 @@ A task marked done has a completion receipt. Inspect its evidence: completing a 
 
 Startup recovery records an observation for the current native intent or claim. A later claim can retain the original task key while receiving a distinct recovery event; the earlier witness stays historical. If a previous startup already left the task in `needs_reconciliation` without that later annotation, startup can append the exact observation without changing the task, earlier records, spent usage, or budgets. This bookkeeping never authorizes a retry or repeats a model or command effect. Older recovery records retain their original format.
 
+A failed implementation with a saved provider request bound to its current task key keeps that custody unchanged during startup. Its dedicated recovery flow must settle the saved result or unknown outcome. A failure before provider dispatch can still receive the ordinary restart observation, regardless of which provider the project selected. Other unfinished runs recover independently; preserving one consumed result does not prevent startup from inspecting another project.
+
+
 The [Studio walkthrough](console-tour.md#4-inspect-the-run-before-continuing) shows a fixture failed check and unresolved intent, with the continuation controls in context.
+
+## Settle an already consumed implementation result
+
+A worker can finish its model call, retain the final response and stop during local
+postprocessing. An eligible failed run exposes a version 2 candidate through
+`GET /api/v1/runs/{run_id}/worker-completion-settlements/candidate`. Reading the
+candidate starts no execution. It requires the same task attempt, an intact
+journal, the exact consumed response, unchanged source and current operator access.
+
+Review the candidate before posting its exact digests and acknowledgements to
+`POST /api/v1/runs/{run_id}/worker-completion-settlements/{request_id}`. The retained
+request identity makes the decision readable after a lost response. Recovery
+accepts the saved result and charges its recorded usage once; it pauses at the
+verification handoff before further checks. It does not request the model output
+again or reset previous consumption.
+
+The saved report may omit browser QA or explicitly declare `mode: not_requested`
+with empty reviewed states, references, findings and unreviewed states. That
+neutral declaration stays in the original runtime report. It creates no trusted QA
+report or browser evidence. This recovery refuses reports that claim visual or DOM
+review, reference an image, name a reviewed state or contain a finding; those
+claims need their normal evidence validation. Ordinary verification remains a
+separate authorized step against the retained source.
 
 ## Recover a known failed official CLI attempt
 

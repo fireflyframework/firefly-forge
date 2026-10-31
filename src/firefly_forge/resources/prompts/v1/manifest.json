@@ -465,10 +465,26 @@
       "variables": {}
     },
     {
+      "id": "collaboration/publication-review-system",
+      "version": "1.0.1",
+      "path": "collaboration/publication-review-system-1.0.1.yaml",
+      "sha256": "f3affd3e03244f57da602d1de829401b45a2ede11af71f3eb3a1b8110df01361",
+      "field": "user",
+      "variables": {}
+    },
+    {
       "id": "collaboration/publication-system",
       "version": "1.0.0",
       "path": "collaboration/publication-system.yaml",
       "sha256": "8849979851bf45007b74afb0e86fbc39d74386ff5e28bca9ad01432bf7d04f2d",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "collaboration/publication-system",
+      "version": "1.0.1",
+      "path": "collaboration/publication-system-1.0.1.yaml",
+      "sha256": "bab42b526b30051917689256582236402f0280ebcab2efb7cc6cb78a20de16fe",
       "field": "user",
       "variables": {}
     },
@@ -2941,6 +2957,106 @@
       "variables": {
         "pin": "string"
       }
+    },
+    {
+      "id": "collaboration/communication-system",
+      "version": "1.0.6",
+      "path": "collaboration/communication-system-1.0.6.yaml",
+      "sha256": "5148b2d2bb77094c18dc1f36e5374e37988640df396ec738638711e45b4322d2",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "collaboration/communication-system",
+      "version": "1.0.7",
+      "path": "collaboration/communication-system-1.0.7.yaml",
+      "sha256": "fd749bfb5eb8bbf626dbdd2a3b927dc255d0d12be1c6f0db730e5ee405dc39f4",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "collaboration/communication-system",
+      "version": "1.0.8",
+      "path": "collaboration/communication-system-1.0.8.yaml",
+      "sha256": "06fd24f330ce4dc99193538d300e4248d217b77a92f6158a718d102a21e2906c",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "collaboration/communication-review-system",
+      "version": "1.0.3",
+      "path": "collaboration/communication-review-system-1.0.3.yaml",
+      "sha256": "b75b99caacd0212f3a750d77dad534f92c6ac23b49b4fee78952c12c13c9c150",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "collaboration/communication-review-system",
+      "version": "1.0.4",
+      "path": "collaboration/communication-review-system-1.0.4.yaml",
+      "sha256": "c06dc7eda1286e73ec0ba7c578a2ee72a869e04cce5abcc41c523206a5c6c831",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "collaboration/communication-review-system",
+      "version": "1.0.5",
+      "path": "collaboration/communication-review-system-1.0.5.yaml",
+      "sha256": "2c57f6e5bd35854a420f461c7e26f6a388567db0027db91caddbc4498d7bc653",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "collaboration/communication-request",
+      "version": "1.0.3",
+      "path": "collaboration/communication-request-1.0.3.yaml",
+      "sha256": "ab0b2ed2d451152e26fee1a4b0af630528975ac4117a5cc55816e19e017a653e",
+      "field": "user",
+      "variables": {
+        "facts": "string",
+        "fact_ids": "string",
+        "context": "string"
+      }
+    },
+    {
+      "id": "mcp/get_consumed_terminal_candidate",
+      "version": "1.0.0",
+      "path": "mcp/get_consumed_terminal_candidate.yaml",
+      "sha256": "8a2ff5c79194d868e81acd3905dcdbb6eb64db100b285ee6e5bd64c8c8e3d8de",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/request_consumed_terminal",
+      "version": "1.0.0",
+      "path": "mcp/request_consumed_terminal.yaml",
+      "sha256": "99a0fc816425663c1b178f30ae402681da3fc7b5a91eb2aada85aadbdeb419f8",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_consumed_terminal_status",
+      "version": "1.0.0",
+      "path": "mcp/get_consumed_terminal_status.yaml",
+      "sha256": "c0ba9b1240c8b8d2508b8fc0d36bb3166baee7cbed1a46efda5b9d654ea997d6",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "collaboration/communication-system",
+      "version": "1.0.9",
+      "path": "collaboration/communication-system-1.0.9.yaml",
+      "sha256": "6bb0e6b4c89e74d84933d4acf65c53e684479bd1c82170c436e92ebacc7c0d46",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "collaboration/communication-review-system",
+      "version": "1.0.6",
+      "path": "collaboration/communication-review-system-1.0.6.yaml",
+      "sha256": "7aeadc77bbc44835d7ad5d64abeb94a117c5d504afa461ba25a3c8a533525b46",
+      "field": "user",
+      "variables": {}
     }
   ]
 }

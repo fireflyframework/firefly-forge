@@ -51,6 +51,7 @@ from firefly_forge.work_duration_models import WorkDurationPolicyV2
 RETAINED_EXECUTION_FENCES: set[FileLock] = set()
 
 if TYPE_CHECKING:
+    from firefly_forge.consumed_terminal_completions import ConsumedTerminalExecution
     from firefly_forge.git_deliveries import GitDeliveries
 
 
@@ -410,12 +411,18 @@ class Engine:
         await self.execute_run(identifier, restoration=restoration)
 
     async def execute_run(self, identifier: str, *, restoration: Any = None) -> None:
+        consumed_execution: ConsumedTerminalExecution | None = None
         await self.assert_ownership()
         if restoration is None:
             if not (await self.store.claim(identifier)):
                 return
         else:
             await restoration.guard_source()
+        if restoration is not None:
+            from firefly_forge.consumed_terminal_completions import ConsumedTerminalExecution
+
+            if isinstance(restoration, ConsumedTerminalExecution):
+                consumed_execution = restoration
         workspace = self.workspaces / identifier
         settings: dict[str, str] = {}
         active_key: str | None = None
@@ -463,6 +470,20 @@ class Engine:
 
         try:
             run = await self.store.get_run(identifier)
+            if restoration is None and run.get("consumed_terminal_recovery"):
+                from firefly_forge.consumed_terminal_completions import claimed_execution
+
+                try:
+                    restoration = await claimed_execution(self, identifier)
+                    consumed_execution = restoration
+                    run = await self.store.get_run(identifier)
+                except Exception as error:
+                    await self.store.update(
+                        identifier,
+                        status="needs_reconciliation",
+                        error="Consumed terminal claim held: " + type(error).__name__,
+                    )
+                    return
             from firefly_forge.project_access import ProjectAccess
 
             await ProjectAccess(self.store).authorize_execution(run)
@@ -1428,9 +1449,16 @@ class Engine:
                     qa = QAReport.model_validate(qa_report)
                     if any(finding.severity in {"high", "critical"} for finding in qa.findings):
                         raise ValueError("Visual QA requires changes; inspect the retained findings and image evidence")
-                files, diff, tree = await self._snapshot(
-                    workspace, base, secrets=settings, expected_head=run.get("checkpoint_revision")
-                )
+                from firefly_forge.consumed_terminal_completions import ConsumedTerminalExecution
+
+                if isinstance(restored_receipt, ConsumedTerminalExecution):
+                    files, diff, tree = await restored_receipt.snapshot(
+                        self, base, secrets=settings, expected_head=run.get("checkpoint_revision")
+                    )
+                else:
+                    files, diff, tree = await self._snapshot(
+                        workspace, base, secrets=settings, expected_head=run.get("checkpoint_revision")
+                    )
                 evidence = {
                     "source_tree": tree,
                     "changed_files": files,
@@ -1444,6 +1472,9 @@ class Engine:
                     await restored_receipt.receipt(self, active_key, evidence, source_checkpoint)
                 else:
                     await self._receipt(identifier, active_key, evidence, checkpoint=source_checkpoint)
+                if isinstance(restored_receipt, ConsumedTerminalExecution):
+                    await emit("paused", "The consumed worker result was accepted without another provider dispatch")
+                    return
                 if known_final:
                     # Native acceptance owns the consumed output; later QA is ordinary execution.
                     restoration = None
@@ -1682,7 +1713,11 @@ class Engine:
                 (await self.store.update(identifier, publication_error=safe(str(exc))))
                 await emit("publication", f"Publication failed: {exc}")
         finally:
-            await credential_scopes.aclose()
+            try:
+                await credential_scopes.aclose()
+            finally:
+                if consumed_execution is not None:
+                    consumed_execution.close_snapshot()
 
     async def _worker_feedback(
         self,

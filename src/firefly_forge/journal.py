@@ -30,6 +30,7 @@ from firefly_forge.sandbox_persistence import ForgeSandboxRepository
 from firefly_forge.store import TERMINAL, Store, identifier, now, prepared_credential_rejection
 
 if TYPE_CHECKING:
+    from firefly_forge.retained_verified_source import PreparedVerifiedResume
     from firefly_forge.scm_source_edit_models import SealedSourceEditAdmission
 
 
@@ -2048,12 +2049,6 @@ class Journal:
             count = 0
             for candidate in pending:
                 run = await self._run(candidate.run_id.hex)
-                if (
-                    run.status == "failed"
-                    and candidate.task_id == "implement"
-                    and run.data.get("agent") in {"codex", "claude"}
-                ):
-                    continue
                 task = await self._task(run.id.hex, candidate.task_id)
                 if task.status not in {"running", "needs_reconciliation"}:
                     continue
@@ -2063,6 +2058,20 @@ class Journal:
                 if not self.verify_chain(entries) or any(entry["run_id"] != run.id.hex for entry in entries):
                     raise ValueError("Recovery requires an intact native journal")
                 key = task.data["idempotency_key"]
+                if (
+                    run.status == "failed"
+                    and task.task_id == "implement"
+                    and any(
+                        entry["kind"] == "bridge_request_intent"
+                        and entry["task_id"] == task.task_id
+                        and isinstance(entry["payload"], dict)
+                        and entry["payload"].get("task_key") == key
+                        for entry in entries
+                    )
+                ):
+                    # Saved provider custody has its own same-attempt recovery;
+                    # pre-dispatch failures still need the ordinary restart witness.
+                    continue
                 generation = _recovery_generation(entries, task.task_id, key)
                 for kind, pointer in _RECOVERY_CLAIMS.items():
                     claims = [
@@ -2203,6 +2212,22 @@ class Journal:
         from firefly_forge.checkpoint_mode_runtime import mode_execution_scope
 
         async def selected() -> Data:
+            verified_resume = None
+            if current.get("status") == "failed":
+                if (
+                    auto
+                    or agent is not None
+                    or model_profile_id is not None
+                    or campaign_action_id is not None
+                    or verification_handoff_id is not None
+                    or expected_provider_digest is not None
+                    or source_human_readmission is not None
+                    or source_budget_readmission is not None
+                ):
+                    raise ValueError("Failed verification admission requires an explicit unchanged-provider resume")
+                from firefly_forge.retained_verified_source import prepare_verified_resume
+
+                verified_resume = await prepare_verified_resume(self.store, self, current)
             return await self._resume_selected(
                 current,
                 run_id,
@@ -2214,6 +2239,7 @@ class Journal:
                 expected_provider_digest=expected_provider_digest,
                 source_human_readmission=source_human_readmission,
                 source_budget_readmission=source_budget_readmission,
+                verified_resume=verified_resume,
             )
 
         if current.get("checkpoint_mode_adoption"):
@@ -2234,6 +2260,7 @@ class Journal:
         expected_provider_digest: str | None = None,
         source_human_readmission: str | None = None,
         source_budget_readmission: str | None = None,
+        verified_resume: PreparedVerifiedResume | None = None,
     ) -> Data:
         from firefly_forge.project_access import ProjectAccess
 
@@ -2370,7 +2397,11 @@ class Journal:
                     {**copy.deepcopy(row.data), "digest": row.digest} for row in await self.records.find_for_run(run.id)
                 ]
                 await assert_mode_actors(self, run.data, mode_entries)
-            if run.status not in {"paused", "needs_reconciliation", "interrupted"}:
+            if verified_resume is not None:
+                if run.status != "failed":
+                    raise ValueError("Failed verification admission was already resumed or changed")
+                await verified_resume.admit()
+            elif run.status not in {"paused", "needs_reconciliation", "interrupted"}:
                 raise ValueError("Only a paused or interrupted run can resume")
             if run.data.get("worker_request", {}).get("status") == "pending":
                 raise ValueError("Answer the pending worker question before explicitly resuming this run")
@@ -2561,10 +2592,13 @@ class Journal:
                     **({"checkpoint_mode_adoption_digest": inherited_mode["record_digest"]} if inherited_mode else {}),
                     "automatic": auto or verification_handoff_id is not None,
                     **({"verification_handoff_id": verification_handoff_id} if verification_handoff_id else {}),
+                    **({"verified_pre_dispatch_resume": verified_resume.proof} if verified_resume else {}),
                     **({"human_clarification": human_clarification} if human_clarification else {}),
                     **({"source_budget_continuation": source_budget_link} if source_budget_link else {}),
                 },
             )
+            if verified_resume is not None:
+                await verified_resume.source_current()
             result = await self.store.get_run(run_id)
             if verification_handoff_id is not None:
                 assert admitted is not None

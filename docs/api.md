@@ -208,6 +208,9 @@ After grant confirmation, refresh the final-allowance candidate and include `cod
 | GET | `/runs/{id}/checkpoint-continuations/requests/{request_id}/candidate` | Inspect a retained checkpoint and original ticket without admitting work |
 | POST | `/runs/{id}/checkpoint-continuations/requests/{request_id}/actions/{action_id}` | Save a reviewed finite continuation on the same execution request |
 | GET | `/runs/{id}/checkpoint-continuations/requests/{request_id}/status` | Read the saved checkpoint-continuation action and worker status |
+| GET | `/runs/{id}/worker-completion-settlements/candidate` | Review eligible known-worker V1 or consumed-terminal V2 custody without settling output |
+| POST | `/runs/{id}/worker-completion-settlements/{request_id}` | Submit exact V1 settlement or strict V2 local-postprocessing consent under one saved request identity |
+| GET | `/runs/{id}/worker-completion-settlements/{request_id}` | Read the same retained settlement/recovery receipt without dispatch or resubmission |
 | GET | `/runs/{id}/final-outcome-continuations/requests/{request_id}/candidate` | Review an already-consumed final result and current eligibility |
 | POST | `/runs/{id}/final-outcome-continuations/requests/{request_id}/actions/{action_id}` | Save one same-ticket final-result acceptance action |
 | GET | `/runs/{id}/final-outcome-continuations/requests/{request_id}/status` | Read final-result acceptance status without another submission |
@@ -240,6 +243,14 @@ After grant confirmation, refresh the final-allowance candidate and include `cod
 The [original-result recovery guide](recovery.md#explicit-closed-text-implementation-continuation) describes the checkpoint, intent and tagged result bindings required by the restore routes. Candidate discovery returns at most 16 saved implementation references and no model history or response body. Retain the original 32-character hexadecimal request ID before a restore POST; exact readback after an uncertain response never creates a replacement request.
 
 The [uncertain run-submission guide](recovery.md#settle-an-uncertain-run-submission) explains exact admission, cancellation and decision readback. The same enabled user can read or settle cancellation with current read access after signing in again. Replaying admission also requires the original authentication method and current execution authority.
+
+### Consumed-terminal recovery
+
+Consumed-terminal recovery uses the existing worker-completion endpoint family
+with a strict `version: 2` request; there is no query selector or new execution
+grant. The Python SDK, CLI and MCP provide explicit V2 candidate, request and
+status operations. See [the guided recovery flow](checkpoint-verification.md#recover-a-consumed-terminal-result-after-failure)
+for the five digest bindings, required acknowledgments and lost-response readback.
 
 ## Use explicit recovery from the Python SDK
 

@@ -42,6 +42,7 @@ if TYPE_CHECKING:
     from firefly_forge.invalid_read_continuity_models import InvalidReadAdmissionInputV1, InvalidReadAdmissionInputV2
     from firefly_forge.invalid_read_lease import ContinuityLeasePolicyV1
     from firefly_forge.invalid_read_recovery_models import InvalidReadRecoveryInputV1
+    from firefly_forge.known_worker_completion_models import ConsumedTerminalInputV2
     from firefly_forge.model_profiles import ModelProfileInput
     from firefly_forge.original_selection_models import OriginalSelectionReadmissionInput
     from firefly_forge.product_assistant import AssistantRecoveryInput, AssistantTurnInput
@@ -129,6 +130,60 @@ class ForgeClient:
             return model.model_validate(value).model_dump(mode="json", exclude_unset=True)
         except ValueError:
             raise ValueError("Use the original recovery request with its exact identities, scope and digests") from None
+
+    def consumed_terminal_candidate(self, run_id: str) -> dict[str, Any]:
+        """Review exact already-consumed output without requesting postprocessing or execution."""
+        from firefly_forge.known_worker_completion_models import ConsumedTerminalCandidateV2
+
+        run_id = self._recovery_identifier(run_id)
+        response = self.request("GET", f"runs/{run_id}/worker-completion-settlements/candidate")
+        try:
+            candidate = ConsumedTerminalCandidateV2.model_validate(response)
+            if candidate.run_id != run_id or candidate.proof.run_id != run_id:
+                raise ValueError("Candidate scope differs")
+        except ValueError:
+            raise ValueError("The saved candidate does not match the reviewed version-2 run") from None
+        return candidate.model_dump(mode="json")
+
+    @staticmethod
+    def _consumed_terminal_receipt(
+        response: Any,
+        run_id: str,
+        request_id: str,
+        expected_request: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        from firefly_forge.known_worker_completion_models import ConsumedTerminalReceiptV2
+
+        try:
+            receipt = ConsumedTerminalReceiptV2.model_validate(response)
+            if (
+                receipt.run_id != run_id
+                or receipt.request_id != request_id
+                or receipt.candidate.proof.run_id != run_id
+                or expected_request is not None
+                and receipt.request.model_dump(mode="json") != expected_request
+            ):
+                raise ValueError("Receipt scope differs")
+        except ValueError:
+            raise ValueError("The saved receipt does not match the reviewed version-2 request") from None
+        return receipt.model_dump(mode="json")
+
+    def request_consumed_terminal(
+        self, run_id: str, request_id: str, request: ConsumedTerminalInputV2 | dict[str, Any]
+    ) -> dict[str, Any]:
+        """Submit once; uncertain delivery requires readback of this same request identity."""
+        from firefly_forge.known_worker_completion_models import ConsumedTerminalInputV2
+
+        run_id, request_id = self._recovery_identifier(run_id), self._recovery_identifier(request_id)
+        body = self._recovery_body(ConsumedTerminalInputV2, request)
+        response = self.request("POST", f"runs/{run_id}/worker-completion-settlements/{request_id}", json=body)
+        return self._consumed_terminal_receipt(response, run_id, request_id, body)
+
+    def consumed_terminal_status(self, run_id: str, request_id: str) -> dict[str, Any]:
+        """Read the original receipt without repeating settlement or starting another action."""
+        run_id, request_id = self._recovery_identifier(run_id), self._recovery_identifier(request_id)
+        response = self.request("GET", f"runs/{run_id}/worker-completion-settlements/{request_id}")
+        return self._consumed_terminal_receipt(response, run_id, request_id)
 
     def provider_recovery_allowance_candidate(
         self, run_id: str, agent: Literal["codex", "claude"], *, adopt_current_executable: bool = False

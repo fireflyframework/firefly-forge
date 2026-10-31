@@ -13,14 +13,10 @@ from pydantic_ai.messages import ModelResponse, ToolCallPart
 from pydantic_ai.models.function import FunctionModel
 from scm_polling_native_fixtures import native_poll as native_poll
 from test_addressed_status_native import natural
-from worker_reply_fixtures import authenticated_operator
 
 from firefly_forge.collaboration import CollaborationSettings
-from firefly_forge.communication import CommunicationConversationV1, communication_facts
-from firefly_forge.journal import digest
+from firefly_forge.communication import CommunicationCard, CommunicationConversationV1, communication_facts
 from firefly_forge.model_profiles import ModelProfileInput
-from firefly_forge.scm_actor_authority import SCMActorAuthority
-from firefly_forge.scm_authority_models import SCMActorBindingInputV1
 from firefly_forge.task_routing import TaskRoutingInput
 
 
@@ -51,30 +47,22 @@ def signed_natural(c, body):
     }
     delivery = c.http.portal.call(c.collaboration.receive, "github", c.repo["id"], raw, headers)
 
-    async def consent():
-        async with authenticated_operator(c.store):
-            authority = SCMActorAuthority(c.store, c.scm)
-            project = await authority._project(c.project["id"], c.repo["id"])
-            return await authority.configure(
-                c.project["id"],
-                c.repo["id"],
-                SCMActorBindingInputV1(
-                    version=1,
-                    request_id=uuid4().hex,
-                    expected_previous_digest=None,
-                    expected_project_binding_digest=digest(project),
-                    verified_receipt_id=delivery["id"],
-                    expected_verified_reference_digest=digest(delivery["verification"]),
-                    native_user_id=c.mapped.id.hex,
-                    component_ids=["api"],
-                    allowed_actions=["status"],
-                    active=True,
-                    acknowledge_webhook_asserted_identity=True,
-                ),
-            )
-
-    c.http.portal.call(consent)
-    return delivery
+    assert delivery["api_observation"]["state"] == "pending" and delivery["command"] is None
+    assert c.process(delivery)["status"] == "received"
+    for _ in range(3):
+        c.http.portal.call(c.service.step, c.repo["id"])
+    observed = next(
+        row
+        for row in c.http.portal.call(c.retained)[2]
+        if (row.get("verification") or {}).get("transport") == "github_rest_poll_v1"
+        and row["verification"]["resource_id"] == "90"
+    )
+    correlated = c.process(delivery)
+    assert correlated["api_observation"]["receipt_id"] == observed["id"]
+    assert correlated["verification"] == delivery["verification"]
+    assert correlated["source_snapshot"] == observed["source_snapshot"]
+    assert not correlated.get("natural_turn") and correlated["feedback_status"] == "not_requested"
+    return observed
 
 
 def configure_ai(c):
@@ -136,7 +124,7 @@ def test_native_configured_bilingual_card_keeps_actual_ticket_authority_and_repl
     body = "@forge ¿cómo va?" if language == "es" else "@forge how is this going?"
     delivery = natural(c, body) if transport == "polling" else signed_natural(c, body)
     configure_ai(c)
-    coordinator_calls = native_coordinator(c, monkeypatch) if transport == "polling" else []
+    coordinator_calls = native_coordinator(c, monkeypatch)
     calls = []
     c.collaboration.communication_writer.model = reviewed_model(card(c, language), calls=calls)
     result = c.process(delivery)
@@ -147,12 +135,15 @@ def test_native_configured_bilingual_card_keeps_actual_ticket_authority_and_repl
     evidence = intent["communication"]
     from firefly_forge.product_provenance import content_digest
 
+    question = body.removeprefix("@forge ")
     current_facts = communication_facts(
         c.http.portal.call(c.store.get_run, c.run["id"]),
         conversation=CommunicationConversationV1(
             selection="run",
             language=language,
-            linked_runs=1 if transport == "polling" else len(result["conversation"]["candidate_ids"]),
+            linked_runs=1,
+            question=question,
+            question_sha256=hashlib.sha256(question.encode()).hexdigest(),
         ),
     )
     assert evidence["facts"] == current_facts
@@ -160,13 +151,22 @@ def test_native_configured_bilingual_card_keeps_actual_ticket_authority_and_repl
     assert evidence["mode"] == "ai"
     assert evidence["review"]["verdict"] == "supported" and not evidence["repair_attempted"]
     assert [call[0] for call in calls] == ["draft", "review"]
+    for _, messages, _ in calls:
+        prompt = "\n".join(
+            part.content
+            for message in messages
+            for part in message.parts
+            if isinstance(getattr(part, "content", None), str)
+        )
+        assert json.dumps(question, ensure_ascii=False) in prompt
+        assert hashlib.sha256(question.encode()).hexdigest() in prompt
     assert all(("Spanish" if language == "es" else "American English") in repr(call[1]) for call in calls)
-    if transport == "polling":
-        assert evidence["natural_reply_source"] == "current_execution_facts"
-        assert len(coordinator_calls) == 1
-        assert result["natural_turn"]["classifier_outcome"] == "confirmed_valid"
-        assert result["natural_turn"]["decision"]["language"] == language
-        assert result["natural_turn"]["reply"] not in intent["body"]
+    assert evidence["natural_reply_source"] == "current_execution_facts"
+    assert len(coordinator_calls) == 1
+    assert result["natural_turn"]["classifier_outcome"] == "confirmed_valid"
+    assert result["natural_turn"]["decision"]["language"] == language
+    assert result["natural_turn"]["human_message"] == question
+    assert result["natural_turn"]["reply"] not in intent["body"]
     assert (
         result["source_snapshot"] == delivery["source_snapshot"] and result["verification"] == delivery["verification"]
     )
@@ -175,12 +175,12 @@ def test_native_configured_bilingual_card_keeps_actual_ticket_authority_and_repl
     assert c.process(delivery) == result
     c.http.portal.call(c.collaboration.sync_feedback)
     assert len(calls) == 2 and len(c.state["posts"]) == baseline + 1
-    assert len(coordinator_calls) == (0 if transport == "signed" else 1)
+    assert len(coordinator_calls) == 1
 
 
 @pytest.mark.parametrize("language", ["en", "es"])
 def test_native_signed_configured_current_fact_change_holds_without_template_post_or_model_repeat(
-    native_poll, language
+    native_poll, monkeypatch, language
 ):
     c = native_poll
     c.ready()
@@ -192,6 +192,7 @@ def test_native_signed_configured_current_fact_change_holds_without_template_pos
     draft = card(c, language)
     calls = []
     configure_ai(c)
+    native_coordinator(c, monkeypatch)
 
     async def model(messages, info):
         phase = communication_phase(info)
@@ -201,6 +202,13 @@ def test_native_signed_configured_current_fact_change_holds_without_template_pos
             payload = draft
         else:
             payload = {
+                "reader_checks": {
+                    "answers_question": True,
+                    "relevant_detail": True,
+                    "no_redundancy": True,
+                    "plain_language": True,
+                    "useful_excerpts": True,
+                },
                 "verdict": "supported",
                 "issues": [],
                 "fact_ids": sorted(
@@ -222,7 +230,9 @@ def test_native_signed_configured_current_fact_change_holds_without_template_pos
 
 
 @pytest.mark.parametrize("language,verdict", [("en", "unsupported"), ("es", "uncertain")])
-def test_native_signed_one_semantic_correction_is_published_once_without_second_veto(native_poll, language, verdict):
+def test_native_signed_one_semantic_correction_is_published_once_without_second_veto(
+    native_poll, monkeypatch, language, verdict
+):
     from firefly_forge.product_provenance import content_digest
 
     c = native_poll
@@ -244,6 +254,7 @@ def test_native_signed_one_semantic_correction_is_published_once_without_second_
         ],
     }
     configure_ai(c)
+    native_coordinator(c, monkeypatch)
     calls = []
     c.collaboration.communication_writer.model = reviewed_model(
         candidate, verdict=verdict, correction=corrected, calls=calls
@@ -254,8 +265,14 @@ def test_native_signed_one_semantic_correction_is_published_once_without_second_
     assert result["feedback_status"] == "sent" and evidence["mode"] == "ai"
     assert evidence["repair_attempted"] is True and evidence["review"]["verdict"] == verdict
     assert evidence["review_applies_to"] == "original_candidate"
-    assert evidence["review_candidate_sha256"] == content_digest(candidate)
-    assert evidence["candidate_sha256"] == content_digest(corrected) != evidence["review_candidate_sha256"]
+    assert evidence["review_candidate_sha256"] == content_digest(
+        CommunicationCard.model_validate(candidate).model_dump()
+    )
+    assert (
+        evidence["candidate_sha256"]
+        == content_digest(CommunicationCard.model_validate(corrected).model_dump())
+        != evidence["review_candidate_sha256"]
+    )
     assert [call[0] for call in calls] == ["draft", "review", "draft"]
     assert corrected["paragraphs"][0]["text"] in intent["body"]
     assert candidate["paragraphs"][0]["text"] not in intent["body"]

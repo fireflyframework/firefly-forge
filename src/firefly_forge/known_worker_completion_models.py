@@ -37,6 +37,86 @@ class CompletionCustodyV1(StrictContract):
     consume_record_digest: Digest
 
 
+class ConsumedTerminalInputV2(StrictContract):
+    version: Literal[2]
+    candidate_digest: Digest
+    policy_digest: Digest
+    expected_run_digest: Digest
+    journal_digest: Digest
+    proof_digest: Digest
+    acknowledge_known_worker_output: Literal[True]
+    acknowledge_no_execution_grant: Literal[True]
+    acknowledge_local_postprocessing: Literal[True]
+
+    @field_validator("version", mode="before")
+    @classmethod
+    def exact_version(cls, value: Any) -> Any:
+        if type(value) is not int or value != 2:
+            raise ValueError("Use the exact consumed terminal version")
+        return value
+
+    @field_validator(
+        "acknowledge_known_worker_output",
+        "acknowledge_no_execution_grant",
+        "acknowledge_local_postprocessing",
+        mode="before",
+    )
+    @classmethod
+    def exact_acknowledgment(cls, value: Any) -> Any:
+        if value is not True:
+            raise ValueError("Acknowledge the exact consumed result and local postprocessing without a new grant")
+        return value
+
+
+class ConsumedTerminalProofV2(StrictContract):
+    version: Literal[2]
+    run_id: NativeID
+    task_id: Literal["implement"]
+    task_attempt: int = Field(ge=1, strict=True)
+    task_key: NativeID
+    completion_count: int = Field(ge=1, strict=True)
+    completions: list[CompletionCustodyV1]
+    terminal_report_sha256: Digest
+    final_response_sha256: Digest
+    recorded_runtime_contract: Digest
+    current_runtime_contract: Digest
+    current_profile_digest: Digest
+    source_digest: Digest
+    parent_final_digest: Digest
+    handoff_custody_digest: Digest
+    usage_before_digest: Digest
+    usage_after_digest: Digest
+    verification: Literal["consumed_terminal_output_known_only"]
+    digest: Digest
+
+    @model_validator(mode="after")
+    def exact_proof(self) -> "ConsumedTerminalProofV2":
+        if (
+            self.completion_count != len(self.completions)
+            or len({item.request_id for item in self.completions}) != self.completion_count
+            or digest(self.model_dump(exclude={"digest"})) != self.digest
+        ):
+            raise ValueError("Consumed terminal proof differs from its exact immutable custody")
+        return self
+
+
+class ConsumedTerminalCandidateV2(StrictContract):
+    version: Literal[2]
+    run_id: NativeID
+    actor_digest: Digest
+    policy_digest: Digest
+    run_digest: Digest
+    journal_digest: Digest
+    proof: ConsumedTerminalProofV2
+    digest: Digest
+
+    @model_validator(mode="after")
+    def exact_digest(self) -> "ConsumedTerminalCandidateV2":
+        if self.proof.run_id != self.run_id or digest(self.model_dump(exclude={"digest"})) != self.digest:
+            raise ValueError("Consumed terminal candidate digest differs")
+        return self
+
+
 class CompletionHoldV1(StrictContract):
     version: Literal[1]
     reason: Literal["graph_checkpoint_unavailable"]
@@ -118,4 +198,44 @@ class WorkerCompletionReceiptV1(StrictContract):
             or digest({k: v for k, v in proof.items() if k != "digest"}) != proof.get("digest")
         ):
             raise ValueError("Known worker receipt differs from its reviewed proof")
+        return self
+
+
+class ConsumedTerminalReceiptV2(StrictContract):
+    version: Literal[2]
+    kind: Literal["consumed_terminal_recovery"]
+    run_id: NativeID
+    request_id: NativeID
+    record_digest: Digest
+    candidate: ConsumedTerminalCandidateV2
+    request: ConsumedTerminalInputV2
+    state: Literal["queued", "claimed", "accepted"]
+    run_status: str = Field(min_length=1, max_length=64)
+    same_task_attempt: int = Field(ge=1, strict=True)
+    no_execution_grant: Literal[True]
+
+    @field_validator("no_execution_grant", mode="before")
+    @classmethod
+    def exact_no_grant(cls, value: Any) -> Any:
+        if value is not True:
+            raise ValueError("Consumed terminal acceptance does not grant execution")
+        return value
+
+    @model_validator(mode="after")
+    def exact_receipt(self) -> "ConsumedTerminalReceiptV2":
+        if (
+            self.run_id != self.candidate.run_id
+            or self.same_task_attempt != self.candidate.proof.task_attempt
+            or any(
+                getattr(self.request, key) != value
+                for key, value in {
+                    "candidate_digest": self.candidate.digest,
+                    "policy_digest": self.candidate.policy_digest,
+                    "expected_run_digest": self.candidate.run_digest,
+                    "journal_digest": self.candidate.journal_digest,
+                    "proof_digest": self.candidate.proof.digest,
+                }.items()
+            )
+        ):
+            raise ValueError("Consumed terminal receipt differs from its exact reviewed request")
         return self

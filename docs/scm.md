@@ -147,6 +147,24 @@ For GitHub Enterprise Server, set **Host** to its HTTPS origin. forge derives
 `/api/v3` from that origin and rejects clone URLs or pagination links from another
 host. App installation and permissions must exist on that same server.
 
+### Check webhook subscriptions and local development delivery
+
+App authentication and event delivery are separate settings. In the GitHub App registration, enable webhooks, configure a reachable HTTPS webhook URL and a private webhook secret, then subscribe to **Issue comment** for newly created issue comments. An App with an empty event subscription can still authenticate and support polling while receiving no conversation events. Verify the selected repository, delivery response and forge receipt after changing subscriptions. See [GitHub's App webhook guide](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/using-webhooks-with-github-apps).
+
+For a local development test, the official [GitHub CLI webhook extension](https://github.com/cli/gh-webhook) can forward repository or organization hook events to a running local factory:
+
+```sh
+gh extension install cli/gh-webhook
+gh webhook forward --repo=OWNER/REPOSITORY --events=issue_comment \
+  --url=http://127.0.0.1:8000/api/v1/webhooks/github/FORGE_REPOSITORY_ID
+```
+
+Use the actual local API port and forge repository ID. This command creates a development repository hook; `--org` selects an organization hook. It does not forward the GitHub App's subscriptions or convert a repository payload into an installation payload. Repository deliveries use the [separate read contract](#receive-natural-questions-through-a-signed-github-repository-webhook), including current native consent. App deliveries retain their installation check. Do not fabricate an installation field or remove that check to make a local test pass.
+
+Keep signature validation enabled. Configure the same private secret on the created provider hook and in forge's existing collaboration settings, preserving all other model and authority settings. Use private request bodies or standard input for those administrative writes; do not put the secret in a command argument or capture it in logs. Scope the test to its own repository and stop the forwarding process and remove only its development hook when finished.
+
+Inspect the retained receipt and confirmed outbound comment separately: transport delivery alone does not establish an automatic conversational reply. Production GitHub App delivery still requires actual subscriptions, a reachable TLS endpoint and its own acceptance evidence. Local CLI forwarding establishes neither production readiness nor a cloud runtime deployment.
+
 ## GitLab OAuth application
 
 [Register an OAuth application](https://docs.gitlab.com/integration/oauth_provider/)
@@ -574,6 +592,39 @@ operator reference. They are not the normal conversational UX. The finite
 available for its original explicit operations; its expiry is not extended by
 this read-only conversation path.
 
+### Receive natural questions through a signed GitHub repository webhook
+
+A repository webhook can deliver an addressed question such as `@forge what is
+blocked?` to `/api/v1/webhooks/github/{repository_id}` without a slash command. Its
+configured repository secret must verify the exact raw body. This transport is
+recorded as `github_repository_webhook_v1`: the configured App connection is
+separate metadata, not an installation assertion in the webhook payload. An App
+webhook that supplies `installation.id` must still match its exact configured
+installation; a wrong or malformed value cannot fall back to the repository
+transport.
+
+New natural comments from either signed App or repository hooks retain their
+HMAC delivery separately and durably request an authenticated API observation.
+The worker checks that pending schedule each second, including after a restart;
+provider retry deadlines and the current scan cursor are preserved. A signed
+wake is not an action or a new consent. Configure the existing GitHub API
+polling pipeline and finish its baseline before using this path.
+
+The API observation owns the comment identity and runs the existing natural
+classifier once. Status, answers, continuations, product turns and checkpoints
+retain their own current native permissions, source checks and consent. A
+redelivery or polling-first arrival cannot classify or answer the same comment
+twice. Unmentioned replies still require an exact retained question in that
+pipeline. Unknown model or remote outcomes remain held, and historical signed
+receipts are never automatically promoted or replayed.
+
+The receipt links the signed delivery to the API observation without claiming
+that the observation completed an action. forge rechecks the current comment,
+author, ticket, repository grant and native membership before classification and
+feedback. Repository scheduling uses bounded database pages rather than a global
+repository count limit. GitLab and Bitbucket retain their existing typed webhook
+commands; their natural observation adapters are not implemented by this change.
+
 ## Use GitHub issue comments from a local factory
 
 Authenticated polling lets an execution-owning worker read GitHub issue comments through the configured App installation when GitHub cannot reach the factory. It uses the server-derived transport `github_rest_poll_v1`, without a webhook signature or personal OAuth sign-in. GitLab and Bitbucket continue to use their existing webhook paths.
@@ -644,7 +695,9 @@ forge project scm-polling configure PROJECT_ID REPOSITORY_ID configuration.json
 forge project scm-polling configuration PROJECT_ID REPOSITORY_ID CONFIGURATION_REQUEST_ID
 ```
 
-The setup read does not contact GitHub. The configuration write checks current repository access and the reviewed connection/project cut. An interval must be between 60 and 3600 seconds. Each repository has one current polling project. Moving its configuration to another project invalidates the previous project's action snapshots while preserving authorized historical reads. A concurrent change refuses the reviewed request instead of silently using another cut.
+The setup read does not contact GitHub. The configuration write checks current repository access and the reviewed connection/project cut. An interval must be between 60 and 3600 seconds. It applies between completed scans. Available issue and comment pages drain in rounds, with one page per repository before another turn and a cooperative yield between rounds. A repository that finishes, enters provider backoff or fails inspection leaves that batch until its next normal polling turn. Pagination does not add a full interval for every page. Existing page, byte and scope bounds still apply; a prompt reply also depends on classification, model latency and current provider access.
+
+Each repository has one current polling project. Moving its configuration to another project invalidates the previous project's action snapshots while preserving authorized historical reads. A concurrent change refuses the reviewed request instead of silently using another cut.
 
 ### 3. Finish the baseline before posting commands
 
@@ -903,6 +956,8 @@ same repository. The native fact packet keeps the full reply and binds the
 validated reference receipt; changed or unavailable references block delivery.
 Selecting an AI communication profile does not authorize recorded wording after
 that profile fails.
+
+Updates can name the affected test or function and include a relevant saved command or error excerpt. Forge formats those excerpts as code blocks after privacy checks. When no command or trace explains a failure, the reply must say what is missing rather than inventing one. A worker-identity admission failure describes a factory step; it does not by itself establish a defect in the generated product.
 
 Every AI turn is reserved durably under the native repository lock before
 provider entry. A duplicate delivery cannot reserve another call. An unknown,

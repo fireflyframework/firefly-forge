@@ -52,6 +52,9 @@ NEW_TOOLS = {
     "get_scm_product_change_grant",
     "get_current_scm_product_change_grant",
     "get_scm_product_change",
+    "get_consumed_terminal_candidate",
+    "request_consumed_terminal",
+    "get_consumed_terminal_status",
     "get_final_outcome_candidate",
     "request_final_outcome_continuation",
     "get_final_outcome_status",
@@ -64,7 +67,7 @@ def _baseline():
 
 async def test_original_mcp_wire_metadata_keeps_reviewed_configuration_extensions():
     tools = await create_server().list_tools()
-    assert len(tools) == 185
+    assert len(tools) == 188
     original = [tool for tool in tools if tool.name not in NEW_TOOLS]
     assert len(original) == 142
     actual = ListToolsResult(tools=original).model_dump_json(by_alias=True, exclude_none=True)
