@@ -98,8 +98,12 @@ def _runtime(recorded: str, checkpoint: BoundaryCheckpoint, current: str) -> Non
         and digest(profile_payload(p)) == RECORDED_V30_PROFILE
     ]
     compatibility = json.loads(checkpoint.canonical_payload)["compatibility"]
-    dependencies = {
-        "pyfly": "26.10.7",
+    recorded_compatibility = {
+        "fireflyframework-agentic": "26.10.1",
+        "pydantic-ai-slim": "2.55.0",
+    }
+    current_dependencies = {
+        "pyfly": "26.10.21",
         "fireflyframework-agentic": "26.10.1",
         "pydantic-ai-slim": "2.55.0",
         "openai": "3.29.0",
@@ -107,8 +111,8 @@ def _runtime(recorded: str, checkpoint: BoundaryCheckpoint, current: str) -> Non
     if (
         recorded != RECORDED_V30_RUNTIME
         or len(profiles) != 1
-        or compatibility != {name: dependencies[name] for name in ("fireflyframework-agentic", "pydantic-ai-slim")}
-        or any(version(name) != expected for name, expected in dependencies.items())
+        or compatibility != recorded_compatibility
+        or any(version(name) != expected for name, expected in current_dependencies.items())
     ):
         raise ValueError("Consumed terminal runtime has no registered read-only compatibility")
 

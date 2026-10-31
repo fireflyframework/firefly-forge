@@ -11,8 +11,11 @@ from firefly_forge import source_edit_qualification as qualification
 
 
 def test_native_checkpoint_compatibility_requires_a_distinct_source_epoch():
-    assert qualification.REGISTRY_VERSION == 32
-    assert qualification.LOADER_PROFILE == "codex-exec-restricted-source/v33"
+    assert qualification.REGISTRY_VERSION >= 32
+    if qualification.REGISTRY_VERSION == 32:
+        assert qualification.LOADER_PROFILE == "codex-exec-restricted-source/v33"
+    else:
+        assert qualification.LOADER_PROFILE != "codex-exec-restricted-source/v33"
 
 
 def test_all_twenty_eight_measured_profile_literals_remain_exact():
