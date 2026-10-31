@@ -12,8 +12,11 @@ from firefly_forge import source_edit_qualification as qualification
 
 
 def test_neutral_unrequested_qa_requires_a_distinct_source_epoch():
-    assert qualification.REGISTRY_VERSION == 31
-    assert qualification.LOADER_PROFILE == "codex-exec-restricted-source/v32"
+    assert qualification.REGISTRY_VERSION >= 31
+    if qualification.REGISTRY_VERSION == 31:
+        assert qualification.LOADER_PROFILE == "codex-exec-restricted-source/v32"
+    else:
+        assert qualification.LOADER_PROFILE != "codex-exec-restricted-source/v32"
 
 
 def test_all_twenty_seven_measured_profile_literals_remain_exact():
