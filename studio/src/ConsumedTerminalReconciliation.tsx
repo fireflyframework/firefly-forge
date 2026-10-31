@@ -352,8 +352,8 @@ export function ConsumedTerminalReconciliation({
         </>
       )}
       <p className="muted">
-        Reconciliation keeps the original request and attempt. It does not
-        establish implementation success or publish a CRM change.
+        Reconciliation keeps the original request and attempt. After this
+        handoff, review the completed checks and delivery status.
       </p>
     </section>
   );
