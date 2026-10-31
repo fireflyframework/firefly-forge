@@ -3413,6 +3413,10 @@ for (const device of ["desktop", "mobile"])
       await page.reload();
       await navigate(page, "Connections");
       await page
+        .locator(".provider-card")
+        .filter({
+          has: page.getByRole("heading", { name: "Bridge", exact: true }),
+        })
         .getByRole("button", { name: "Configure", exact: true })
         .click();
       await expect(
