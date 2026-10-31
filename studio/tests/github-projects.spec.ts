@@ -51,6 +51,33 @@ const proof = {
   viewer: { id: "U_1", login: "octocat" },
   repository: { id: "R_1", name_with_owner: "team/product", private: true },
 };
+const fieldOptions = [
+  { id: "TODO", name: "To do" },
+  { id: "IN_PROGRESS", name: "In progress" },
+  { id: "REVIEW", name: "In review" },
+  { id: "ATTENTION", name: "Needs attention" },
+  { id: "CANCELLED", name: "Cancelled" },
+  { id: "ARCHIVED", name: "Archived" },
+];
+const mapping: Record<string, string> = {
+  Queued: "TODO",
+  Running: "IN_PROGRESS",
+  Paused: "REVIEW",
+  "Needs reconciliation": "ATTENTION",
+  Failed: "ATTENTION",
+  Cancelled: "CANCELLED",
+  Interrupted: "ATTENTION",
+};
+const expectedMapping = {
+  queued: "TODO",
+  running: "IN_PROGRESS",
+  paused: "REVIEW",
+  needs_reconciliation: "ATTENTION",
+  failed: "ATTENTION",
+  cancelled: "CANCELLED",
+  interrupted: "ATTENTION",
+  succeeded: "REVIEW",
+};
 const oauth = {
   name: "delivery",
   revision: 1,
@@ -176,11 +203,9 @@ async function setup(page: Page, mode = "success") {
             {
               id: "FIELD_1",
               name: "Status",
-              options: [
-                { id: "TODO", name: "To do" },
-                { id: "REVIEW", name: "In review" },
-              ],
+              options: fieldOptions,
             },
+            { id: "FIELD_2", name: "Delivery status", options: fieldOptions },
           ],
           discovery_digest: "e".repeat(64),
           truncated: false,
@@ -279,13 +304,37 @@ test("verified account and private discovery precede explicit state mapping", as
     .click();
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   await expect(
-    page.getByLabel("Managed field", { exact: true }),
+    page.getByLabel("GitHub board field", { exact: true }),
   ).toHaveAccessibleDescription("Delivery team/product · Private board");
   await expect(
     page.getByRole("button", { name: "Save board settings", exact: true }),
   ).toBeDisabled();
   await page
-    .getByLabel("Managed field", { exact: true })
+    .getByLabel("GitHub board field", { exact: true })
+    .selectOption("FIELD_1");
+  const mappingControls = page.locator('select[id^="board-state-"]');
+  await expect(mappingControls).toHaveCount(7);
+  for (const select of await mappingControls.all())
+    await expect(select).toHaveValue("");
+  for (const select of await mappingControls.all())
+    await select.selectOption("REVIEW");
+  await page
+    .getByLabel(
+      "Allow forge to update only this field for linked issues and pull requests.",
+    )
+    .check();
+  await page
+    .getByLabel("GitHub board field", { exact: true })
+    .selectOption("FIELD_2");
+  for (const select of await mappingControls.all())
+    await expect(select).toHaveValue("");
+  await expect(
+    page.getByLabel(
+      "Allow forge to update only this field for linked issues and pull requests.",
+    ),
+  ).not.toBeChecked();
+  await page
+    .getByLabel("GitHub board field", { exact: true })
     .selectOption("FIELD_1");
   for (const name of [
     "Queued",
@@ -295,9 +344,14 @@ test("verified account and private discovery precede explicit state mapping", as
     "Failed",
     "Cancelled",
     "Interrupted",
-    "Succeeded",
   ])
-    await page.getByLabel(name, { exact: true }).selectOption("REVIEW");
+    await page
+      .getByLabel(`GitHub board status for ${name}`, { exact: true })
+      .selectOption(mapping[name]);
+  await expect(
+    page.getByRole("button", { name: "Save board settings", exact: true }),
+  ).toBeDisabled();
+  expect(state.saves).toBe(0);
   await page
     .getByLabel(
       "Allow forge to update only this field for linked issues and pull requests.",
@@ -333,6 +387,28 @@ test("verified account and private discovery precede explicit state mapping", as
       );
       await expect(setupView.locator(".wizard")).toHaveClass(/wizard-rail/);
       await expect(page.getByRole("dialog")).toHaveCount(0);
+      const table = setupView.getByRole("table", {
+        name: "forge to GitHub status mapping",
+      });
+      await expect(table.getByRole("rowheader")).toHaveCount(7);
+      await expect(
+        table.getByRole("columnheader", {
+          name: "forge run status",
+          exact: true,
+        }),
+      ).toHaveCount(1);
+      await expect(
+        table.getByRole("columnheader", {
+          name: "GitHub board status",
+          exact: true,
+        }),
+      ).toHaveCount(1);
+      await expect(
+        page.getByText("7 of 7 mapped", { exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByLabel("GitHub board status for Succeeded", { exact: true }),
+      ).toHaveCount(0);
       await expect(
         page.getByRole("heading", {
           name: "GitHub Projects",
@@ -362,8 +438,31 @@ test("verified account and private discovery precede explicit state mapping", as
       await page.screenshot({
         path: info.outputPath(`board-mapping-${width}-${theme}.png`),
       });
+      await main.evaluate((node) => {
+        const table = node.querySelector(".board-status-map")!;
+        node.scrollTop +=
+          table.getBoundingClientRect().top -
+          node.getBoundingClientRect().top -
+          16;
+      });
+      await expect(table.getByRole("rowheader").first()).toBeInViewport();
+      await expect(
+        page.getByAltText("Firefly forge", { exact: true }),
+      ).toBeInViewport();
+      await page.screenshot({
+        path: info.outputPath(`board-mapping-${width}-rows-${theme}.png`),
+      });
+      await main.evaluate((node) => {
+        node.setAttribute("data-keyboard-scroll", "pending");
+        node.addEventListener(
+          "scrollend",
+          () => node.setAttribute("data-keyboard-scroll", "complete"),
+          { once: true },
+        );
+      });
       await main.focus();
       await page.keyboard.press("End");
+      await expect(main).toHaveAttribute("data-keyboard-scroll", "complete");
       await expect
         .poll(() => main.evaluate((node) => node.scrollTop))
         .toBeGreaterThan(0);
@@ -382,11 +481,15 @@ test("verified account and private discovery precede explicit state mapping", as
       const actionBox = await action.boundingBox(),
         footer = await page.locator(".workspace-main > footer").boundingBox();
       expect(actionBox!.y + actionBox!.height).toBeLessThanOrEqual(footer!.y);
+      await expect(
+        page.getByAltText("Firefly forge", { exact: true }),
+      ).toBeInViewport();
       await page.screenshot({
         path: info.outputPath(`board-mapping-${width}-end-${theme}.png`),
       });
+      const mainBox = await main.boundingBox();
+      await page.mouse.move(mainBox!.x + 8, mainBox!.y + mainBox!.height / 2);
       const end = await main.evaluate((node) => node.scrollTop);
-      await main.hover();
       await page.mouse.wheel(0, -150);
       await expect
         .poll(() => main.evaluate((node) => node.scrollTop))
@@ -397,20 +500,7 @@ test("verified account and private discovery precede explicit state mapping", as
     .getByRole("button", { name: "Save board settings", exact: true })
     .click();
   await expect.poll(() => state.saves).toBe(1);
-  expect(state.body?.state_options).toEqual(
-    Object.fromEntries(
-      [
-        "queued",
-        "running",
-        "paused",
-        "needs_reconciliation",
-        "failed",
-        "cancelled",
-        "interrupted",
-        "succeeded",
-      ].map((key) => [key, "REVIEW"]),
-    ),
-  );
+  expect(state.body?.state_options).toEqual(expectedMapping);
   expect(state.creates).toBe(0);
 });
 test("a lost private creation retains its ID before dispatch and only permits readback after reload", async ({
@@ -474,10 +564,10 @@ test("a lost settings response survives returning to the project without repeati
     .click();
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   await page
-    .getByLabel("Managed field", { exact: true })
+    .getByLabel("GitHub board field", { exact: true })
     .selectOption("FIELD_1");
   const states = page.locator('select[id^="board-state-"]');
-  await expect(states).toHaveCount(8);
+  await expect(states).toHaveCount(7);
   for (const select of await states.all()) await select.selectOption("REVIEW");
   await page
     .getByLabel(
@@ -607,7 +697,9 @@ test("explicit private creation uses the proved owner and opens discovered mappi
   await page
     .getByRole("button", { name: "Create private personal board", exact: true })
     .click();
-  await expect(page.getByLabel("Managed field", { exact: true })).toBeVisible();
+  await expect(
+    page.getByLabel("GitHub board field", { exact: true }),
+  ).toBeVisible();
   expect(state.creates).toBe(1);
   expect(state.saves).toBe(0);
   expect(state.body).toMatchObject({
@@ -647,7 +739,7 @@ for (const device of ["desktop", "mobile"] as const)
       await frame("github-projects-private-board");
       await page.getByRole("button", { name: "Continue", exact: true }).click();
       await page
-        .getByLabel("Managed field", { exact: true })
+        .getByLabel("GitHub board field", { exact: true })
         .selectOption("FIELD_1");
       for (const name of [
         "Queued",
@@ -657,11 +749,10 @@ for (const device of ["desktop", "mobile"] as const)
         "Failed",
         "Cancelled",
         "Interrupted",
-        "Succeeded",
       ])
         await page
-          .getByLabel(name, { exact: true })
-          .selectOption(name === "Queued" ? "TODO" : "REVIEW");
+          .getByLabel(`GitHub board status for ${name}`, { exact: true })
+          .selectOption(mapping[name]);
       await page
         .getByLabel(
           "Allow forge to update only this field for linked issues and pull requests.",

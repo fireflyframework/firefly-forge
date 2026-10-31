@@ -8,6 +8,9 @@ import {
   pendingBoards,
   retainBoardRequest,
   boardStorageKey,
+  normalizeBoardMapping,
+  boardMappingStates,
+  type BoardBinding,
 } from "./GitHubProjectsData";
 
 const context = {
@@ -137,4 +140,70 @@ it("retains an immutable unknown create across aliases and checks readback scope
   expect(boardStorageKey(context)).not.toBe(
     boardStorageKey({ ...context, base: "https://other.invalid" }),
   );
+});
+it("serializes seven explicit effective mappings into the unchanged eight-key contract", () => {
+  const found = boardDiscovery(
+    discovery,
+    boardAccount(account, context, "delivery"),
+  );
+  const choices = Object.fromEntries(
+    boardMappingStates.map((state) => [state, "OPT_1"]),
+  );
+  const before = { ...choices };
+  expect(normalizeBoardMapping(found, "FIELD_1", choices, null)).toEqual({
+    ...choices,
+    succeeded: "OPT_1",
+  });
+  expect(choices).toEqual(before);
+  expect(() =>
+    normalizeBoardMapping(found, "FIELD_1", { ...choices, paused: "" }, null),
+  ).toThrow();
+  expect(() =>
+    normalizeBoardMapping(found, "OTHER_FIELD", choices, null),
+  ).toThrow();
+});
+it("preserves a valid unused persisted slot only for the exact board and field", () => {
+  const found = boardDiscovery(
+    {
+      ...discovery,
+      fields: [
+        {
+          ...discovery.fields[0],
+          options: [
+            ...discovery.fields[0].options,
+            { id: "OPT_2", name: "Archived" },
+          ],
+        },
+      ],
+    },
+    boardAccount(account, context, "delivery"),
+  );
+  const choices = Object.fromEntries(
+    boardMappingStates.map((state) => [state, "OPT_1"]),
+  );
+  const binding: BoardBinding = {
+    digest: "f".repeat(64),
+    revision: 1,
+    enabled: true,
+    connection_name: "delivery",
+    owner_kind: "user",
+    owner: board.owner,
+    number: board.number,
+    board_id: board.id,
+    board_url: board.url,
+    field_id: "FIELD_1",
+    state_options: { ...choices, succeeded: "OPT_2" },
+    include_existing: false,
+  };
+  expect(
+    normalizeBoardMapping(found, "FIELD_1", choices, binding).succeeded,
+  ).toBe("OPT_2");
+  for (const other of [
+    { ...binding, board_id: "PVT_OTHER" },
+    { ...binding, field_id: "OTHER_FIELD" },
+    { ...binding, state_options: { ...choices, succeeded: "REMOVED_OPTION" } },
+  ])
+    expect(
+      normalizeBoardMapping(found, "FIELD_1", choices, other).succeeded,
+    ).toBe("OPT_1");
 });

@@ -2,7 +2,7 @@
 import { ArrowRight, ExternalLink } from "lucide-react";
 import { Wizard } from "./Wizard";
 import {
-  boardStates,
+  boardMappingStates,
   type BoardAccount,
   type BoardDiscovery,
 } from "./GitHubProjectsData";
@@ -22,6 +22,16 @@ export type BoardDraft = {
 };
 export const stateLabel = (state: string) =>
   state[0].toUpperCase() + state.slice(1).replaceAll("_", " ");
+const stateMeaning = {
+  queued: "Waiting to start.",
+  running: "Work is executing.",
+  paused:
+    "Waiting for input, review, or a required action. Also used when a run finishes successfully and awaits product review.",
+  needs_reconciliation: "An outcome is uncertain and needs confirmation.",
+  failed: "The run ended with a reported failure.",
+  cancelled: "The run was cancelled.",
+  interrupted: "Execution stopped before a normal completion was recorded.",
+};
 export function GitHubProjectsWizard({
   step,
   onStep,
@@ -62,12 +72,12 @@ export function GitHubProjectsWizard({
   error: string;
 }) {
   const field = discovery?.fields.find((item) => item.id === draft.field);
-  const chosen = boardStates.filter((state) =>
+  const chosen = boardMappingStates.filter((state) =>
     field?.options.some((option) => option.id === draft.options[state]),
   ).length;
   const complete =
     !!field &&
-    boardStates.every((state) =>
+    boardMappingStates.every((state) =>
       field.options.some((option) => option.id === draft.options[state]),
     );
   const canCreate =
@@ -85,7 +95,7 @@ export function GitHubProjectsWizard({
       stepDescriptions={[
         "Verify the connected account",
         "Find or create a private board",
-        "Choose the field and eight mappings",
+        "Choose the field and seven mappings",
       ]}
       steps={["Account", "Private board", "Board statuses"]}
       active={step}
@@ -110,9 +120,9 @@ export function GitHubProjectsWizard({
           <span
             className="board-status-progress"
             role="status"
-            aria-label={`${chosen} of 8 statuses chosen`}
+            aria-label={`${chosen} of 7 mapped`}
           >
-            {chosen}/8
+            {chosen} of 7 mapped
           </span>
         ) : undefined
       }
@@ -378,7 +388,7 @@ export function GitHubProjectsWizard({
                     {account.repository.name_with_owner} · Private board
                   </span>
                 </p>
-                <label htmlFor="board-field">Managed field</label>
+                <label htmlFor="board-field">GitHub board field</label>
                 <select
                   id="board-field"
                   aria-describedby="board-field-context"
@@ -400,50 +410,75 @@ export function GitHubProjectsWizard({
                   ))}
                 </select>
               </div>
-              <div className="board-fields">
-                {boardStates.map((state) => (
-                  <div className="field" key={state}>
-                    <label htmlFor={`board-state-${state}`}>
-                      {stateLabel(state)}
-                    </label>
-                    <select
-                      id={`board-state-${state}`}
-                      aria-describedby={
-                        state === "succeeded"
-                          ? "board-completed-review"
-                          : undefined
-                      }
-                      value={draft.options[state] ?? ""}
-                      disabled={!field}
-                      onChange={(event) =>
-                        onDraft({
-                          ...draft,
-                          options: {
-                            ...draft.options,
-                            [state]: event.target.value,
-                          },
-                          manageAck: false,
-                        })
-                      }
-                    >
-                      <option value="">Choose an option</option>
-                      {field?.options.map((option) => (
-                        <option key={option.id} value={option.id}>
-                          {option.name}
-                        </option>
-                      ))}
-                    </select>
-                    {state === "succeeded" && (
-                      <small id="board-completed-review">
-                        Completed work still needs product review. Choose In
-                        review or your board’s equivalent.
-                      </small>
-                    )}
-                  </div>
-                ))}
-              </div>
+              <p className="board-mapping-direction">
+                forge sends run progress to this field on linked issues and pull
+                requests. Changing the board does not change forge run statuses
+                or start runs.
+              </p>
+              <table
+                className="board-status-map"
+                aria-label="forge to GitHub status mapping"
+              >
+                <thead>
+                  <tr>
+                    <th scope="col">forge run status</th>
+                    <th scope="col">GitHub board status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {boardMappingStates.map((state) => (
+                    <tr key={state}>
+                      <th scope="row">
+                        <span className="board-status-source-label">
+                          forge run status
+                        </span>
+                        <strong>{stateLabel(state)}</strong>
+                        <small>{stateMeaning[state]}</small>
+                      </th>
+                      <td>
+                        <div className="field">
+                          <label
+                            className="board-status-target-label"
+                            htmlFor={`board-state-${state}`}
+                          >
+                            GitHub board status
+                          </label>
+                          <select
+                            id={`board-state-${state}`}
+                            aria-label={`GitHub board status for ${stateLabel(state)}`}
+                            value={draft.options[state] ?? ""}
+                            disabled={!field}
+                            onChange={(event) =>
+                              onDraft({
+                                ...draft,
+                                options: {
+                                  ...draft.options,
+                                  [state]: event.target.value,
+                                },
+                                manageAck: false,
+                              })
+                            }
+                          >
+                            <option value="">Choose an option</option>
+                            {field?.options.map((option) => (
+                              <option key={option.id} value={option.id}>
+                                {option.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="board-review-path">
+                Completed run → awaiting product review → GitHub status selected
+                for Paused.
+              </p>
               <p className="subtle">
-                Human field changes are held as conflicts.
+                If someone changes this field in GitHub, forge holds a
+                conflicting update for review.
               </p>
               <label className="board-check">
                 <input
@@ -457,7 +492,7 @@ export function GitHubProjectsWizard({
                     })
                   }
                 />
-                Synchronize future verified progress
+                Sync future run updates
               </label>
               <label className="board-check">
                 <input

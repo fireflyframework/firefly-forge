@@ -9,6 +9,9 @@ export const boardStates = [
   "interrupted",
   "succeeded",
 ] as const;
+export const boardMappingStates = boardStates.filter(
+  (state) => state !== "succeeded",
+);
 export type BoardContext = {
   base: string;
   actor: string;
@@ -63,6 +66,38 @@ export type BoardBinding = {
   state_options: Record<string, string>;
   include_existing: boolean;
 };
+export function normalizeBoardMapping(
+  discovery: BoardDiscovery,
+  fieldId: string,
+  choices: Record<string, string>,
+  binding: BoardBinding | null,
+): Record<string, string> {
+  const field = discovery.fields.find((item) => item.id === fieldId);
+  if (
+    !field ||
+    !boardMappingStates.every((state) =>
+      field.options.some((option) => option.id === choices[state]),
+    )
+  )
+    throw new Error(
+      "Choose a current GitHub option for all seven effective run statuses.",
+    );
+  // The v1 contract requires succeeded even though completed runs project to paused.
+  // Preserve its unused value only from the current board/field and current options.
+  const retained =
+    binding?.board_id === discovery.board.id && binding.field_id === fieldId
+      ? binding.state_options.succeeded
+      : undefined;
+  const succeeded = field.options.some((option) => option.id === retained)
+    ? retained!
+    : choices.paused;
+  return {
+    ...Object.fromEntries(
+      boardMappingStates.map((state) => [state, choices[state]]),
+    ),
+    succeeded,
+  };
+}
 export type BoardView = {
   version: 1;
   project_id: string;

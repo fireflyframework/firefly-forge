@@ -69,11 +69,13 @@ Discovery checks the registered GitHub repository's numeric identity and name, f
 
 ## Configure the managed field
 
-In **Board statuses**, choose the board's existing single-select field. Each of the eight factory states starts with **Choose an option**. Select an existing board option for every state; the counter reaches **8/8** when all choices are complete. Several states can use the same option.
+In **Board statuses**, choose the existing **GitHub board field**. The mapping has two sides: **forge run status** is the source, and **GitHub board status** is the destination. Each of the seven effective run statuses starts with **Choose an option**. Select an existing board option for every row; the counter reaches **7 of 7 mapped** when all choices are complete. Several run statuses can use the same board option.
+
+forge sends run progress to that field on linked issues and pull requests. Changing the board does not change forge run statuses or start runs. A completed run still awaits product review and uses the GitHub option selected for **Paused**.
 
 If discovery cannot find a usable single-select field with options, add or correct the field in GitHub and find the board again. Forge does not create fields or options during setup.
 
-| Factory state | Example board option |
+| forge run status | Example GitHub board status |
 | --- | --- |
 | Queued | To do |
 | Running | In progress |
@@ -82,11 +84,10 @@ If discovery cannot find a usable single-select field with options, add or corre
 | Failed | Needs attention |
 | Cancelled | Cancelled |
 | Interrupted | Needs attention |
-| Succeeded | In review |
 
-These are examples, not options that forge creates. Use the names and meanings on your board. Completed units still need product review: the current projection sends successful runs to the **Paused** mapping, so select a review option there as well. A successful unit does not establish whole-product acceptance.
+These are examples, not options that forge creates. Use the names and meanings on your board. A successful unit does not establish whole-product acceptance.
 
-Choose whether to synchronize future verified progress and whether to include runs recorded before the first configuration. Review **Allow forge to update only this field for linked issues and pull requests**, then select **Save board settings**. Changing a field, mapping or synchronization choice clears that acknowledgement. Current human changes to the managed field are held as conflicts.
+Choose whether to enable **Sync future run updates** and include runs recorded before the first configuration. Review **Allow forge to update only this field for linked issues and pull requests**, then select **Save board settings**. Changing a field, mapping or synchronization choice clears that acknowledgement. If someone changes this field in GitHub, forge holds a conflicting update for review.
 
 Save `BoardConnectionInputV1` through `forge project github-projects configure PROJECT REPOSITORY connection.json`. Its discovery fields are extended with:
 
@@ -94,6 +95,8 @@ Save `BoardConnectionInputV1` through `forge project github-projects configure P
 - The discovered `board_id` and `field_id`.
 - `state_options`, mapping each of `queued`, `running`, `paused`, `needs_reconciliation`, `failed`, `cancelled`, `interrupted` and `succeeded` to a discovered option ID. Several states may share an option.
 - `enabled`, `include_existing` and the explicit `acknowledge_managed_field: true`.
+
+The version 1 input still includes `succeeded`. Current execution never chooses it: successful runs use `paused`. Studio preserves a valid saved value for the same board and field, or copies the selected `paused` option when building this input.
 
 The factory rediscovers the board before saving. Native current project/repository permissions, credential admission and expected revision protect the write. A repeated request returns its original configuration receipt and cannot overwrite a later revision. Disabling preserves the configuration history.
 
