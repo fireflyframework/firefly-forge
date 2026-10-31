@@ -1,6 +1,6 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Focus, Maximize2 } from "lucide-react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { ChevronRight, Focus, Maximize2 } from "lucide-react";
 import type {
   AnimationAction,
   Object3D,
@@ -64,6 +64,23 @@ async function loadModel(signal: AbortSignal): Promise<Model> {
 
 export function FactoryScene(props: FactorySceneProps) {
   const viewport = useRef<HTMLDivElement>(null);
+  const rail = useRef<HTMLDivElement>(null);
+  const railId = useId();
+  const [moreStages, setMoreStages] = useState(false);
+  useLayoutEffect(() => {
+    const node = rail.current;
+    if (!node) return;
+    const measure = () =>
+      setMoreStages(node.scrollWidth - node.clientWidth - node.scrollLeft > 2);
+    measure();
+    const resize = new ResizeObserver(measure);
+    resize.observe(node);
+    node.addEventListener("scroll", measure, { passive: true });
+    return () => {
+      resize.disconnect();
+      node.removeEventListener("scroll", measure);
+    };
+  }, [props.stations.length]);
   useLayoutEffect(() => {
     const node = viewport.current;
     const main = node?.closest<HTMLElement>("main");
@@ -346,29 +363,34 @@ export function FactoryScene(props: FactorySceneProps) {
             : null;
         const bounds = new THREE.Box3().setFromObject(focused ?? world),
           center = bounds.getCenter(new THREE.Vector3());
-        camera.position.copy(center).add(new THREE.Vector3(17, 26, 30));
+        camera.position.copy(center).add(new THREE.Vector3(12, 20, 30));
         camera.lookAt(center);
         camera.updateMatrixWorld(true);
-        const corners = [];
-        for (const x of [bounds.min.x, bounds.max.x])
-          for (const y of [bounds.min.y, bounds.max.y])
-            for (const z of [bounds.min.z, bounds.max.z])
-              corners.push(
-                new THREE.Vector3(x, y, z).applyMatrix4(
-                  camera.matrixWorldInverse,
-                ),
-              );
-        const horizontal =
-          Math.max(...corners.map((p) => p.x)) -
-          Math.min(...corners.map((p) => p.x));
-        const vertical =
-          Math.max(...corners.map((p) => p.y)) -
-          Math.min(...corners.map((p) => p.y));
+        // Fit the visible geometry rather than empty corners of the long factory's world box.
+        const projected = new THREE.Box3();
+        world.updateWorldMatrix(true, true);
+        (focused ?? world).traverse((node) => {
+          if (!(node instanceof THREE.Mesh)) return;
+          node.geometry.computeBoundingBox();
+          const box = node.geometry.boundingBox;
+          if (!box) return;
+          for (const x of [box.min.x, box.max.x])
+            for (const y of [box.min.y, box.max.y])
+              for (const z of [box.min.z, box.max.z])
+                projected.expandByPoint(
+                  new THREE.Vector3(x, y, z)
+                    .applyMatrix4(node.matrixWorld)
+                    .applyMatrix4(camera.matrixWorldInverse),
+                );
+        });
+        const horizontal = projected.max.x - projected.min.x;
+        const vertical = projected.max.y - projected.min.y;
+        const target = projected.getCenter(new THREE.Vector3());
         const span = Math.max(vertical, horizontal / (width / height)) * 1.08;
-        camera.left = (-span * width) / height / 2;
-        camera.right = -camera.left;
-        camera.top = span / 2;
-        camera.bottom = -camera.top;
+        camera.left = target.x - (span * width) / height / 2;
+        camera.right = target.x + (span * width) / height / 2;
+        camera.top = target.y + span / 2;
+        camera.bottom = target.y - span / 2;
         camera.updateProjectionMatrix();
       }
       function paint(time: number) {
@@ -644,53 +666,76 @@ export function FactoryScene(props: FactorySceneProps) {
           </button>
         </div>
       )}
-      <figcaption
-        className="factory-live-stations"
-        aria-label="Recorded execution stages"
-      >
-        {props.stations.map((station, index) => (
+      <figcaption className="factory-stage-navigation">
+        <div
+          className="factory-live-stations"
+          aria-label="Recorded execution stages"
+          role="group"
+          ref={rail}
+          id={railId}
+        >
+          {props.stations.map((station, index) => (
+            <button
+              key={station.id}
+              type="button"
+              onClick={() => props.onSelect(station.id)}
+              onKeyDown={(event) => {
+                if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
+                  event.preventDefault();
+                  const buttons =
+                    event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>(
+                      "button",
+                    );
+                  buttons?.[
+                    (index +
+                      (event.key === "ArrowRight" ? 1 : -1) +
+                      props.stations.length) %
+                      props.stations.length
+                  ]?.focus();
+                }
+              }}
+              aria-pressed={props.selectedId === station.id}
+              className={`factory-live-station ${station.state}`}
+              title={station.detail}
+            >
+              <span>{station.label}</span>
+              <strong>
+                {props.aggregate && station.counts
+                  ? station.counts.active ||
+                    station.counts.waiting ||
+                    station.counts.needs_action
+                    ? `${station.counts.active} active${station.counts.waiting ? ` · ${station.counts.waiting} queued` : ""}${station.counts.needs_action ? ` · ${station.counts.needs_action} need action` : ""}`
+                    : station.counts.unknown
+                      ? `${station.counts.unknown} unknown`
+                      : station.counts.done
+                        ? `${station.counts.done} completed`
+                        : "No stage records"
+                  : station.state}
+              </strong>
+              <small>{station.detail}</small>
+            </button>
+          ))}
+          {!props.stations.length && (
+            <p>Choose a run to inspect its recorded execution stages.</p>
+          )}
+        </div>
+        {moreStages && (
           <button
-            key={station.id}
             type="button"
-            onClick={() => props.onSelect(station.id)}
-            onKeyDown={(event) => {
-              if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
-                event.preventDefault();
-                const buttons =
-                  event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>(
-                    "button",
-                  );
-                buttons?.[
-                  (index +
-                    (event.key === "ArrowRight" ? 1 : -1) +
-                    props.stations.length) %
-                    props.stations.length
-                ]?.focus();
-              }
-            }}
-            aria-pressed={props.selectedId === station.id}
-            className={`factory-live-station ${station.state}`}
-            title={station.detail}
+            className="quiet factory-stage-more"
+            aria-label="Show more stages"
+            aria-controls={railId}
+            title="Show more stages"
+            onClick={() =>
+              rail.current?.scrollBy({
+                left: rail.current.clientWidth * 0.75,
+                behavior: reducedMotion ? "instant" : "smooth",
+              })
+            }
           >
-            <span>{station.label}</span>
-            <strong>
-              {props.aggregate && station.counts
-                ? station.counts.active ||
-                  station.counts.waiting ||
-                  station.counts.needs_action
-                  ? `${station.counts.active} active${station.counts.waiting ? ` · ${station.counts.waiting} queued` : ""}${station.counts.needs_action ? ` · ${station.counts.needs_action} need action` : ""}`
-                  : station.counts.unknown
-                    ? `${station.counts.unknown} unknown`
-                    : station.counts.done
-                      ? `${station.counts.done} completed`
-                      : "No stage records"
-                : station.state}
-            </strong>
-            <small>{station.detail}</small>
+            <ChevronRight size={18} />
+            <span>More</span>
           </button>
-        ))}
-        {!props.stations.length && (
-          <p>Choose a run to inspect its recorded execution stages.</p>
         )}
       </figcaption>
     </figure>
