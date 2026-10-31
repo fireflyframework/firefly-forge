@@ -19,25 +19,20 @@ const props = {
   ),
 };
 
-it("activates the flow layout contract when pageFlow is explicit", () => {
-  const html = renderToStaticMarkup(<Wizard {...props} pageFlow />);
+it("renders page fields and actions in natural flow", () => {
+  const html = renderToStaticMarkup(<Wizard {...props} />);
   expect(html).toContain('data-layout="flow"');
   expect(html).toContain('aria-label="Scoped token"');
   expect(html).toContain("Continue");
 });
 
-it("leaves measured wizards to choose their layout after mounting", () => {
+it("keeps ordinary full-page fields in natural flow without a measured frame height", () => {
   const html = renderToStaticMarkup(<Wizard {...props} />);
-  expect(html).not.toContain('data-layout="flow"');
+  expect(html).toContain('data-layout="flow"');
+  expect(html).not.toContain("--wizard-frame-height");
+  expect(html).not.toContain("form-scroll-status");
 });
 
-it("leaves a parent-managed wizard outside the global flow layout", () => {
-  const html = renderToStaticMarkup(<Wizard {...props} parentLayout />);
-  expect(html).toContain('data-layout="parent"');
-  expect(html).not.toContain('data-layout="flow"');
-  expect(html).toContain('aria-label="Scoped token"');
-  expect(html).toContain("Continue");
-});
 it("keeps an ordinal and a separately named completion state for a completed step", () => {
   const html = renderToStaticMarkup(<Wizard {...props} active={1} />);
   expect(html).toContain('aria-label="Step 1, completed"');
@@ -50,4 +45,16 @@ it("does not describe a visited step as validated", () => {
   );
   expect(html).toContain('aria-label="Step 1, visited"');
   expect(html).not.toContain('aria-label="Step 1, completed"');
+});
+it("offers descriptive rail steps and an accessible native selector without enabling future steps", () => {
+  const html = renderToStaticMarkup(
+    <Wizard
+      {...props}
+      variant="rail"
+      stepDescriptions={["Identity and access", "Review settings"]}
+    />,
+  );
+  expect(html).toContain("Identity and access");
+  expect(html).toContain('aria-label="Setup step"');
+  expect(html).toContain('<option value="1" disabled="">2. Review</option>');
 });

@@ -388,7 +388,6 @@ function SearchAdministrator({ connection }: { connection: Connection }) {
       {saved && editing && (
         <Wizard
           className="search-wizard"
-          pageFlow
           steps={["Provider", "Access", "Review"]}
           active={step}
           onStep={move}

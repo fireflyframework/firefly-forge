@@ -260,7 +260,6 @@ export function OAuthServiceConfiguration({
       </div>
       <Wizard
         className="external-tools-wizard oauth-wizard oauth-service-wizard"
-        minimumFieldHeight={64}
         progressMode="visited"
         steps={["Service address", "Review", "Saved"]}
         active={step}

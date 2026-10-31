@@ -260,7 +260,6 @@ export function ScmPollFunctionalConsent({
           title="Review functional consent"
           description="This separate decision does not start a model or alter the CRM run."
           locked={busy}
-          pageFlow
         >
           <div className="wizard-fields">
             {step === 0 && (

@@ -584,3 +584,40 @@
     padding: 24px;
   }
 }
+
+.workspace-main > main:has(.connections-page),
+.workspace-main > main:has(> .product-definition) {
+  background: var(--surface);
+}
+.connections-page .connections-heading.page-heading {
+  margin: 0 0 28px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--line);
+}
+.connections-heading h1 {
+  font-size: 24px;
+  line-height: 1.35;
+}
+.connections-page .coding-provider-list {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.connections-page .provider-card {
+  padding: 22px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 0;
+}
+.connections-page .provider-card:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.connections-page .wizard-actions {
+  background: transparent;
+}
+@media (max-width: 760px) {
+  .connections-page .connections-heading.page-heading {
+    margin-bottom: 20px;
+    padding-bottom: 16px;
+  }
+}

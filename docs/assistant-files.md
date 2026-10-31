@@ -10,11 +10,11 @@ Attach customer notes, integration contracts or a wireframe when discussing a pr
 
 ## Upload, select and send
 
-1. Open the product assistant and choose the conversation you want to work in.
-2. Choose **Files**, then select or drop your documents and images.
+1. Open the product assistant. Use **History** for a recorded conversation or **New conversation** to choose the task for a new draft.
+2. Choose the **Files** paperclip, then select or drop your documents and images inside the file dialog. For a new draft, this first prepares its conversation without calling the model.
 3. Review the filename, format and size. Choose **Upload and attach** to save the files to that conversation.
-4. Check the selected files beside the message composer. Remove a selection if it should not be used for the next response.
-5. Write what you want the assistant to do with the files, then choose **Send**.
+4. Check the selected files inside the message composer. Remove a selection if it should not be used for the next response.
+5. Write what you want the assistant to do with the files, then choose **Send** or press Enter.
 
 Uploading a file does not call a model. Sending a message does. The assistant can propose journeys, features, architecture or design changes; its response still needs your review before you apply a product definition or start development.
 

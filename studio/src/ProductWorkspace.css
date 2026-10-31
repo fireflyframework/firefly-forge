@@ -92,209 +92,13 @@
 .product-assistant-panel {
   min-height: 0;
   min-width: 0;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--surface);
-  padding: 16px;
+  border: 0;
+  border-inline-start: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  padding: 0 0 0 24px;
   container: product-assistant / size;
   overflow: hidden;
-}
-.product-assistant-panel .product-assistant {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: 0;
-}
-.product-assistant-panel .feature-toolbar {
-  gap: 4px;
-  margin: 0 0 12px;
-  flex-wrap: nowrap;
-}
-.product-assistant-panel h2 {
-  font-size: 18px;
-  line-height: 1.4;
-  gap: 8px;
-  white-space: nowrap;
-}
-.product-assistant-panel h2 svg {
-  flex: 0 0 auto;
-}
-.product-assistant-panel header p {
-  font-size: 13px;
-  line-height: 1.6;
-  margin: 4px 0 0;
-  color: var(--muted);
-}
-.product-assistant-panel header > button {
-  padding: 8px;
-  flex: 0 0 auto;
-}
-@container product-assistant (max-width: 340px) {
-  .product-assistant-panel h2 {
-    font-size: 16px;
-  }
-  .product-assistant > header > button {
-    width: 32px;
-    padding: 6px;
-  }
-  .product-assistant > header > button[aria-label="New conversation"] {
-    font-size: 0;
-  }
-}
-@container product-assistant (max-width: 280px) {
-  .product-assistant-panel h2 {
-    font-size: 14px;
-    gap: 6px;
-  }
-  .product-assistant-panel h2 svg {
-    width: 18px;
-    height: 18px;
-  }
-}
-.assistant-session-actions {
-  flex: 0 0 auto;
-  margin-bottom: 12px;
-}
-.assistant-session-actions button {
-  width: 100%;
-}
-.assistant-settings {
-  font-size: 13px;
-  flex: 0 0 auto;
-  margin-bottom: 12px;
-}
-.assistant-settings summary {
-  cursor: pointer;
-  min-height: 32px;
-  line-height: 1.6;
-}
-.assistant-settings .feature-toolbar {
-  flex-wrap: wrap;
-  margin-top: 12px;
-}
-.assistant-settings .field {
-  flex: 1 1 100%;
-  margin: 0;
-}
-.assistant-settings label {
-  font-size: 13px;
-}
-.assistant-settings select {
-  font-size: 13px;
-}
-.product-assistant-panel .feature-meta {
-  flex: 0 0 auto;
-  font-size: 12px;
-  line-height: 1.6;
-  margin: 0 0 12px;
-}
-.product-assistant-panel .assistant-turns {
-  flex: 1 1 0;
-  overflow: auto;
-  min-height: 0;
-  margin: 0 0 8px;
-  gap: 16px;
-  align-content: start;
-  scroll-padding: 16px;
-}
-.product-assistant-panel .assistant-turn {
-  padding: 16px;
-  background: var(--surface-subtle);
-  border-radius: 8px;
-}
-.product-assistant-panel .assistant-turn > header {
-  font-size: 13px;
-  margin-bottom: 12px;
-}
-.product-assistant-panel .assistant-turn h3 {
-  font-size: 15px;
-  margin: 12px 0 8px;
-}
-.product-assistant-panel .assistant-turn h4 {
-  font-size: 14px;
-  margin: 12px 0 8px;
-}
-.assistant-owner-message summary {
-  cursor: pointer;
-  font-size: 13px;
-  line-height: 1.6;
-}
-.assistant-source-label {
-  font-size: 12px;
-  color: var(--muted);
-  line-height: 1.7;
-  margin-bottom: 12px;
-  overflow-wrap: anywhere;
-}
-.product-assistant-panel .assistant-turn li {
-  font-size: 13px;
-  line-height: 1.7;
-}
-.product-assistant-panel .assistant-proposal {
-  gap: 8px;
-  margin-top: 12px;
-  padding-top: 12px;
-}
-.product-assistant-panel .assistant-proposal p {
-  font-size: 13px;
-  line-height: 1.6;
-}
-.product-assistant-panel .assistant-proposal button {
-  width: 100%;
-  font-size: 13px;
-}
-.product-assistant-panel .assistant-proposal small {
-  font-size: 12px;
-}
-.product-assistant-panel .assistant-composer {
-  flex: 0 0 auto;
-  padding: 8px 0 0;
-  gap: 8px;
-  max-height: 55%;
-  overflow-y: auto;
-}
-.product-assistant-panel .assistant-composer .field {
-  margin: 0;
-  order: 0;
-}
-.product-assistant-panel .assistant-composer label {
-  font-size: 13px;
-}
-.product-assistant-panel .assistant-composer textarea {
-  min-height: 56px;
-  height: 56px;
-  max-height: 160px;
-  resize: vertical;
-  font-size: 13px;
-  line-height: 1.6;
-}
-.product-assistant-panel .assistant-composer button {
-  width: 100%;
-  font-size: 13px;
-}
-.product-assistant-panel .assistant-composer .feature-meta {
-  font-size: 12px;
-  margin: 0;
-  order: 1;
-  display: none;
-}
-@container product-assistant (max-height: 480px) {
-  .product-assistant .assistant-composer {
-    gap: 4px;
-    padding-top: 4px;
-  }
-  .product-assistant .assistant-composer textarea {
-    min-height: 40px;
-    height: 40px;
-  }
-}
-.assistant-empty {
-  font-size: 14px;
-  line-height: 1.7;
-  color: var(--muted);
-}
-.assistant-empty p {
-  margin: 0 0 12px;
 }
 .product-assistant-close {
   display: none;
@@ -645,9 +449,6 @@
   line-height: 1.7;
   margin: 12px 0 0;
 }
-.product-assistant-panel .assistant-composer > button {
-  order: 2;
-}
 @media (max-width: 700px) {
   .product-origin > span {
     font-size: 13px;
@@ -659,17 +460,10 @@
     display: none;
   }
 }
-.product-assistant-panel .feature-toolbar > div {
-  flex: 1 1 0;
-  min-width: 0;
-}
 .product-step-outcome {
   margin: 0;
   padding: 4px 8px;
   background: none;
-}
-.product-assistant-panel .assistant-settings {
-  margin-bottom: 8px;
 }
 
 .product-definition > .page-heading p {
@@ -688,19 +482,6 @@
   color: var(--text);
   font: inherit;
   font-size: 14px;
-}
-.product-assistant-panel .assistant-turn {
-  padding: 12px;
-}
-.product-assistant-panel .assistant-turn > header {
-  margin-bottom: 4px;
-}
-.product-assistant-panel .assistant-source-label {
-  margin-bottom: 8px;
-  line-height: 1.6;
-}
-.product-assistant-panel .assistant-owner-message {
-  margin-top: 12px;
 }
 
 @media (max-width: 600px) {
@@ -744,105 +525,16 @@
     gap: 4px;
   }
 }
-
-.product-assistant .assistant-task-choice {
-  flex: 0 0 auto;
-  margin: 0 0 8px;
-}
-.assistant-task-choice label {
-  font-size: 12px;
-  margin-bottom: 4px;
-}
-.assistant-task-choice select {
-  font-size: 13px;
-  min-height: 40px;
-}
-.assistant-conversation-context {
-  flex: 0 0 auto;
-  margin: 0 0 8px;
-  font-size: 12px;
-  line-height: 1.6;
-}
-.assistant-conversation-context strong,
-.assistant-conversation-context span {
-  display: block;
-}
-.assistant-conversation-context span {
-  color: var(--muted);
-  overflow-wrap: anywhere;
-}
-
-.product-assistant .assistant-task-choice {
-  display: grid;
-  grid-template-columns: 64px minmax(0, 1fr);
-  align-items: center;
-  gap: 8px;
-}
-.assistant-task-choice label {
-  margin: 0;
-}
-.assistant-history-control {
-  position: relative;
-  display: flex;
-  align-items: start;
-  gap: 8px;
-  flex: 0 0 auto;
-  margin-bottom: 8px;
-}
-.assistant-history-control .assistant-conversation-context {
-  flex: 1 1 0;
-  min-width: 0;
-  margin: 0;
-}
-.assistant-history-control .assistant-settings {
-  margin: 0;
-  flex: 0 0 auto;
-}
-.assistant-history-popover {
-  position: absolute;
-  z-index: 3;
-  top: 100%;
-  right: 0;
-  width: 100%;
-  max-height: min(360px, calc(100dvh - 180px));
-  overflow: auto;
-  padding: 16px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  box-shadow: 0 12px 32px rgb(0 0 0 / 0.15);
-}
-.assistant-history-popover p {
-  font-size: 13px;
-  line-height: 1.6;
-}
-.assistant-history-popover .feature-toolbar {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  align-items: start;
-  gap: 8px;
-  margin-bottom: 0;
-}
-.assistant-history-popover .feature-toolbar > button {
-  min-width: 0;
-  width: 100%;
-}
-
-.product-assistant-panel .product-assistant > header {
-  margin-bottom: 8px;
-}
-.product-assistant .assistant-task-choice {
-  margin-bottom: 4px;
-}
 dialog.product-assistant-panel {
   position: static;
-  inset: auto;
+  top: auto;
+  inset-inline: auto;
   align-self: stretch;
   grid-column: 2;
   grid-row: 2;
   margin: 0;
   width: auto;
-  height: auto;
+  height: 100%;
   max-width: none;
   max-height: none;
   color: var(--text);
@@ -864,44 +556,16 @@ dialog.product-assistant-panel::backdrop {
     margin: 0 0 0 auto;
     width: min(420px, calc(100vw - 24px));
     height: calc(100dvh - 24px);
+    padding: 16px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--surface);
   }
 }
 
 @media (max-height: 480px) {
   dialog.product-assistant-panel {
     padding: 12px;
-  }
-  .product-assistant-panel .product-assistant > header,
-  .product-assistant-panel .assistant-history-control {
-    margin-bottom: 4px;
-  }
-  .product-assistant-panel .assistant-task-choice select {
-    min-height: 36px;
-    padding-block: 6px;
-  }
-  .product-assistant-panel .assistant-conversation-context {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0 8px;
-  }
-  .product-assistant-panel .assistant-turn {
-    padding: 8px;
-  }
-  .product-assistant-panel .assistant-turn > header,
-  .product-assistant-panel .assistant-source-label {
-    margin-bottom: 0;
-  }
-  .product-assistant-panel .assistant-composer {
-    gap: 4px;
-    padding-top: 4px;
-  }
-  .product-assistant-panel .assistant-composer textarea {
-    min-height: 40px;
-    height: 40px;
-  }
-  .product-assistant-panel .assistant-composer button {
-    min-height: 36px;
-    padding-block: 6px;
   }
 }
 
@@ -1034,10 +698,11 @@ dialog.product-assistant-panel::backdrop {
 
 .product-workbench {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) clamp(320px, 32%, 520px);
-  grid-template-rows: auto minmax(0, var(--product-workspace-height));
+  grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr);
+  grid-template-rows: auto auto;
+  align-items: start;
   align-content: start;
-  gap: 12px 24px;
+  gap: 20px 24px;
   min-width: 0;
   position: relative;
 }
@@ -1049,9 +714,11 @@ dialog.product-assistant-panel::backdrop {
   grid-row: 1;
   min-width: 0;
   display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 16px;
   align-items: center;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--line);
 }
 .product-workbench-heading .page-heading {
   grid-column: 1;
@@ -1080,7 +747,7 @@ dialog.product-assistant-panel::backdrop {
 }
 .product-workspace-context {
   display: grid;
-  grid-template-columns: minmax(180px, 1.2fr) minmax(0, 1fr);
+  grid-template-columns: minmax(220px, 300px) auto;
   grid-column: 2;
   grid-row: 1;
   gap: 16px;
@@ -1090,6 +757,15 @@ dialog.product-assistant-panel::backdrop {
 .product-workbench-heading .product-workspace-context .field {
   margin: 0;
   gap: 4px;
+}
+.product-workspace-context label {
+  font-size: 11px;
+  color: var(--muted);
+}
+.product-workspace-context select {
+  min-height: 36px;
+  padding-block: 6px;
+  font-size: 13px;
 }
 .product-selected-source {
   color: var(--muted);
@@ -1114,11 +790,11 @@ dialog.product-assistant-panel::backdrop {
   container: product-editor / inline-size;
 }
 .product-document > .wizard-frame {
-  --wizard-inline-inset: var(--form-space-5);
-  flex: 1 1 0;
-  height: 100%;
+  --wizard-inline-inset: 0px;
+  flex: 0 0 auto;
+  height: auto;
   min-height: 0;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto auto;
 }
 .product-document > .feature-actions {
   flex: 0 0 auto;
@@ -1132,15 +808,15 @@ dialog.product-assistant-panel::backdrop {
 }
 .product-document .wizard-frame .wizard-body {
   min-height: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 .product-document .wizard-frame .wizard-content {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  height: auto;
   min-height: 0;
-  padding: 16px var(--wizard-inline-inset);
-  overflow: hidden;
+  padding: 24px var(--wizard-inline-inset);
+  overflow: visible;
 }
 .product-document .wizard-frame .wizard-heading {
   display: grid;
@@ -1149,30 +825,44 @@ dialog.product-assistant-panel::backdrop {
   gap: 8px;
   margin-bottom: 12px;
 }
+.product-document .wizard-frame .wizard-heading h2 {
+  grid-column: 1;
+  grid-row: 1;
+  font-size: 20px;
+  line-height: 1.4;
+  letter-spacing: -0.02em;
+}
 .product-document .wizard-heading > button {
+  grid-column: 2;
+  grid-row: 1;
   min-height: 32px;
   padding: 4px 8px;
   font-size: 13px;
   white-space: nowrap;
 }
 .product-document .wizard-frame .wizard-heading p {
-  display: none;
+  display: block;
+  grid-column: 1 / -1;
+  grid-row: 2;
+  font-size: 13px;
+  line-height: 1.65;
 }
 .product-document .wizard-frame .wizard-form {
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
-  flex: 1 1 0;
+  grid-template-rows: auto auto;
+  flex: 0 0 auto;
   min-height: 0;
-  overflow: hidden;
+  gap: 24px;
+  overflow: visible;
 }
 .product-document .wizard-frame .wizard-field-scroll {
   position: relative;
   display: flex;
   flex-direction: column;
   min-height: 0;
-  overflow: auto;
-  gap: 12px;
-  padding: 0 8px 16px 0;
+  overflow: visible;
+  gap: 22px;
+  padding: 0;
   scroll-padding: 8px;
 }
 .product-document .wizard-field-scroll > .product-list-editor {
@@ -1247,16 +937,6 @@ dialog.product-assistant-panel::backdrop {
     clip-path: inset(50%);
     overflow: hidden;
   }
-}
-.product-step-purpose {
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--muted);
-}
-.product-step-purpose p {
-  margin: 0;
-  max-width: 80ch;
 }
 .product-brief-grid {
   display: grid;
@@ -1419,7 +1099,7 @@ dialog.product-assistant-panel::backdrop {
     margin-bottom: 8px;
   }
   .product-document .wizard-frame .wizard-heading h2 {
-    font-size: 18px;
+    font-size: 20px;
     line-height: 1.3;
   }
   .product-document .wizard-heading > button {
@@ -1450,15 +1130,6 @@ dialog.product-assistant-panel::backdrop {
   }
   .product-document .wizard-frame .wizard-field-scroll {
     gap: 12px;
-  }
-  .product-step-purpose {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: visible;
-    clip: rect(0, 0, 0, 0);
   }
 }
 .assistant-recovery-dialog {
@@ -1516,6 +1187,45 @@ dialog.product-assistant-panel::backdrop {
 
 @media (max-width: 600px) {
   .product-document > .wizard-frame {
-    --wizard-inline-inset: var(--form-space-3);
+    --wizard-inline-inset: 0px;
+  }
+}
+
+@media (min-width: 1100px) and (min-height: 681px) {
+  .workspace-main > main:has(> .product-definition) {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .workspace-main
+    > main:has(> .product-definition)
+    > :not(.product-definition) {
+    flex: 0 0 auto;
+  }
+  .workspace-main > main > .product-definition {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 0;
+    min-height: 0;
+    width: 100%;
+    overflow: hidden;
+  }
+  .product-definition > :not(.product-workbench) {
+    flex: 0 0 auto;
+  }
+  .product-definition > .product-workbench {
+    flex: 1 1 0;
+    min-height: 0;
+    grid-template-rows: auto minmax(0, 1fr);
+    align-items: stretch;
+  }
+  .product-document {
+    overflow: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+    scrollbar-color: var(--muted) var(--surface-subtle);
+    scroll-padding: 20px;
+    padding-inline-end: 16px;
   }
 }

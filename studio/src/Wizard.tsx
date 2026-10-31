@@ -5,14 +5,16 @@ import {
   cloneElement,
   isValidElement,
   useEffect,
+  useLayoutEffect,
+  useId,
   useRef,
   useState,
-  type CSSProperties,
   type FormHTMLAttributes,
   type ReactElement,
   type ReactNode,
 } from "react";
 import { ProgressHeader, ScrollRegion, StepIndicator } from "./FormPrimitives";
+import "./Wizard.css";
 
 export function Wizard({
   steps,
@@ -25,10 +27,9 @@ export function Wizard({
   locked = false,
   className = "",
   progressMode = "validated",
-  pageFlow = false,
-  parentLayout = false,
   headingAction,
-  minimumFieldHeight = 160,
+  variant = "steps",
+  stepDescriptions,
 }: {
   steps: string[];
   active: number;
@@ -40,118 +41,16 @@ export function Wizard({
   locked?: boolean;
   className?: string;
   progressMode?: "validated" | "visited";
-  pageFlow?: boolean;
-  parentLayout?: boolean;
   headingAction?: ReactNode;
-  minimumFieldHeight?: number;
+  variant?: "steps" | "rail";
+  stepDescriptions?: string[];
 }) {
+  const stepSelect = useId();
   const frame = useRef<HTMLElement>(null);
-  const [height, setHeight] = useState<number>();
-  const [flow, setFlow] = useState(false);
-  useEffect(() => {
-    const element = frame.current;
-    if (!element || pageFlow || parentLayout) return;
-    const owner = element.closest("dialog") ?? element.closest("main");
-    if (!owner) return;
-    const measure = () => {
-      const progress = element.querySelector<HTMLElement>(".wizard-steps");
-      const current = progress?.querySelector<HTMLElement>(
-        '[aria-current="step"]',
-      );
-      if (progress && current && progress.scrollWidth > progress.clientWidth) {
-        const p = progress.getBoundingClientRect(),
-          c = current.getBoundingClientRect();
-        if (c.right > p.right) progress.scrollLeft += c.right - p.right + 12;
-        else if (c.left < p.left) progress.scrollLeft -= p.left - c.left + 12;
-      }
-      const rect = element.getBoundingClientRect();
-      const parent = owner.getBoundingClientRect();
-      const modal = owner.tagName === "DIALOG";
-      if (modal) {
-        setHeight(undefined);
-        setFlow(false);
-        return;
-      }
-      const available = owner.clientHeight;
-      const clearance = Number.parseFloat(
-        getComputedStyle(owner).paddingBottom,
-      );
-      const offset = rect.top - parent.top + owner.scrollTop;
-      const remaining = Math.max(0, available - offset - clearance);
-      const content = element.querySelector<HTMLElement>(".wizard-content");
-      const padding = content ? getComputedStyle(content) : null;
-      const chrome = [
-        ".wizard-steps",
-        ".wizard-heading",
-        ".wizard-actions",
-        ".form-scroll-status",
-      ]
-        .map((selector) => {
-          const part = element.querySelector<HTMLElement>(selector);
-          if (!part) return 0;
-          const style = getComputedStyle(part);
-          return (
-            part.getBoundingClientRect().height +
-            parseFloat(style.marginTop) +
-            parseFloat(style.marginBottom)
-          );
-        })
-        .reduce((sum, value) => sum + value, 0);
-      const contentPadding = padding
-        ? parseFloat(padding.paddingTop) + parseFloat(padding.paddingBottom)
-        : 0;
-      setHeight(remaining);
-      setFlow(remaining < chrome + contentPadding + minimumFieldHeight);
-    };
-    measure();
-    let pending = 0;
-    const schedule = () => {
-      if (!pending)
-        pending = requestAnimationFrame(() => {
-          pending = 0;
-          measure();
-        });
-    };
-    const observer = new ResizeObserver(schedule);
-    observer.observe(owner);
-    let ancestor = element.parentElement;
-    while (ancestor && ancestor !== owner) {
-      observer.observe(ancestor);
-      ancestor = ancestor.parentElement;
-    }
-    const mutations = new MutationObserver(schedule);
-    mutations.observe(owner, {
-      childList: true,
-      subtree: true,
-      characterData: true,
-    });
-    window.addEventListener("resize", schedule);
-    return () => {
-      observer.disconnect();
-      mutations.disconnect();
-      cancelAnimationFrame(pending);
-      window.removeEventListener("resize", schedule);
-    };
-  }, [pageFlow, parentLayout, minimumFieldHeight]);
-  useEffect(() => {
-    const element = frame.current;
-    const owner = element?.closest("main");
-    if (
-      height === undefined ||
-      !element ||
-      !owner ||
-      element.closest("dialog") ||
-      pageFlow ||
-      parentLayout ||
-      flow
-    )
-      return;
-    const bottom =
-      owner.getBoundingClientRect().bottom -
-      Number.parseFloat(getComputedStyle(owner).paddingBottom);
-    const overflow = element.getBoundingClientRect().bottom - bottom;
-    if (overflow > 1) owner.scrollTop += overflow;
-  }, [height, pageFlow, parentLayout, flow]);
+  const [bounded, setBounded] = useState(false);
+  useLayoutEffect(() => {
+    setBounded(!!frame.current?.closest("dialog"));
+  }, []);
   const body = (node: ReactNode): ReactNode =>
     Children.map(node, (child) => {
       if (!isValidElement(child)) return child;
@@ -176,7 +75,7 @@ export function Wizard({
         form,
         { className: `${form.props.className ?? ""} wizard-form` },
         <>
-          <ScrollRegion label={`${title} fields`}>
+          <ScrollRegion label={`${title} fields`} bounded={bounded}>
             {nodes.filter((item) => item !== actions)}
           </ScrollRegion>
           {isValidElement(actions)
@@ -197,7 +96,7 @@ export function Wizard({
   );
   const content = directActions ? (
     <div className="wizard-form">
-      <ScrollRegion label={`${title} fields`}>
+      <ScrollRegion label={`${title} fields`} bounded={bounded}>
         {body(directNodes.filter((node) => node !== directActions))}
       </ScrollRegion>
       {isValidElement(directActions)
@@ -210,19 +109,31 @@ export function Wizard({
     body(children)
   );
   const heading = useRef<HTMLHeadingElement>(null);
-  const previous = useRef(active);
+  const previous = useRef({ active, title });
   useEffect(() => {
-    if (active !== previous.current) {
+    if (
+      active !== previous.current.active ||
+      title !== previous.current.title
+    ) {
       heading.current?.focus({ preventScroll: true });
       frame.current
         ?.querySelectorAll<HTMLElement>(".wizard-field-scroll, .wizard-guide")
         .forEach((element) => {
           element.scrollTop = 0;
         });
-      if (pageFlow || parentLayout) {
+      if (!bounded) {
         const element = frame.current;
-        const owner = element?.closest("main");
-        if (owner) owner.scrollTop = 0;
+        const document = element?.closest<HTMLElement>(".product-document");
+        const owner =
+          document && /auto|scroll/.test(getComputedStyle(document).overflowY)
+            ? document
+            : element?.closest("main");
+        if (owner && variant === "rail") owner.scrollTop = 0;
+        else if (owner && element)
+          owner.scrollTop +=
+            element.getBoundingClientRect().top -
+            owner.getBoundingClientRect().top -
+            parseFloat(getComputedStyle(owner).paddingTop);
         const progress = element?.querySelector<HTMLElement>(".wizard-steps"),
           current = progress?.querySelector<HTMLElement>(
             '[aria-current="step"]',
@@ -235,21 +146,14 @@ export function Wizard({
         }
       }
     }
-    previous.current = active;
-  }, [active, pageFlow, parentLayout]);
+    previous.current = { active, title };
+  }, [active, title, bounded, variant]);
   return (
     <section
       ref={frame}
-      className={`wizard wizard-frame ${className}`}
+      className={`wizard wizard-frame${variant === "rail" ? " wizard-rail" : ""} ${className}`}
       aria-label={title}
-      data-layout={
-        parentLayout ? "parent" : pageFlow || flow ? "flow" : undefined
-      }
-      style={
-        {
-          "--wizard-frame-height": height ? `${height}px` : undefined,
-        } as CSSProperties
-      }
+      data-layout={bounded ? "bounded" : "flow"}
     >
       <ol className="wizard-steps form-grid" aria-label="Setup progress">
         {steps.map((label, index) => (
@@ -280,11 +184,41 @@ export function Wizard({
                       : "upcoming"
                 }
               />
-              <span>{label}</span>
+              <span className="wizard-step-label">
+                {label}
+                {variant === "rail" && stepDescriptions?.[index] && (
+                  <small>{stepDescriptions[index]}</small>
+                )}
+              </span>
             </button>
           </li>
         ))}
       </ol>
+      {variant === "rail" && (
+        <div className="wizard-mobile-progress">
+          <label htmlFor={stepSelect}>
+            Step {active + 1} of {steps.length}
+          </label>
+          <select
+            id={stepSelect}
+            aria-label="Setup step"
+            value={active}
+            disabled={locked}
+            onChange={(event) => onStep(Number(event.target.value))}
+          >
+            {steps.map((label, index) => (
+              <option key={label} value={index} disabled={index > active}>
+                {index + 1}. {label}
+                {index < active
+                  ? progressMode === "validated"
+                    ? " · completed"
+                    : " · visited"
+                  : ""}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
       <div className={"wizard-body" + (guide ? " has-guide" : "")}>
         <div className="wizard-content">
           <ProgressHeader

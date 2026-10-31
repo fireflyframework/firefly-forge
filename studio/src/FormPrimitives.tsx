@@ -58,15 +58,17 @@ export function FormField({
   label,
   hint,
   children,
+  className = "",
 }: {
   id: string;
   label: ReactNode;
   hint?: ReactNode;
   children: ReactNode;
+  className?: string;
 }) {
   const hintId = `${id}-hint`;
   return (
-    <div className="field form-stack">
+    <div className={`field form-stack ${className}`.trim()}>
       <label htmlFor={id}>{label}</label>
       {Children.map(children, (child) => {
         if (
@@ -89,7 +91,7 @@ export function FormField({
 }
 function useScrollState(
   ref: RefObject<HTMLDivElement | null>,
-  selector?: string,
+  enabled: boolean,
 ) {
   const [state, setState] = useState({
     overflow: false,
@@ -97,9 +99,8 @@ function useScrollState(
     below: false,
   });
   useEffect(() => {
-    const element = selector
-      ? document.querySelector<HTMLElement>(selector)
-      : ref.current;
+    if (!enabled) return;
+    const element = ref.current;
     if (!element) return;
     let pending = 0;
     const measure = () => {
@@ -145,62 +146,47 @@ function useScrollState(
       element.removeEventListener("scroll", schedule);
       cancelAnimationFrame(pending);
     };
-  }, [ref, selector]);
+  }, [ref, enabled]);
   return state;
 }
 function ScrollStatus({
   state,
-  page = false,
   id,
-  onStart,
 }: {
   state: { overflow: boolean; above: boolean; below: boolean };
-  page?: boolean;
   id?: string;
-  onStart?: () => void;
 }) {
   return (
-    <p
-      id={id}
-      className={`form-scroll-status${page ? " page-scroll-status" : ""}`}
-      hidden={!state.overflow}
-    >
+    <p id={id} className="form-scroll-status" hidden={!state.overflow}>
       {state.below ? (
         <ArrowDown size={14} aria-hidden="true" />
       ) : (
         <ArrowUp size={14} aria-hidden="true" />
       )}
       <span>
-        {page ? "Page" : "Form"}:{" "}
+        Form:{" "}
         {state.below
           ? state.above
             ? "more content above and below"
             : "more content below"
           : "end of content; scroll up to review"}
       </span>
-      {page && state.overflow && (
-        <button
-          type="button"
-          className="text-button"
-          disabled={!state.above}
-          onClick={onStart}
-        >
-          Back to section start
-        </button>
-      )}
     </p>
   );
 }
 export function ScrollRegion({
   children,
   label = "Form fields",
+  bounded = false,
 }: {
   children: ReactNode;
   label?: string;
+  bounded?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null),
     id = useId(),
-    state = useScrollState(ref);
+    state = useScrollState(ref, bounded);
+  if (!bounded) return <div className="wizard-field-scroll">{children}</div>;
   return (
     <div className="form-scroll-region form-grid">
       <ScrollStatus state={state} id={id} />
@@ -215,34 +201,5 @@ export function ScrollRegion({
         {children}
       </div>
     </div>
-  );
-}
-export function PageScrollStatus() {
-  const ref = useRef<HTMLDivElement>(null),
-    state = useScrollState(ref, ".workspace-main > main");
-  return (
-    <ScrollStatus
-      state={state}
-      page
-      onStart={() => {
-        const main = document.querySelector<HTMLElement>(
-          ".workspace-main > main",
-        );
-        if (!main) return;
-        const section = main.querySelector<HTMLElement>(
-          ".wizard-frame, .consumed-terminal-reconciliation",
-        );
-        if (section)
-          main.scrollTop +=
-            section.getBoundingClientRect().top -
-            main.getBoundingClientRect().top -
-            parseFloat(getComputedStyle(main).paddingTop);
-        else main.scrollTop = 0;
-        (
-          section?.querySelector<HTMLElement>("h2[tabindex], h4[tabindex]") ??
-          main
-        ).focus({ preventScroll: true });
-      }}
-    />
   );
 }

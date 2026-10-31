@@ -201,7 +201,7 @@ test("Bridge choices preserve unset values and require recovery before checkpoin
   ).toHaveValue("");
   await page.getByLabel("Model", { exact: true }).fill("bridge/other");
   await page
-    .getByRole("button", { name: "Save Bridge settings", exact: true })
+    .getByRole("button", { name: "Save settings", exact: true })
     .click();
   expect(saved).toEqual([{ model: "bridge/other" }]);
   await page.getByRole("button", { name: "Configure", exact: true }).click();
@@ -209,7 +209,7 @@ test("Bridge choices preserve unset values and require recovery before checkpoin
     .getByLabel("Implementation checkpoints", { exact: true })
     .selectOption("required");
   await page
-    .getByRole("button", { name: "Save Bridge settings", exact: true })
+    .getByRole("button", { name: "Save settings", exact: true })
     .click();
   expect(saved).toHaveLength(1);
   await expect(
@@ -222,7 +222,7 @@ test("Bridge choices preserve unset values and require recovery before checkpoin
     .getByLabel("Original model result recovery", { exact: true })
     .selectOption("required");
   await page
-    .getByRole("button", { name: "Save Bridge settings", exact: true })
+    .getByRole("button", { name: "Save settings", exact: true })
     .click();
   expect(saved[1]).toEqual({
     model: "bridge/other",

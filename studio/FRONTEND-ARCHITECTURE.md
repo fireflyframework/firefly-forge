@@ -1,37 +1,45 @@
 # Studio frontend foundation
 
-Studio is an operations interface. Its shared foundation preserves Firefly's current Manrope typography, semantic theme variables, native form controls and product-specific layouts. It does not introduce another UI library or replace the application shell.
+Studio preserves Firefly's Manrope typography, semantic theme variables and native accessible controls. Its foundation composes real forms and conversations without introducing another UI library or replacing the application shell.
 
-## Component responsibilities
+## Responsibilities
 
 | Layer | Implementation | Responsibility |
 | --- | --- | --- |
-| Tokens | `FormFoundation.css` and existing theme variables | Reuse the current 4px spacing rhythm. Color, typography and state contrast continue to come from the product theme. |
-| Atom | `StepIndicator` | Retain an ordinal in every state. A separate check indicates validated completion; a visited step never claims validation. |
-| Molecule | `FormField` | Keep a native control and its label together. Link direct native controls to their hint while preserving existing descriptions, input types and browser behavior. |
-| Molecule | `ProgressHeader` | Give Wizard titles, descriptions and contextual actions one consistent structure. Product layouts may retain their existing heading arrangement. |
-| Molecule | `ScrollRegion` | Own bounded field scrolling, keyboard entry and a visible remaining-content cue. Keep actions outside that region. |
-| Molecule | `PageScrollStatus` | Describe the existing main page scroller in a reserved row above the footer. Provide an explicit return to the form or recovery section start after scrolling. |
-| Layout | `.form-stack`, `.form-grid`, `.form-divider` | Compose vertical fields, progress and scrolling regions, and action separators with inherited spacing and theme tokens. |
-| Composite | `Wizard` | Compose progress, heading, fields, guide and actions. Retain navigation validation, visited-step semantics and the existing container measurement. |
-| Product surfaces | Product definition, provider configuration and recovery | Supply domain labels, native control state, validation, authority and submission behavior. The foundation does not make those decisions. |
+| Tokens | `FormFoundation.css` and existing theme variables | Share spacing, color, typography and state contrast. |
+| Atom | `StepIndicator` | Keep the ordinal in every state. A separate check indicates validated completion; a visited step does not claim validation. |
+| Molecule | `FormField` | Associate native controls, labels and hints while preserving input types, existing descriptions and browser behavior. |
+| Molecule | `ProgressHeader` | Compose a step title, visible description and contextual action. |
+| Molecule | `ScrollRegion` | Leave page fields in natural flow. Only bounded dialogs receive a named, keyboard reachable field viewport and remaining-content cue. |
+| Layout | `.form-stack`, `.form-grid`, `.form-divider` | Compose groups, responsive columns and action separators with shared spacing. |
+| Composite | `Wizard` and `Wizard.css` | Compose progress, heading, fields and actions. Its explicit rail variant provides settings navigation; its ordinary variant serves product documents and existing workflows. |
+| Workspace | `ProductWorkspace` | Allocate the product document and independent chat panel without measuring their height in JavaScript. |
+| Conversation | `ProductAssistant` and `ProductAssistant.css` | Own conversation state, history, transcript, attachments and composer. Product authority and native request contracts remain separate. |
 
-## Layout contracts
+## Connections
 
-The shared `--wizard-inline-inset` controls the leading edge of progress indicators, headings, field regions and action rows. The default follows the incumbent 28px desktop and 16px narrow layout. The product editor retains its 20px desktop and 12px narrow inset. Do not compensate with independent button padding or a second hardcoded left offset.
+Connections uses one continuous theme surface and the existing main page scroller. A compact page heading introduces a 208px desktop step rail, a vertical divider and the full remaining content column. The rail retains numbers, labels and short descriptions. Below 760px, a native labeled step selector replaces the rail. Future steps remain unavailable and editing locks step navigation.
 
-A bounded Wizard uses the available space measured from its actual container. Its form grid reserves an action row; only the field region scrolls. There is no guessed initial 640px frame height. Native inputs remain keyboard reachable, and overflow makes the named field region focusable.
+Provider rows and editing are separate states. Editing replaces the rows in the main form area. Fields use two equal columns with 22px row gaps and 20px column gaps, becoming one column below 700px. Endpoint and secret fields span both columns. No inner card or measured field viewport constrains the form.
 
-On short or narrow layouts that use page flow, the fields expand naturally and the existing `main` element owns scrolling. Actions remain in normal flow rather than covering fields through a fixed or sticky overlay. Product-specific parent layouts keep their existing breakpoints. Avoid adding another overflow container around these forms.
+Save and Cancel form the only action row while editing; the outer Wizard actions are absent from presentation and keyboard navigation. A failed save keeps the editor and input intact. Save or Cancel returns the provider summary and normal Wizard navigation. A step or editor transition focuses its heading and returns the actual page to a complete section boundary, without leaving a partially hidden page heading.
 
-Short-height rules apply only to Wizards whose actual layout is `flow`. Bounded dialogs retain their grid, named field viewport and reserved actions at the same short height. A viewport media query alone must never turn a modal's field region into unbounded page content. The long source-inspection modal regression checks keyboard and wheel scrolling, the final field and action bounds at 320×568 in both themes.
+## Product workspace
 
-The main page's scroll status occupies a real grid row above the footer. It never overlays form content or moves the footer into the content scroller. When a title has naturally scrolled away, **Back to section start** returns the form's progress and heading to view using actual element bounds. It creates no execution or submission action.
+On desktop widths of at least 1100px and heights above 680px, CSS allocates a full available workspace after any actual notices. The header occupies an automatic row. The next row contains a document column of approximately two thirds and a chat column of one third, separated by a single line and gutter.
 
-Step changes focus the new heading without forcing an outer page scroll to a small progress indicator. The current step is still brought into horizontal view when needed. Field focus uses the browser's native scrolling rather than a product-specific handler that moves an unrelated ancestor.
+The entire product document owns its scrollbar. Its progress, instructions, fields and actions form one natural document; the Wizard and its fields have no inner scrolling viewport. The chat has a separate transcript and reserved composer. Collapsing it releases document space and retains the conversation draft. The product selector remains secondary to the page title.
 
-## Boundaries and verification
+Compact layouts return the product document to the main page flow and use the existing viewport bounded chat drawer. The shell footer stays outside content scrolling. Desktop uses exactly three shell rows: header, content and footer. No global scroll-status row changes the available space or creates a resize feedback loop.
 
-The foundation is used by the shared Wizard and real product/provider fields. It does not change backend contracts, request identities, authorization, recovery receipts or publication policy. The claimed-result card continues to use the original request and GET-only readback after an uncertain submission.
+Step instructions and required inputs remain visible. Redundant explanations are consolidated in source for each step rather than hidden through generic CSS.
 
-`Wizard.test.tsx` covers numeric and completion semantics; `FormPrimitives.test.tsx` covers native labels, hints and region structure. `form-foundation.spec.ts` exercises real product, provider and recovery surfaces at desktop, 390px and 320px widths, including short heights and both themes. It records actual geometry and screenshots. Canonical documentation captures retain their existing source, helper, producer, version and image hash checks.
+## Bounded dialogs
+
+A bounded native dialog reserves heading and action space and scrolls its named field region. That region becomes keyboard focusable when it overflows. Short-height rules preserve this contract; they cannot turn its fields into unbounded page content. This is distinct from scrolling a whole product document or a Connections page.
+
+## Verification
+
+Unit coverage checks native label and hint bindings, numeric progress, completion semantics and rail access rules. Browser coverage checks Save/Cancel failures, step focus, mobile selection, natural field heights, whole-document scrolling, bounded-dialog actions, assistant modes and stable component selection in a 5,000-component project.
+
+Visual fixtures mirror the real provider schema and use a clearly synthetic ready host for the principal layout. A separate unhealthy-host case retains the actual warning and scroll behavior. Entry screenshots record the real opening state without changing scroll in the producer; additional action images show content reached through native focus. These images demonstrate interface behavior, not Original execution or product acceptance. Canonical documentation retains the existing source, helper, producer, version and image hash guards.

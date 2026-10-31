@@ -975,9 +975,7 @@ function Connections({
           </div>
           <Wizard
             className={`external-tools-wizard oauth-wizard${step === 0 ? " oauth-provider-step" : ""}`}
-            parentLayout={step === 0}
             progressMode="visited"
-            minimumFieldHeight={64}
             steps={[
               "Prerequisites",
               "Client & scope",

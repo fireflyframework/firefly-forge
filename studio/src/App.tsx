@@ -128,7 +128,6 @@ import { ExternalTools } from "./ExternalTools";
 import { BrowserConnections } from "./BrowserConnections";
 import { readResume, resumeKey } from "./ConnectionOAuthSettings";
 import { Collaboration } from "./Collaboration";
-import { PageScrollStatus } from "./FormPrimitives";
 import "./Integrations.css";
 import "./UsabilityRefinements.css";
 import {
@@ -1363,7 +1362,6 @@ export default function App() {
             </>
           )}
         </main>
-        <PageScrollStatus />
         <FoundationFooter version={studioVersion} documentation />
       </div>
       {dialog && (
@@ -1912,7 +1910,6 @@ export function NewProduct({
       <Wizard
         locked={busy}
         className="run-wizard"
-        minimumFieldHeight={creation ? 480 : 160}
         steps={["Brief", "Foundation", "Checks", "Review"]}
         active={step}
         onStep={setStep}
@@ -2442,6 +2439,7 @@ function Connections({
   const { theme } = useAppearance();
   const [chosenStep, setStep] = useState<number | null>(initialStep);
   const [providerId, setProviderId] = useState("codex");
+  const [providerEditing, setProviderEditing] = useState(false);
   const step = connected ? (chosenStep ?? 1) : 0;
   const providerRecords = records(
     providers && typeof providers === "object" && "providers" in providers
@@ -2453,14 +2451,16 @@ function Connections({
     providerRecords[0];
   const apiForm = signin;
   return (
-    <>
-      <div className="page-heading">
+    <section className="connections-page">
+      <div className="page-heading connections-heading">
         <div>
-          <h1>Connect the factory</h1>
-          <p>
-            Set up the workspace, coding providers, repository access and
-            project knowledge.
-          </p>
+          <h1>{connected ? "Connections" : "Connect the factory"}</h1>
+          {!connected && (
+            <p>
+              Set up the workspace, coding providers, repository access and
+              project knowledge.
+            </p>
+          )}
         </div>
         <Badge status={connected ? "connected" : "disconnected"} />
       </div>
@@ -2491,82 +2491,89 @@ function Connections({
         </section>
       ) : (
         <Wizard
+          variant="rail"
+          stepDescriptions={[
+            "Factory identity and access",
+            "Models and credentials",
+            "Source control connections",
+            "Cited project references",
+          ]}
           steps={["Workspace", "Coding AI", "Repositories", "Knowledge"]}
+          locked={providerEditing}
           active={step}
           onStep={setStep}
           title={
-            [
-              "Factory connection",
-              "Choose your coding provider",
-              "Grant repository access",
-              "Add project knowledge",
-            ][step]
+            providerEditing && chosenProvider
+              ? `Configure ${String(chosenProvider[1].name ?? chosenProvider[0])}`
+              : [
+                  "Factory connection",
+                  "Choose your coding provider",
+                  "Grant repository access",
+                  "Add project knowledge",
+                ][step]
           }
           description={
-            [
-              "Your server session determines identity and project access. Change servers or sign in explicitly.",
-              "Use a local Codex or Claude Code subscription, a private bridge, or an API-backed agent.",
-              "Create and authorize an application in GitHub, GitLab or Bitbucket, then choose granted repositories.",
-              "Connect flycanon for cited framework guidance, project source and verified run memory.",
-            ][step]
+            providerEditing
+              ? "Save these settings or cancel before continuing to repository access."
+              : [
+                  "Your server session determines identity and project access. Change servers or sign in explicitly.",
+                  "Use a local Codex or Claude Code subscription, a private bridge, or an API-backed agent.",
+                  "Create and authorize an application in GitHub, GitLab or Bitbucket, then choose granted repositories.",
+                  "Connect framework guidance, project sources and verified run memory.",
+                ][step]
           }
         >
           {step === 0 && apiForm}
           {step === 1 && (
             <div className="provider-panel">
-              <div
-                className="integration-provider-choice"
-                aria-label="Coding provider"
-              >
-                {providerRecords.map(([name, item]) => (
-                  <button
-                    type="button"
-                    key={name}
-                    className="secondary"
-                    aria-pressed={chosenProvider?.[0] === name}
-                    onClick={() => setProviderId(String(item.id ?? name))}
-                  >
-                    {String(item.name ?? name)}
-                  </button>
-                ))}
-              </div>
               {loading && !providerRecords.length ? (
                 <Loading />
-              ) : chosenProvider ? (
-                chosenProvider[1].fields ? (
-                  <ProviderConfiguration
-                    key={chosenProvider[0]}
-                    provider={chosenProvider[1] as unknown as CodingProvider}
-                    connection={current}
-                    onUpdated={onUpdated}
-                  />
-                ) : (
-                  <div className="integration-card">
-                    <h3>
-                      {String(chosenProvider[1].name ?? chosenProvider[0])}
-                    </h3>
-                    <p>
-                      {String(
-                        chosenProvider[1].detail ?? "Readiness not reported",
-                      )}
-                    </p>
-                    <Badge
-                      status={
-                        chosenProvider[1].ready ? "configured" : "unavailable"
-                      }
-                    />
-                  </div>
-                )
+              ) : providerRecords.length ? (
+                <section
+                  className="coding-provider-list"
+                  aria-label="Coding providers"
+                >
+                  {providerRecords
+                    .filter(
+                      ([, item]) => !providerEditing || item.id === providerId,
+                    )
+                    .map(([name, item]) =>
+                      item.fields ? (
+                        <ProviderConfiguration
+                          key={name}
+                          provider={item as unknown as CodingProvider}
+                          connection={current}
+                          onEditingChange={(editing) => {
+                            setProviderId(String(item.id ?? name));
+                            setProviderEditing(editing);
+                          }}
+                          onUpdated={onUpdated}
+                        />
+                      ) : (
+                        <article className="provider-card" key={name}>
+                          <h3>{String(item.name ?? name)}</h3>
+                          <p className="provider-detail">
+                            {String(item.detail ?? "Readiness not reported")}
+                          </p>
+                          <Badge
+                            status={item.ready ? "configured" : "unavailable"}
+                          />
+                        </article>
+                      ),
+                    )}
+                </section>
               ) : (
                 <Empty
                   title="No provider details returned"
                   body="Check your factory connection and server configuration."
                 />
               )}
-              <CommunicationSettings
-                connection={current}
-                canConfigure={canConfigure}
-              />
+              {!providerEditing && (
+                <CommunicationSettings
+                  connection={current}
+                  canConfigure={canConfigure}
+                />
+              )}
             </div>
           )}
           {step === 2 && (
@@ -2575,9 +2582,13 @@ function Connections({
           {step === 3 && (
             <Knowledge connection={current} repositories={repositories} />
           )}
-          <div className="wizard-actions">
+          <div className="wizard-actions" hidden={providerEditing}>
             {step > 0 ? (
-              <button className="secondary" onClick={() => setStep(step - 1)}>
+              <button
+                className="secondary"
+                disabled={providerEditing}
+                onClick={() => setStep(step - 1)}
+              >
                 <ArrowLeft size={16} />
                 Back
               </button>
@@ -2586,6 +2597,7 @@ function Connections({
             )}
             <button
               className="primary"
+              disabled={providerEditing}
               onClick={() => (step === 3 ? onDone() : setStep(step + 1))}
             >
               {step === 3
@@ -2598,10 +2610,10 @@ function Connections({
           </div>
         </Wizard>
       )}
-      {connected && (
+      {connected && !providerEditing && (
         <ContinuityPolicySettings connection={current} session={session} />
       )}
-    </>
+    </section>
   );
 }
 function RepositoryDialog({

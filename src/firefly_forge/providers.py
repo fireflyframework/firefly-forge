@@ -1279,6 +1279,8 @@ def provider_catalog(configuration: ConfigurationStore | None = None) -> list[di
             placeholder = {
                 "model": "CLI default" if cli else DEFAULTS.get(FIELDS[name][key], ""),
                 "endpoint": "https://api.example.com/v1",
+                "api_key": "Enter your API key",
+                "token": "Enter your bridge token",
                 "executable": name,
                 "timeout": "1800",
                 "max_tokens": "16384",
@@ -1288,7 +1290,7 @@ def provider_catalog(configuration: ConfigurationStore | None = None) -> list[di
             fields.append(
                 {
                     "key": key,
-                    "label": key.replace("_", " ").title(),
+                    "label": "API key" if key == "api_key" else key.replace("_", " ").capitalize(),
                     "secret": key in {"api_key", "token"},
                     "required": key
                     in (

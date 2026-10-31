@@ -8,7 +8,11 @@ import {
   Send,
   Settings2,
   PanelRightClose,
+  History,
+  UserRound,
+  ArrowLeft,
 } from "lucide-react";
+import "./ProductAssistant.css";
 import {
   ApiError,
   request,
@@ -106,7 +110,13 @@ export function ProductAssistant({
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [revision, setRevision] = useState(0),
-    [uncertain, setUncertain] = useState<string | null>(null);
+    [uncertainRequests, setUncertainRequests] = useState<
+      Record<string, string>
+    >({}),
+    [creationUncertain, setCreationUncertain] = useState(false),
+    [listReady, setListReady] = useState(false),
+    [historyOpen, setHistoryOpen] = useState(false),
+    [newDraft, setNewDraft] = useState(false);
   const [recoveryTurn, setRecoveryTurn] = useState<Turn | null>(null);
   const [imageCapability, setImageCapability] = useState<{
     conversation: string;
@@ -130,6 +140,8 @@ export function ProductAssistant({
     Record<string, ConversationAttachment[]>
   >({});
   const pending = useRef<AbortController | null>(null);
+  const operation = useRef(false),
+    editor = useRef<HTMLTextAreaElement>(null);
   useEffect(() => () => pending.current?.abort(), []);
   useEffect(() => {
     const controller = new AbortController();
@@ -145,6 +157,7 @@ export function ProductAssistant({
             "The conversation list could not be read. Refresh the recorded conversations.",
           );
         setError("");
+        setListReady(true);
         setSessions(
           values.filter(
             (item) => (item.project_id ?? null) === (projectId ?? null),
@@ -156,9 +169,14 @@ export function ProductAssistant({
       });
     return () => controller.abort();
   }, [connection, repository, projectId, revision]);
-  const id = sessions.some((item) => item.id === selected)
-    ? selected
-    : sessions[0]?.id;
+  const id =
+    creationUncertain || newDraft
+      ? undefined
+      : sessions.some((item) => item.id === selected)
+        ? selected
+        : sessions[0]?.id;
+  const recordedUncertain = id ? uncertainRequests[id] : undefined;
+  const uncertain = newDraft ? null : recordedUncertain;
   useEffect(() => {
     if (!id) return;
     const controller = new AbortController();
@@ -173,10 +191,15 @@ export function ProductAssistant({
           setConversation(value);
           setError("");
           if (
-            uncertain &&
-            value.turns?.some((turn) => turn.request_id === uncertain)
+            recordedUncertain &&
+            value.turns?.some((turn) => turn.request_id === recordedUncertain)
           )
-            setUncertain(null);
+            setUncertainRequests((items) => {
+              if (items[id] !== recordedUncertain) return items;
+              const next = { ...items };
+              delete next[id];
+              return next;
+            });
         })
         .catch((cause) => {
           if (!controller.signal.aborted) setError(failure(cause));
@@ -187,7 +210,7 @@ export function ProductAssistant({
       controller.abort();
       clearInterval(timer);
     };
-  }, [connection, repository, id, revision, uncertain]);
+  }, [connection, repository, id, revision, recordedUncertain]);
   useEffect(() => {
     setImageCapability(null);
     setRecoveryTurn(null);
@@ -212,9 +235,13 @@ export function ProductAssistant({
     return () => controller.abort();
   }, [connection, repository, id, revision]);
   useEffect(() => {
-    if (sourceTarget) setSelected(sourceTarget.conversation_id);
+    if (sourceTarget) {
+      setSelected(sourceTarget.conversation_id);
+      setNewDraft(false);
+      setHistoryOpen(false);
+    }
   }, [sourceTarget]);
-  const current = conversation?.id === id ? conversation : null;
+  const current = !newDraft && conversation?.id === id ? conversation : null;
   const selectedFiles = current ? (fileDrafts[current.id] ?? []) : [];
   const fileError = attachmentSelectionError(selectedFiles);
   function selectFiles(
@@ -258,12 +285,39 @@ export function ProductAssistant({
   const active = Boolean(
     current?.turns?.some((turn) => turn.status === "processing"),
   );
-  async function create() {
+  const locked =
+    busy ||
+    active ||
+    Boolean(uncertain) ||
+    creationUncertain ||
+    !listReady ||
+    Boolean(id && !current && !newDraft);
+  useEffect(() => {
+    const resize = () => {
+      if (!editor.current) return;
+      editor.current.style.height = "auto";
+      editor.current.style.height = `${Math.min(editor.current.scrollHeight, 180)}px`;
+    };
+    resize();
+    window.addEventListener("resize", resize);
+    return () => window.removeEventListener("resize", resize);
+  }, [message, historyOpen]);
+  function begin() {
+    if (operation.current) return null;
+    operation.current = true;
     const controller = new AbortController();
     pending.current?.abort();
     pending.current = controller;
     setBusy(true);
     setError("");
+    return controller;
+  }
+  function finish(controller: AbortController) {
+    if (pending.current !== controller) return;
+    operation.current = false;
+    if (!controller.signal.aborted) setBusy(false);
+  }
+  async function createSession(controller: AbortController) {
     try {
       const value = await request<Conversation>(
         connection,
@@ -277,37 +331,74 @@ export function ProductAssistant({
           signal: controller.signal,
         },
       );
-      if (controller.signal.aborted) return;
-      setSessions((items) => [value, ...items]);
+      if (controller.signal.aborted)
+        throw new DOMException("Request aborted", "AbortError");
+      if (
+        !/^[a-f0-9]{32}$/.test(value.id) ||
+        value.repository_id !== repository ||
+        (value.project_id ?? null) !== (projectId ?? null)
+      )
+        throw new Error("The created conversation could not be confirmed.");
+      setSessions((items) => [
+        value,
+        ...items.filter((item) => item.id !== value.id),
+      ]);
       setSelected(value.id);
-      setConversation(null);
-      setUncertain(null);
+      setConversation(value);
+      setNewDraft(false);
+      setCreationUncertain(false);
       setRevision((value) => value + 1);
+      return value;
+    } catch (cause) {
+      if (
+        !controller.signal.aborted &&
+        !(
+          cause instanceof ApiError &&
+          [400, 401, 403, 404, 409, 422].includes(cause.status)
+        )
+      )
+        setCreationUncertain(true);
+      throw cause;
+    }
+  }
+  async function attach() {
+    if (locked) return;
+    if (current) {
+      setFilesOpen(true);
+      return;
+    }
+    const controller = begin();
+    if (!controller) return;
+    try {
+      await createSession(controller);
+      if (!controller.signal.aborted) setFilesOpen(true);
     } catch (cause) {
       if (!controller.signal.aborted) setError(failure(cause));
     } finally {
-      if (!controller.signal.aborted) setBusy(false);
+      finish(controller);
     }
   }
   async function send(event: FormEvent) {
     event.preventDefault();
-    if (!current || !message.trim() || active || uncertain || fileError) return;
-    const controller = new AbortController();
-    pending.current?.abort();
-    pending.current = controller;
-    const requestId = crypto.randomUUID().replaceAll("-", "");
-    setBusy(true);
-    setError("");
+    if (locked || !message.trim() || fileError) return;
+    const controller = begin();
+    if (!controller) return;
+    let requestId = "";
+    let targetId = current?.id ?? "";
     try {
+      const target = current ?? (await createSession(controller));
+      targetId = target.id;
+      if (controller.signal.aborted) return;
+      requestId = crypto.randomUUID().replaceAll("-", "");
       await request<Turn>(
         connection,
-        `/repositories/${repository}/assistant/conversations/${current.id}/turns`,
+        `/repositories/${repository}/assistant/conversations/${target.id}/turns`,
         {
           method: "POST",
           body: JSON.stringify({
             request_id: requestId,
             message: message.trim(),
-            ...(selectedFiles.length
+            ...(current?.id === target.id && selectedFiles.length
               ? { attachment_ids: selectedFiles.map((file) => file.id) }
               : {}),
           }),
@@ -317,144 +408,179 @@ export function ProductAssistant({
       if (controller.signal.aborted) return;
       setMessage("");
       setContextNote(false);
-      selectFiles(current.id, []);
+      selectFiles(target.id, []);
       setRevision((value) => value + 1);
     } catch (cause) {
       if (!controller.signal.aborted) {
         const rejected =
           cause instanceof ApiError && [409, 422].includes(cause.status);
-        if (!rejected) setUncertain(requestId);
+        if (!rejected && requestId)
+          setUncertainRequests((items) => ({
+            ...items,
+            [targetId]: requestId,
+          }));
         setError(
-          rejected
+          rejected || !requestId
             ? failure(cause)
             : `${failure(cause)} Refresh the recorded conversation before requesting another turn.`,
         );
       }
     } finally {
-      if (!controller.signal.aborted) setBusy(false);
+      finish(controller);
     }
   }
   return (
-    <section className="product-assistant">
-      <header className="feature-toolbar">
-        <div>
-          <h2>
-            <MessageSquare size={24} />
-            AI design assistant
-          </h2>
-        </div>
-        <button
-          className="quiet"
-          disabled={busy}
-          onClick={() => void create()}
-          aria-label="New conversation"
-          title="New conversation"
-        >
-          <Plus size={16} />
-          New
-        </button>
-        {onCollapse && (
+    <section className="product-assistant" data-empty={!current?.turns?.length}>
+      <header className="assistant-toolbar">
+        <h2>AI design assistant</h2>
+        <div className="assistant-toolbar-actions">
           <button
-            className="quiet"
-            onClick={onCollapse}
-            aria-label="Close design assistant"
-            title="Collapse assistant"
+            type="button"
+            className="assistant-icon"
+            aria-label="New conversation"
+            title="New conversation"
+            disabled={busy || creationUncertain || !listReady}
+            onClick={() => {
+              setNewDraft(true);
+              setHistoryOpen(false);
+              editor.current?.focus();
+            }}
           >
-            <PanelRightClose size={20} />
+            <Plus size={18} aria-hidden="true" />
           </button>
-        )}
+          <button
+            type="button"
+            className="assistant-icon"
+            aria-label="Conversation history"
+            title="Conversation history"
+            aria-expanded={historyOpen}
+            onClick={() => setHistoryOpen((value) => !value)}
+          >
+            <History size={18} aria-hidden="true" />
+          </button>
+          {onCollapse && (
+            <button
+              type="button"
+              className="assistant-icon"
+              onClick={onCollapse}
+              aria-label="Close design assistant"
+              title="Collapse assistant"
+            >
+              <PanelRightClose size={18} aria-hidden="true" />
+            </button>
+          )}
+        </div>
       </header>
-      <div className="assistant-task-choice field">
-        <label htmlFor="assistant-task">Next task</label>
-        <select
-          id="assistant-task"
-          aria-label="Task for next conversation"
-          value={task}
-          disabled={busy}
-          onChange={(event) => setTask(event.target.value as AssistantTask)}
+      {!current && !historyOpen && (
+        <div className="assistant-task-choice">
+          <label htmlFor="assistant-task">New conversation</label>
+          <select
+            id="assistant-task"
+            aria-label="Task for next conversation"
+            value={task}
+            disabled={busy || creationUncertain}
+            onChange={(event) => setTask(event.target.value as AssistantTask)}
+          >
+            {Object.entries(assistantTasks).map(([id, name]) => (
+              <option key={id} value={id}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+      {current && !historyOpen && (
+        <p className="assistant-conversation-context">
+          <strong>
+            {current.task
+              ? assistantTasks[current.task]
+              : "Earlier conversation"}
+          </strong>
+          <span>
+            AI via {current.agent}
+            {recordedModel ? ` · ${recordedModel}` : ""}
+          </span>
+        </p>
+      )}
+      {historyOpen && (
+        <section
+          className="assistant-history"
+          aria-label="Recorded conversations"
         >
-          {Object.entries(assistantTasks).map(([id, name]) => (
-            <option key={id} value={id}>
-              {name}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className="assistant-history-control">
-        {current && (
-          <p className="assistant-conversation-context">
-            <strong>
-              {current.task
-                ? assistantTasks[current.task]
-                : "Earlier conversation"}
-            </strong>
-            <span>
-              AI via {current.agent}
-              {recordedModel ? ` · ${recordedModel}` : ""}
-            </span>
-          </p>
-        )}
-        <details className="assistant-settings">
-          <summary>History</summary>
-          <div className="assistant-history-popover">
-            <p>
-              A new task starts a separate conversation. Your current dialogue
-              stays unchanged.
-            </p>
-            {current && (
-              <p className="feature-meta">
-                {!current.task &&
-                  "Task was not recorded for this earlier conversation. "}
-                {current.journal?.verified
-                  ? "Recorded history verified"
-                  : "History verification not yet available"}
-                {current.model_selection
-                  ? ` · Profile ${current.model_selection.profile_id}, revision ${current.model_selection.profile_revision}`
-                  : " · Model profile not recorded"}
-              </p>
-            )}
-            <div className="feature-toolbar">
-              {sessions.length > 0 && (
-                <div className="field">
-                  <label htmlFor="design-conversation">
-                    Recorded conversation
-                  </label>
-                  <select
-                    id="design-conversation"
-                    value={id ?? ""}
-                    disabled={busy}
-                    onChange={(event) => {
-                      setSelected(event.target.value);
-                      setConversation(null);
-                      setUncertain(null);
-                    }}
-                  >
-                    {sessions.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.task
-                          ? assistantTasks[item.task]
-                          : "Recorded conversation"}{" "}
-                        · {new Date(item.created_at).toLocaleString()}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-              <button
-                className="secondary"
+          <button
+            type="button"
+            className="assistant-history-back"
+            onClick={() => setHistoryOpen(false)}
+          >
+            <ArrowLeft size={16} aria-hidden="true" />
+            Back to conversation
+          </button>
+          {sessions.length ? (
+            <div className="field">
+              <label htmlFor="design-conversation">Recorded conversation</label>
+              <select
+                id="design-conversation"
+                value={creationUncertain ? "" : (id ?? "")}
                 disabled={busy}
-                onClick={() => setRevision((value) => value + 1)}
+                onChange={(event) => {
+                  setSelected(event.target.value);
+                  setConversation(null);
+                  setNewDraft(false);
+                  setCreationUncertain(false);
+                  setHistoryOpen(false);
+                  setRevision((value) => value + 1);
+                }}
               >
-                <RefreshCw size={18} />
-                Refresh record
-              </button>
-              <button className="secondary" onClick={onConfigure}>
-                <Settings2 size={16} /> Configure AI
-              </button>
+                {!id && (
+                  <option value="" disabled>
+                    Choose a recorded conversation
+                  </option>
+                )}
+                {sessions.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.task
+                      ? assistantTasks[item.task]
+                      : "Recorded conversation"}{" "}
+                    · {new Date(item.created_at).toLocaleString()}
+                  </option>
+                ))}
+              </select>
             </div>
-          </div>
-        </details>
-      </div>
+          ) : (
+            <p>No conversations have been recorded.</p>
+          )}
+          {current && (
+            <p className="assistant-history-proof">
+              {!current.task && "Task was not recorded. "}
+              {current.journal?.verified
+                ? "Recorded history verified"
+                : "History verification not yet available"}
+              {current.model_selection
+                ? ` · Profile ${current.model_selection.profile_id}, revision ${current.model_selection.profile_revision}`
+                : " · Model profile not recorded"}
+            </p>
+          )}
+          <button
+            type="button"
+            className="secondary"
+            disabled={busy}
+            onClick={() => setRevision((value) => value + 1)}
+          >
+            <RefreshCw size={16} aria-hidden="true" />
+            Refresh record
+          </button>
+          <button type="button" className="secondary" onClick={onConfigure}>
+            <Settings2 size={16} aria-hidden="true" />
+            Configure AI
+          </button>
+        </section>
+      )}
+      {creationUncertain && (
+        <p className="integration-status" role="status">
+          The new conversation could not be confirmed. Refresh history and
+          choose its recorded conversation before sending.
+        </p>
+      )}
       {error && (
         <div className="alert" role="alert">
           {error}
@@ -466,159 +592,175 @@ export function ProductAssistant({
           receipt; no model request is retried automatically.
         </p>
       )}
-      {!current && (
-        <div className="assistant-empty">
-          <p>
-            Choose a task, then start a conversation. The model runs when you
-            send a message.
-          </p>
-          <button
-            className="primary"
-            disabled={busy}
-            onClick={() => void create()}
-          >
-            <Plus size={18} />
-            Start conversation
-          </button>
-        </div>
+      {!current && !historyOpen && (
+        <p className="assistant-empty">
+          Describe the customer and problem, or choose a task to work on.
+        </p>
       )}
       {current && (
         <>
           <section
             className="assistant-turns"
+            hidden={historyOpen}
+            role="log"
+            aria-live="polite"
+            aria-relevant="additions"
             aria-label="Recorded design dialogue"
           >
             {current.turns?.length ? (
               current.turns.map((turn) => (
-                <article
+                <div
                   className="assistant-turn"
                   id={`assistant-turn-${turn.id}`}
                   key={turn.id}
                 >
-                  <header>
-                    <strong>
-                      {turn.reply ? "AI response" : "Product owner request"}
-                    </strong>
-                    <span className="feature-status">
-                      {turn.status.replaceAll("_", " ")}
-                    </span>
-                  </header>
-                  {turn.reply && (
-                    <section>
-                      <p
-                        className="assistant-source-label"
-                        title={`AI-generated · ${turn.provenance?.provider ?? current.agent} · ${turn.provenance?.model ?? "model not recorded"} · ${new Date(turn.provenance?.generated_at ?? turn.created_at).toLocaleString()}`}
+                  <article className="assistant-message assistant-user-message">
+                    <header>
+                      <span
+                        className="assistant-message-mark"
+                        aria-hidden="true"
                       >
-                        AI via {turn.provenance?.provider ?? current.agent} ·{" "}
-                        {new Date(
-                          turn.provenance?.generated_at ?? turn.created_at,
-                        ).toLocaleTimeString([], {
+                        <UserRound size={15} />
+                      </span>
+                      <strong>You</strong>
+                      <time dateTime={turn.created_at}>
+                        {new Date(turn.created_at).toLocaleTimeString([], {
                           hour: "2-digit",
                           minute: "2-digit",
                         })}
-                      </p>
-                      <RichMarkdown value={turn.reply.message} />
-                      {turn.reply.questions.length > 0 && (
-                        <>
-                          <h4>Questions</h4>
-                          <ol>
-                            {turn.reply.questions.map((question, index) => (
-                              <li key={index}>{question}</li>
-                            ))}
-                          </ol>
-                        </>
-                      )}
-                      {turn.reply.assumptions.length > 0 && (
-                        <details>
-                          <summary>Assumptions to validate</summary>
-                          <ul>
-                            {turn.reply.assumptions.map((item, index) => (
-                              <li key={index}>{item}</li>
-                            ))}
-                          </ul>
-                        </details>
-                      )}
-                      {turn.reply.citation_ids.length > 0 && (
-                        <AssistantSources
-                          ids={turn.reply.citation_ids}
-                          context={turn.context}
-                        />
-                      )}
-                      {turn.reply.proposal && (
-                        <div className="assistant-proposal">
-                          <h4>Proposed product definition</h4>
-                          <p>
-                            {turn.reply.proposal.customer} ·{" "}
-                            {turn.reply.proposal.journey.length}{" "}
-                            {turn.reply.proposal.journey.length === 1
-                              ? "journey"
-                              : "journeys"}{" "}
-                            · {turn.reply.proposal.features?.length ?? 0}{" "}
-                            {(turn.reply.proposal.features?.length ?? 0) === 1
-                              ? "feature"
-                              : "features"}
-                          </p>
-                          <button
-                            className="primary"
-                            disabled={
-                              !current.journal?.verified ||
-                              turn.status !== "completed" ||
-                              !turn.provenance?.proposal_digest
-                            }
-                            onClick={() => {
-                              if (!turn.provenance?.proposal_digest) return;
-                              onUse(
-                                {
-                                  ...structuredClone(turn.reply!.proposal!),
-                                  functional_reviewed: false,
-                                  architecture: turn.reply!.proposal!
-                                    .architecture
-                                    ? {
-                                        ...turn.reply!.proposal!.architecture,
-                                        reviewed: false,
-                                      }
-                                    : null,
-                                  design_review: null,
-                                },
-                                turn.provenance,
-                              );
-                            }}
-                          >
-                            Use proposal as wizard draft
-                          </button>
-                          <small>
-                            This fills the reviewable draft. It does not save a
-                            definition or approve the proposal.
-                          </small>
-                        </div>
-                      )}
-                    </section>
-                  )}
-                  <details className="assistant-owner-message">
-                    <summary>Product owner message</summary>
+                      </time>
+                    </header>
                     <RichMarkdown value={turn.message} />
-                  </details>
-                  {turn.context?.attachments?.length ? (
-                    <ConversationFileTray files={turn.context.attachments} />
-                  ) : null}
-                  {turn.status === "processing" &&
-                    (turn.recovery?.eligible ||
-                      turn.recovery?.legacy_confirmation_required) && (
-                      <button
-                        type="button"
-                        className="secondary"
-                        onClick={() => setRecoveryTurn(turn)}
+                    {turn.context?.attachments?.length ? (
+                      <ConversationFileTray files={turn.context.attachments} />
+                    ) : null}
+                  </article>
+                  <article className="assistant-message assistant-ai-message">
+                    <header>
+                      <span
+                        className="assistant-message-mark"
+                        aria-hidden="true"
                       >
-                        Review interrupted response
-                      </button>
+                        <MessageSquare size={15} />
+                      </span>
+                      <strong>AI response</strong>
+                      <span className="feature-status">
+                        {turn.status.replaceAll("_", " ")}
+                      </span>
+                    </header>
+                    {turn.reply && (
+                      <section>
+                        <p
+                          className="assistant-source-label"
+                          title={`AI-generated · ${turn.provenance?.provider ?? current.agent} · ${turn.provenance?.model ?? "model not recorded"} · ${new Date(turn.provenance?.generated_at ?? turn.created_at).toLocaleString()}`}
+                        >
+                          AI via {turn.provenance?.provider ?? current.agent} ·{" "}
+                          {new Date(
+                            turn.provenance?.generated_at ?? turn.created_at,
+                          ).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </p>
+                        <RichMarkdown value={turn.reply.message} />
+                        {turn.reply.questions.length > 0 && (
+                          <>
+                            <h4>Questions</h4>
+                            <ol>
+                              {turn.reply.questions.map((question, index) => (
+                                <li key={index}>{question}</li>
+                              ))}
+                            </ol>
+                          </>
+                        )}
+                        {turn.reply.assumptions.length > 0 && (
+                          <details>
+                            <summary>Assumptions to validate</summary>
+                            <ul>
+                              {turn.reply.assumptions.map((item, index) => (
+                                <li key={index}>{item}</li>
+                              ))}
+                            </ul>
+                          </details>
+                        )}
+                        {turn.reply.citation_ids.length > 0 && (
+                          <AssistantSources
+                            ids={turn.reply.citation_ids}
+                            context={turn.context}
+                          />
+                        )}
+                        {turn.reply.proposal && (
+                          <div className="assistant-proposal">
+                            <h4>Proposed product definition</h4>
+                            <p>
+                              {turn.reply.proposal.customer} ·{" "}
+                              {turn.reply.proposal.journey.length}{" "}
+                              {turn.reply.proposal.journey.length === 1
+                                ? "journey"
+                                : "journeys"}{" "}
+                              · {turn.reply.proposal.features?.length ?? 0}{" "}
+                              {(turn.reply.proposal.features?.length ?? 0) === 1
+                                ? "feature"
+                                : "features"}
+                            </p>
+                            <button
+                              className="primary"
+                              disabled={
+                                !current.journal?.verified ||
+                                turn.status !== "completed" ||
+                                !turn.provenance?.proposal_digest
+                              }
+                              onClick={() => {
+                                if (!turn.provenance?.proposal_digest) return;
+                                onUse(
+                                  {
+                                    ...structuredClone(turn.reply!.proposal!),
+                                    functional_reviewed: false,
+                                    architecture: turn.reply!.proposal!
+                                      .architecture
+                                      ? {
+                                          ...turn.reply!.proposal!.architecture,
+                                          reviewed: false,
+                                        }
+                                      : null,
+                                    design_review: null,
+                                  },
+                                  turn.provenance,
+                                );
+                              }}
+                            >
+                              Use proposal as wizard draft
+                            </button>
+                            <small>
+                              This fills the reviewable draft. It does not save
+                              a definition or approve the proposal.
+                            </small>
+                          </div>
+                        )}
+                      </section>
                     )}
-                  {turn.detail && <p className="feature-meta">{turn.detail}</p>}
-                  {turn.failure_kind && (
-                    <p>
-                      Failure category: {turn.failure_kind.replaceAll("_", " ")}
-                    </p>
-                  )}
-                </article>
+                    {turn.status === "processing" &&
+                      (turn.recovery?.eligible ||
+                        turn.recovery?.legacy_confirmation_required) && (
+                        <button
+                          type="button"
+                          className="secondary"
+                          onClick={() => setRecoveryTurn(turn)}
+                        >
+                          Review interrupted response
+                        </button>
+                      )}
+                    {turn.detail && (
+                      <p className="feature-meta">{turn.detail}</p>
+                    )}
+                    {turn.failure_kind && (
+                      <p>
+                        Failure category:{" "}
+                        {turn.failure_kind.replaceAll("_", " ")}
+                      </p>
+                    )}
+                  </article>
+                </div>
               ))
             ) : (
               <p>
@@ -626,90 +768,108 @@ export function ProductAssistant({
               </p>
             )}
           </section>
-          <form
-            onSubmit={(event) => void send(event)}
-            className="assistant-composer"
-          >
-            <div className="field">
-              <label htmlFor="assistant-message">Product design message</label>
-              <textarea
-                id="assistant-message"
-                required
-                maxLength={12000}
-                rows={3}
-                value={message}
-                disabled={busy || active || Boolean(uncertain)}
-                onChange={(event) => {
-                  setMessage(event.target.value);
-                  setContextNote(false);
-                }}
-                placeholder="Describe the customer and problem, or answer the recorded design questions."
-              />
-            </div>
-            {contextNote && (
-              <p className="assistant-file-guidance">
-                Current editor context · inspect and edit before sending.
-              </p>
-            )}
-            <ConversationFileTray
-              files={selectedFiles}
-              onRemove={(id) =>
-                selectFiles(
-                  current.id,
-                  selectedFiles.filter((file) => file.id !== id),
-                )
-              }
-            />
-            {selectedFiles.some((file) => file.kind === "image") && (
-              <p className="assistant-file-guidance">
-                {imageCapability?.conversation === current.id &&
-                imageCapability.status === "verified"
-                  ? "Image input is verified for this conversation’s recorded model."
-                  : imageCapability?.conversation !== current.id
-                    ? "Checking image support for this conversation’s recorded model…"
-                    : "Image input is not verified for this conversation. The server will reject unsupported image requests before calling the model."}
-              </p>
-            )}
-            {fileError && (
-              <p className="alert" role="alert">
-                {fileError}
-              </p>
-            )}
-            <div className="assistant-composer-actions">
-              <button
-                type="button"
-                className="secondary"
-                disabled={busy || active || Boolean(uncertain)}
-                onClick={() => setFilesOpen(true)}
-              >
-                <Paperclip size={18} /> Files
-                {selectedFiles.length ? ` (${selectedFiles.length})` : ""}
-              </button>
-              <button
-                className="primary"
-                aria-label={
-                  busy || active
-                    ? "Waiting for recorded response"
-                    : "Send design message"
-                }
-                disabled={
-                  busy ||
-                  active ||
-                  Boolean(uncertain) ||
-                  !message.trim() ||
-                  Boolean(fileError)
-                }
-              >
-                <Send size={18} />
-                {busy || active ? "Waiting…" : "Send message"}
-              </button>
-            </div>
-            <p className="feature-meta">
-              Recorded per product · no automatic apply or retry.
-            </p>
-          </form>
         </>
       )}
+      <form
+        onSubmit={(event) => void send(event)}
+        className="assistant-composer"
+        aria-label="Design message"
+      >
+        <fieldset disabled={locked} className="assistant-composer-fields">
+          <ConversationFileTray
+            files={selectedFiles}
+            onRemove={(id) =>
+              current &&
+              selectFiles(
+                current.id,
+                selectedFiles.filter((file) => file.id !== id),
+              )
+            }
+          />
+          <div className="assistant-editor-row">
+            <button
+              type="button"
+              className="assistant-icon assistant-attach"
+              aria-label="Files"
+              title="Attach files"
+              onClick={() => void attach()}
+            >
+              <Paperclip size={18} aria-hidden="true" />
+            </button>
+            <label className="assistant-sr-only" htmlFor="assistant-message">
+              Product design message
+            </label>
+            <textarea
+              ref={editor}
+              id="assistant-message"
+              required
+              maxLength={12000}
+              rows={1}
+              value={message}
+              onChange={(event) => {
+                setMessage(event.target.value);
+                setContextNote(false);
+              }}
+              onKeyDown={(event) => {
+                if (
+                  event.key === "Enter" &&
+                  !event.shiftKey &&
+                  !event.nativeEvent.isComposing &&
+                  event.nativeEvent.keyCode !== 229
+                ) {
+                  event.preventDefault();
+                  event.currentTarget.form?.requestSubmit();
+                }
+              }}
+              placeholder="Write a message…"
+            />
+            <button
+              className="assistant-icon assistant-send"
+              aria-label={
+                busy || active
+                  ? "Waiting for recorded response"
+                  : "Send design message"
+              }
+              title={
+                busy || active
+                  ? "Waiting for recorded response"
+                  : "Send message"
+              }
+              disabled={locked || !message.trim() || Boolean(fileError)}
+            >
+              <Send size={18} aria-hidden="true" />
+            </button>
+          </div>
+          {contextNote && (
+            <p className="assistant-file-guidance">
+              Current editor context · inspect and edit before sending.
+            </p>
+          )}
+          {selectedFiles.some((file) => file.kind === "image") && (
+            <p className="assistant-file-guidance">
+              {imageCapability?.conversation === current?.id &&
+              imageCapability?.status === "verified"
+                ? "Image input is verified for this conversation’s recorded model."
+                : imageCapability?.conversation !== current?.id
+                  ? "Checking image support for this conversation’s recorded model…"
+                  : "Image input is not verified for this conversation. The server will reject unsupported image requests before calling the model."}
+            </p>
+          )}
+          {fileError && (
+            <p className="alert" role="alert">
+              {fileError}
+            </p>
+          )}
+        </fieldset>
+        <p
+          className="assistant-composer-note"
+          role={busy || active ? "status" : undefined}
+        >
+          {busy || active
+            ? "Waiting for the recorded response…"
+            : "Enter to send · Shift+Enter for a new line"}
+        </p>
+      </form>
       {recoveryTurn && current && (
         <AssistantRecovery
           key={`${current.id}:${recoveryTurn.id}`}

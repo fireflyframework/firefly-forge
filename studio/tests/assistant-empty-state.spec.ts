@@ -98,38 +98,30 @@ for (const width of [1440, 390]) {
         await page
           .getByRole("button", { name: "Open design assistant", exact: true })
           .click();
-      const start = page.getByRole("button", {
-        name: "Start conversation",
+      const message = page.getByLabel("Product design message", {
         exact: true,
       });
-      await expect(start).toBeVisible();
-      await expect(start).toBeEnabled();
+      await expect(message).toBeVisible();
+      await expect(message).toBeEnabled();
       await page
         .getByLabel("Task for next conversation", { exact: true })
         .selectOption("functions");
       expect(created).toBe(0);
       expect(sent).toBe(0);
-      await start.click();
-      await expect(start).toBeDisabled();
+      await message.fill("Describe the reservation journey");
+      const send = page.locator(".assistant-send");
+      await send.click();
+      await expect(send).toBeDisabled();
       await expect(
         page.getByRole("button", { name: "New conversation", exact: true }),
       ).toBeDisabled();
-      await start.evaluate((button: HTMLButtonElement) => button.click());
+      await page
+        .locator(".assistant-composer")
+        .evaluate((form: HTMLFormElement) => form.requestSubmit());
       expect(created).toBe(1);
       expect(sent).toBe(0);
       releaseCreation();
-      const message = page.getByLabel("Product design message", {
-        exact: true,
-      });
-      await expect(message).toBeVisible();
-      await expect(start).toHaveCount(0);
-      expect(sent).toBe(0);
-      await message.fill("Describe the reservation journey");
-      const send = page.getByRole("button", {
-        name: "Send design message",
-        exact: true,
-      });
-      await send.click();
+      await expect.poll(() => sent).toBe(1);
       if (outcome === "completed")
         await expect(
           page.getByText("Review the recorded reservation journey.", {
@@ -142,7 +134,9 @@ for (const width of [1440, 390]) {
         );
         await expect(message).toBeDisabled();
         await expect(send).toBeDisabled();
-        await page.getByText("History", { exact: true }).click();
+        await page
+          .getByRole("button", { name: "Conversation history", exact: true })
+          .click();
         await page
           .getByRole("button", { name: "Refresh record", exact: true })
           .click();

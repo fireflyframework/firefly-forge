@@ -583,8 +583,6 @@ export function AnalyticsWizard({
   const terminalDisable = current.revision === 32;
   return (
     <Wizard
-      pageFlow
-      minimumFieldHeight={160}
       className="analytics-wizard"
       steps={["Requirements", "Connection", "Review"]}
       active={step}

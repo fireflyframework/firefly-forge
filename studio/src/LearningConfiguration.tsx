@@ -227,7 +227,6 @@ function LearningAdministrator({ connection }: { connection: Connection }) {
           onStep={setStep}
           locked={busy || uncertain}
           className="learning-wizard"
-          minimumFieldHeight={120}
           title={
             [
               "What should a run learn from?",
