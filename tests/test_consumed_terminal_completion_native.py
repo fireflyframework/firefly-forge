@@ -52,13 +52,14 @@ def selected_ignored_native_source(request, monkeypatch):
 
 @pytest.mark.parametrize(
     "interrupt",
-    [False, True, "receipt_source_race", "unrequested_qa", "reconcile_held"],
+    [False, True, "receipt_source_race", "unrequested_qa", "reconcile_held", "reconcile_postcommit_drift"],
     ids=[
         "accepted_cold_readback",
         "uncertain_after_charge",
         "tracked_ignored_receipt_rollback",
         "unrequested_qa",
         "reconcile_held",
+        "reconcile_postcommit_drift",
     ],
 )
 async def test_native_consumed_terminal_same_attempt_acceptance_without_replay(
@@ -67,7 +68,8 @@ async def test_native_consumed_terminal_same_attempt_acceptance_without_replay(
     import firefly_forge.retained_verified_source as retained
 
     c = native_continuity
-    reconciled = interrupt == "reconcile_held"
+    reconciled = interrupt in {"reconcile_held", "reconcile_postcommit_drift"}
+    postcommit_drift = interrupt == "reconcile_postcommit_drift"
     uncertain = interrupt is True
     receipt_race = interrupt == "receipt_source_race"
     provider = c.engine.provider_factory("bridge")
@@ -354,6 +356,110 @@ async def test_native_consumed_terminal_same_attempt_acceptance_without_replay(
             assert c.store.execution_ownership_identity == owner_identity
             assert await c.store.get_run(c.run_id) == stopped_run
             assert await c.journal.entries(c.run_id) == stopped_entries
+            import inspect
+
+            import firefly_forge.configuration as configuration
+            import firefly_forge.consumed_terminal_reconciliations as reconciliation_module
+
+            workspace = c.engine.workspaces / c.run_id
+            for late in ("generation", "actor", "slot", "source", "index", "runtime", "profile", "policy"):
+                reviewed = await controller.reconciliation_candidate(c.run_id, action)
+                reconciliation = reconcile_input(reviewed)
+                native_check = c.store._assert_source_budget_ownership
+                direct_checks = 0
+                source_bytes = (workspace / "existing.py").read_bytes()
+                index_bytes = (workspace / ".git" / "index").read_bytes()
+                reader_tokens = []
+                with monkeypatch.context() as late_change:
+
+                    async def final_query_drift(
+                        cut,
+                        native_check=native_check,
+                        late=late,
+                        reader_tokens=reader_tokens,
+                        index_bytes=index_bytes,
+                        late_change=late_change,
+                    ):
+                        nonlocal direct_checks
+                        await native_check(cut)
+                        if inspect.currentframe().f_back.f_code.co_name != "source_budget_admission_unit":
+                            return
+                        direct_checks += 1
+                        if direct_checks != 2:
+                            return
+                        if late == "generation":
+                            late_change.setitem(
+                                configuration._write_generations, c.store.configuration._generation_key, object()
+                            )
+                        elif late == "actor":
+                            reader_tokens.append(CURRENT_PRINCIPAL.set(None))
+                        elif late == "slot":
+                            c.engine.active[c.run_id] = asyncio.get_running_loop().create_future()
+                        elif late == "source":
+                            (workspace / "existing.py").write_text("VALUE = 999\n")
+                        elif late == "index":
+                            (workspace / ".git" / "index").write_bytes(index_bytes + b"late")
+                        elif late == "runtime":
+                            late_change.setattr(reconciliation_module, "_runtime_material_digest", lambda: "f" * 64)
+                        elif late == "profile":
+                            late_change.setattr(
+                                reconciliation_module, "current_profile_seal", lambda: {"changed": True}
+                            )
+                        else:
+                            late_change.setattr(reconciliation_module, "_policy_material_digest", lambda: "f" * 64)
+
+                    late_change.setattr(c.store, "_assert_source_budget_ownership", final_query_drift)
+                    try:
+                        with pytest.raises((RuntimeError, ValueError, AccessDenied)):
+                            await controller.reconcile(c.run_id, action, reconciliation)
+                    finally:
+                        for reader_token in reversed(reader_tokens):
+                            CURRENT_PRINCIPAL.reset(reader_token)
+                        active = c.engine.active.pop(c.run_id, None)
+                        c.engine.active_projects.pop(c.run_id, None)
+                        if active is not None and active is not asyncio.current_task():
+                            active.cancel()
+                        if (workspace / "existing.py").read_bytes() != source_bytes:
+                            (workspace / "existing.py").write_bytes(source_bytes)
+                        if (workspace / ".git" / "index").read_bytes() != index_bytes:
+                            (workspace / ".git" / "index").write_bytes(index_bytes)
+                assert direct_checks == 2
+                assert await c.store.get_run(c.run_id) == stopped_run
+                assert await c.journal.entries(c.run_id) == stopped_entries
+            reconciliation = reconcile_input(await controller.reconciliation_candidate(c.run_id, action))
+            if postcommit_drift:
+                from contextlib import asynccontextmanager
+
+                native_unit = c.store.source_budget_admission_unit
+
+                @asynccontextmanager
+                async def drift_after_commit():
+                    async with native_unit() as session:
+                        yield session
+                    configuration._write_generations[c.store.configuration._generation_key] = object()
+
+                old_generation = c.store.configuration.write_generation
+                try:
+                    with monkeypatch.context() as committed_drift:
+                        committed_drift.setattr(c.store, "source_budget_admission_unit", drift_after_commit)
+                        with pytest.raises(AccessDenied):
+                            await controller.reconcile(c.run_id, action, reconciliation)
+                finally:
+                    configuration._write_generations[c.store.configuration._generation_key] = old_generation
+                held = await c.store.get_run(c.run_id)
+                retained = await c.journal.entries(c.run_id)
+                assert held == stopped_run
+                assert retained[: len(stopped_entries)] == stopped_entries
+                assert [e["kind"] for e in retained[len(stopped_entries) :]] == ["consumed_terminal_reconciliation"]
+                assert held["usage"] == failed["usage"] and held["attempt"] == task_attempt
+                assert len(fresh_posts) == len(fresh_consumes) == 2
+                saved = await controller.reconciliation_status(c.run_id, action)
+                assert saved["settlement"]["state"] == "claimed"
+                assert await controller.reconcile(c.run_id, action, reconciliation) == saved
+                assert await c.store.get_run(c.run_id) == held
+                assert await c.journal.entries(c.run_id) == retained
+                assert c.run_id not in c.engine.active
+                return
             accepted = await client.post(route + "/reconcile", json=reconciliation.model_dump(mode="json"))
             assert accepted.status_code == 200, accepted.json()
             assert accepted.json()["settlement"]["state"] == "accepted"

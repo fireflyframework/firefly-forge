@@ -32,6 +32,11 @@ Data = dict[str, Any]
 
 def policy_digest() -> str:
     _outside_unit()
+    return _policy_material_digest()
+
+
+def _policy_material_digest() -> str:
+    """Bounded local policy fingerprint for a prepared native commit fence."""
     root = Path(__file__).parent
     return digest(
         {

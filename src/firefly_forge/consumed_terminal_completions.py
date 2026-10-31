@@ -9,6 +9,7 @@ import os
 import re
 import stat
 import uuid
+from asyncio import Task
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 from importlib.metadata import version
@@ -601,6 +602,10 @@ class CapturedConsumedSnapshot:
 @dataclass(frozen=True)
 class PreparedConsumedReconciliationAuthority:
     record: Data
+    ownership: object
+    generation: object
+    reader: Any
+    slot: Task[Any]
 
     @property
     def candidate(self) -> ConsumedTerminalReconciliationCandidateV1:
@@ -632,6 +637,8 @@ class ConsumedTerminalExecution(FinalOutcomeExecution):
         *,
         reconciliation: PreparedConsumedReconciliationAuthority | None = None,
     ) -> None:
+        if reconciliation is not None and not isinstance(reconciliation, PreparedConsumedReconciliationAuthority):
+            raise ValueError("Consumed terminal reconciliation requires its typed native-record authority")
         self.service, self.witness, self.claim = service, witness, claim
         self.run_id = witness["run_id"]
         self.request_id = witness["payload"]["request_id"]
@@ -641,17 +648,25 @@ class ConsumedTerminalExecution(FinalOutcomeExecution):
         self.binding = checkpoint_payload(self.record["payload"]).invocation
         self.workspace = Path(self.binding.workspace["path"])
         self.actor = copy.deepcopy(witness["payload"]["actor"])
-        self.reader = CURRENT_PRINCIPAL.get()
-        self.ownership = service.store.execution_ownership_token
-        self.generation = service.store.configuration.write_generation
+        self.reader = reconciliation.reader if reconciliation else CURRENT_PRINCIPAL.get()
+        self.ownership = reconciliation.ownership if reconciliation else service.store.execution_ownership_token
+        self.generation = reconciliation.generation if reconciliation else service.store.configuration.write_generation
         self.prefix = copy.deepcopy(entries)
         self._catalog: PreparedVerificationSource | None = None
         self._snapshot: CapturedConsumedSnapshot | None = None
         self._snapshot_started = False
-        if reconciliation is not None and not isinstance(reconciliation, PreparedConsumedReconciliationAuthority):
-            raise ValueError("Consumed terminal reconciliation requires its typed native-record authority")
-        self.reconciliation = copy.deepcopy(reconciliation)
-        self._slot = service.engine.active.get(self.run_id) if reconciliation else None
+        self.reconciliation = (
+            PreparedConsumedReconciliationAuthority(
+                copy.deepcopy(reconciliation.record),
+                reconciliation.ownership,
+                reconciliation.generation,
+                reconciliation.reader,
+                reconciliation.slot,
+            )
+            if reconciliation
+            else None
+        )
+        self._slot = reconciliation.slot if reconciliation else None
         self._run_cut = copy.deepcopy(reconciliation.run if reconciliation else witness["payload"]["run"])
         self._activity = {k: copy.deepcopy(v) for k, v in self._run_cut.items() if k == "events"}
         self._runner_attestation: Data | None = None
