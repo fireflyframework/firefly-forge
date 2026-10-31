@@ -193,6 +193,7 @@ async def test_same_attempt_is_claimed_once_and_effective_connection_is_original
     await c.selection_service.request(c.run_id, uuid4().hex, readmission_request(candidate))
     prepared = await prepare_current_mode(c.journal, c.run_id)
     engine = object.__new__(Engine)
+    engine.stage_activity = None
     engine.store, engine.journal, engine.assert_ownership = c.store, c.journal, c.store.assert_ownership
     with mode_adoption_scope(prepared):
         settings = execution_settings(c.store.configuration, c.store.run.data)
@@ -261,6 +262,7 @@ async def test_later_factory_feedback_adopts_executes_and_finishes_its_own_verif
     await c.selection_service.request(c.run_id, uuid4().hex, readmission_request(candidate))
     prepared = await prepare_current_mode(c.journal, c.run_id)
     engine = object.__new__(Engine)
+    engine.stage_activity = None
     engine.store, engine.journal, engine.assert_ownership = c.store, c.journal, c.store.assert_ownership
     with mode_adoption_scope(prepared):
         await engine._begin_task(c.run_id, "implement", c.workspace, {})
@@ -395,6 +397,7 @@ async def test_configuration_reads_stay_outside_native_admission_and_claim_units
     await c.selection_service.request(c.run_id, uuid4().hex, readmission_request(candidate))
     prepared = await prepare_current_mode(c.journal, c.run_id)
     engine = object.__new__(Engine)
+    engine.stage_activity = None
     engine.store, engine.journal, engine.assert_ownership = c.store, c.journal, c.store.assert_ownership
     with mode_adoption_scope(prepared):
         result = await engine._begin_task(c.run_id, "implement", c.workspace, {})

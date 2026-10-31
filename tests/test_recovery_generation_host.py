@@ -35,6 +35,7 @@ async def recovery_case(mode_case, monkeypatch):
     await c.service.request(c.run_id, uuid4().hex, request(candidate))
     prepared = await prepare_current_mode(c.journal, c.run_id)
     engine = object.__new__(Engine)
+    engine.stage_activity = None
     engine.store, engine.journal, engine.assert_ownership = c.store, c.journal, c.store.assert_ownership
     with mode_adoption_scope(prepared):
         begun = await engine._begin_task(c.run_id, "implement", c.workspace, {})
