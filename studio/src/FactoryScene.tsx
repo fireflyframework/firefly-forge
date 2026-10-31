@@ -394,12 +394,14 @@ export function FactoryScene(props: FactorySceneProps) {
         const delta = Math.min((time - lastTime) / 1000, 0.05);
         lastTime = time;
         const aggregate = current.current.aggregate;
-        const active = aggregateActiveStations(current.current.stations, {
+        const gates = {
           hidden: window.document.hidden,
           offscreen,
           suspended: current.current.suspended,
           reduced: motionQuery.matches,
-        });
+        };
+        motion.update(current.current.stations, gates);
+        const active = aggregateActiveStations(current.current.stations, gates);
         const from = motion.x;
         if (!aggregate) motion.advance(delta);
         carrier.position.x = motion.x;

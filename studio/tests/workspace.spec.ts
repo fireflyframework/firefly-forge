@@ -3,6 +3,10 @@ import { expect, test } from "@playwright/test";
 import { navigate, expectAuthenticated } from "./navigation";
 import { mockIdentity } from "./auth-fixture";
 import { retainedRunCreation } from "./run-creation-cancellation-fixture";
+import {
+  mockFactoryDashboard,
+  openFactoryRun,
+} from "./factory-dashboard-fixture";
 test("verified run exposes diff, checks, artifact download and explicit publication", async ({
   page,
 }) => {
@@ -27,6 +31,8 @@ test("verified run exposes diff, checks, artifact download and explicit publicat
     pr_url: "",
   };
   await page.route("**/api/v1/**", async (route) => {
+    if (await mockFactoryDashboard(route, { projects: [], runs: [run] }))
+      return;
     if (await mockIdentity(route)) return;
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith("/artifacts/changes.zip")) {
@@ -67,7 +73,7 @@ test("verified run exposes diff, checks, artifact download and explicit publicat
   await page.getByRole("button", { name: "Save connection" }).click();
   await expectAuthenticated(page);
   await page.getByRole("button", { name: "Factory", exact: true }).click();
-  await page.getByRole("button", { name: /Reservation API/ }).click();
+  await openFactoryRun(page, run.brief);
   await expect(
     page.getByRole("button", { name: "Retry run" }),
   ).not.toBeVisible();
