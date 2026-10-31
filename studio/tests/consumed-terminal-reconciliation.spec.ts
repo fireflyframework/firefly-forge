@@ -253,6 +253,60 @@ async function submit(page: Page) {
     .getByRole("button", { name: "Reconcile saved result", exact: true })
     .click();
 }
+test("explicit reconciliation reads and submissions focus committed evidence before a frame", async ({
+  page,
+}) => {
+  const state = await setup(page),
+    card = panel(page);
+  await page.clock.install({ time: new Date("2026-10-31T12:00:00Z") });
+  await page.clock.pauseAt(new Date("2026-10-31T12:00:01Z"));
+  async function earlyFrame() {
+    await page.evaluate(() => {
+      const original = window.requestAnimationFrame;
+      window.requestAnimationFrame = (callback) => {
+        window.requestAnimationFrame = original;
+        callback(performance.now());
+        return 0;
+      };
+    });
+  }
+  await earlyFrame();
+  await inspect(page);
+  await expect(
+    card.getByRole("heading", {
+      name: "Review the original action",
+      exact: true,
+    }),
+  ).toBeFocused();
+  const acknowledgement = card.getByRole("checkbox");
+  await acknowledgement.check();
+  await acknowledgement.focus();
+  await page.clock.runFor(3100);
+  await expect(acknowledgement).toBeFocused();
+  await earlyFrame();
+  await card
+    .getByRole("button", { name: "Reconcile saved result", exact: true })
+    .click();
+  await expect(
+    card.getByRole("heading", { name: "Saved result accepted", exact: true }),
+  ).toBeFocused();
+  const read = card.getByRole("button", {
+    name: "Read reconciliation receipt",
+    exact: true,
+  });
+  await read.focus();
+  await page.clock.runFor(3100);
+  await expect(read).toBeFocused();
+  expect(state.reads).toBe(1);
+  state.readStatus = 200;
+  await earlyFrame();
+  await read.click();
+  await expect(
+    card.getByRole("heading", { name: "Saved result accepted", exact: true }),
+  ).toBeFocused();
+  expect(state.reads).toBe(2);
+  expect(state.posts).toBe(1);
+});
 for (const width of [1440, 390])
   for (const theme of ["light", "dark"] as const) {
     test(`claimed result is keyboard reachable and contained at ${width}px ${theme}`, async ({

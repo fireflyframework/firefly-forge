@@ -72,7 +72,8 @@ export function ConsumedTerminalReconciliation({
     [error, setError] = useState("");
   const pending = useRef<AbortController | null>(null),
     live = useRef(true),
-    heading = useRef<HTMLHeadingElement | null>(null);
+    heading = useRef<HTMLHeadingElement | null>(null),
+    focusRequested = useRef(false);
   const allowed =
     session.global_admin &&
     !!context.request &&
@@ -84,8 +85,15 @@ export function ConsumedTerminalReconciliation({
       pending.current?.abort();
     };
   }, []);
+  useEffect(() => {
+    if (!busy && (candidate || receipt) && focusRequested.current) {
+      heading.current?.focus();
+      focusRequested.current = false;
+    }
+  }, [busy, candidate, receipt]);
   function failure(cause: unknown, submitted: boolean) {
     if (!live.current) return;
+    focusRequested.current = false;
     setCandidate(null);
     setReceipt(null);
     setAcknowledged(false);
@@ -113,6 +121,7 @@ export function ConsumedTerminalReconciliation({
     if (pending.current) return null;
     const controller = new AbortController();
     pending.current = controller;
+    focusRequested.current = false;
     setBusy(true);
     setError("");
     setAcknowledged(false);
@@ -158,7 +167,7 @@ export function ConsumedTerminalReconciliation({
         setCandidate(found);
         setReceipt(null);
       }
-      requestAnimationFrame(() => heading.current?.focus());
+      focusRequested.current = true;
     } catch (cause) {
       if (!controller.signal.aborted) failure(cause, false);
     } finally {
@@ -192,7 +201,7 @@ export function ConsumedTerminalReconciliation({
       if (!live.current || controller.signal.aborted) return;
       setReceipt(result);
       setCandidate(null);
-      requestAnimationFrame(() => heading.current?.focus());
+      focusRequested.current = true;
     } catch (cause) {
       // An inaccessible or changed browser marker must also prevent another POST.
       if (!controller.signal.aborted) {

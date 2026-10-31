@@ -276,9 +276,7 @@ async def test_native_consumed_terminal_same_attempt_acceptance_without_replay(
         context = SimpleNamespace(container=container, get_bean=container.resolve)
         app = Starlette(routes=ControllerRegistrar().collect_routes(context))
         route = f"/api/v1/runs/{c.run_id}/worker-completion-settlements/{action}"
-        async with httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=app), base_url="http://fixture.invalid"
-        ) as client:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://127.0.0.1") as client:
             reviewed = await client.get(route + "/reconciliation-candidate")
             assert reviewed.status_code == 200, reviewed.json()
             reconciliation = reconcile_input(reviewed.json())
