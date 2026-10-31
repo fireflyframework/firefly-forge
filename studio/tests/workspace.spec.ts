@@ -1,6 +1,6 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { expect, test } from "@playwright/test";
-import { navigate } from "./navigation";
+import { navigate, expectAuthenticated } from "./navigation";
 import { mockIdentity } from "./auth-fixture";
 import { retainedRunCreation } from "./run-creation-cancellation-fixture";
 test("verified run exposes diff, checks, artifact download and explicit publication", async ({
@@ -65,9 +65,7 @@ test("verified run exposes diff, checks, artifact download and explicit publicat
     .getByLabel("API token", { exact: true })
     .fill("entered-operator-token-for-test");
   await page.getByRole("button", { name: "Save connection" }).click();
-  await expect(
-    page.getByRole("button", { name: "API connected" }),
-  ).toBeVisible();
+  await expectAuthenticated(page);
   await page.getByRole("button", { name: "Factory", exact: true }).click();
   await page.getByRole("button", { name: /Reservation API/ }).click();
   await expect(
@@ -174,9 +172,7 @@ test("connect, register a generic repository, create a local run, cancel and ret
     .getByLabel("API token", { exact: true })
     .fill("entered-operator-token-for-test");
   await page.getByRole("button", { name: "Save connection" }).click();
-  await expect(
-    page.getByRole("button", { name: "API connected" }),
-  ).toBeVisible();
+  await expectAuthenticated(page);
   await page
     .getByRole("button", { name: "Repositories", exact: false })
     .first()

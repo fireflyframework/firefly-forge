@@ -1,5 +1,6 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { version as studioVersion } from "../package.json";
+import { FoundationFooter } from "./FoundationFooter";
 import { repositoryLabels } from "./RepositoryLabels";
 import {
   cloneElement,
@@ -20,11 +21,12 @@ import {
   ArrowLeft,
   ArrowRight,
   Box,
+  Bot,
   BookOpen,
   Check,
-  CheckCircle2,
   ChevronRight,
   Circle,
+  Database,
   ExternalLink,
   FileDiff,
   FileText,
@@ -109,13 +111,15 @@ import {
 } from "./RunCreationData";
 import {
   IdentityMenu,
+  IdentitySummary,
+  identityLabel,
   SignIn,
   useIdentity,
   type IdentitySession,
 } from "./Identity";
 import { ProjectAccess } from "./ProjectAccess";
 import { UserAdministration } from "./UserAdministration";
-import { Administration } from "./Administration";
+import { Administration, requiresFactoryAdministrator } from "./Administration";
 import { Analytics } from "./Analytics";
 import { LearningConfiguration } from "./LearningConfiguration";
 import { SearchConfiguration } from "./SearchConfiguration";
@@ -277,6 +281,7 @@ function Empty({
 export default function App() {
   const { appearance, setAppearance, theme } = useAppearance();
   const [page, setPage] = useState<Page>("overview");
+  const [accountRequest, setAccountRequest] = useState(0);
   const [productProject, setProductProject] = useState<ProjectSnapshot | null>(
     null,
   );
@@ -335,19 +340,21 @@ export default function App() {
   const [floorContext, setFloorContext] = useState<{
     scope: string | null;
     selection: FactorySelection;
-  }>({ scope: null, selection: { project: "", view: "floor", run: "" } });
+  }>({
+    scope: null,
+    selection: { kind: "factory", project: "", view: "floor", run: "" },
+  });
   const floorSelection: FactorySelection =
     floorContext.scope === floorScope
       ? floorContext.selection
-      : { project: "", view: "floor", run: "" };
-  const floorProject = floorSelection.project;
+      : { kind: "factory", project: "", view: "floor", run: "" };
   useEffect(() => {
     setFloorContext((current) =>
       current.scope === floorScope
         ? current
         : {
             scope: floorScope,
-            selection: { project: "", view: "floor", run: "" },
+            selection: { kind: "factory", project: "", view: "floor", run: "" },
           },
     );
   }, [floorScope]);
@@ -465,8 +472,12 @@ export default function App() {
           profileResult,
           healthResult,
         ] = await Promise.all([
-          request<Repository[]>(connection, "/repositories", { signal }),
-          request<ForgeRun[]>(connection, "/runs", { signal }),
+          page === "overview"
+            ? Promise.resolve([])
+            : request<Repository[]>(connection, "/repositories", { signal }),
+          page === "overview"
+            ? Promise.resolve([])
+            : request<ForgeRun[]>(connection, "/runs", { signal }),
           request<unknown>(connection, "/providers", { signal }).catch(
             (cause) => {
               if (cause instanceof ApiError && cause.status === 403)
@@ -494,7 +505,7 @@ export default function App() {
         if (current()) setLoading(false);
       }
     },
-    [connection, readScope],
+    [connection, readScope, page],
   );
   useEffect(() => {
     const controller = new AbortController();
@@ -503,6 +514,7 @@ export default function App() {
   }, [refresh]);
   useEffect(() => {
     if (
+      page === "overview" ||
       !connected ||
       !runs.some(
         (run) =>
@@ -516,7 +528,7 @@ export default function App() {
       void refresh();
     }, 5000);
     return () => window.clearInterval(timer);
-  }, [connected, runs, refresh]);
+  }, [connected, runs, refresh, page]);
   const linkedActor = identity.session?.user.id ?? null;
   useEffect(() => {
     if (identity.loading || !linkedActor || !connection.authenticated) {
@@ -585,10 +597,10 @@ export default function App() {
     connection,
     setSelected,
   ]);
-  async function openRun(run: ForgeRun) {
+  async function openRun(run: ForgeRun | { id: string }) {
     if (!readScope || currentScope.current !== readScope) return;
     setPage("run");
-    setSelected(run);
+    setSelected("status" in run ? run : null);
     setDetailError("");
     setBusy(true);
     try {
@@ -649,7 +661,6 @@ export default function App() {
   }
   const repositoryName = (id: string) =>
     repositories.find((repository) => repository.id === id)?.name ?? id;
-  const projectRuns = runs.filter((run) => run.repository_id === floorProject);
   const nav = [
     { page: "overview" as const, icon: Layers3, label: "Factory" },
     { page: "new" as const, icon: Hammer, label: "Start a run" },
@@ -659,7 +670,19 @@ export default function App() {
     { page: "delivery" as const, icon: Box, label: "Deployment" },
     { page: "operations" as const, icon: Activity, label: "Applications" },
     { page: "knowledge" as const, icon: BookOpen, label: "Knowledge" },
-    { page: "admin" as const, icon: Settings2, label: "Administration" },
+    ...(identity.session
+      ? [
+          { page: "workflow" as const, icon: Bot, label: "Agents & skills" },
+          {
+            page: "analytics" as const,
+            icon: Database,
+            label: "Structured analytics",
+          },
+        ]
+      : []),
+    ...(identity.session?.global_admin
+      ? [{ page: "admin" as const, icon: Settings2, label: "Administration" }]
+      : []),
   ];
   const administrationLabels: Partial<Record<Page, string>> = {
     settings: "Connections",
@@ -674,18 +697,23 @@ export default function App() {
     "external-tools": "External tools",
     "browser-connections": "Connected accounts",
   };
-  const navigationPage = administrationLabels[page]
-    ? "admin"
-    : page === "run"
-      ? "overview"
-      : page;
+  const navigationPage = nav.some((item) => item.page === page)
+    ? page
+    : page === "access"
+      ? "projects"
+      : administrationLabels[page]
+        ? "admin"
+        : page === "run"
+          ? "overview"
+          : page;
   const pageLabel =
     page === "run"
       ? "Run details"
       : (administrationLabels[page] ??
         nav.find((item) => item.page === page)?.label);
+  const restrictedPage = requiresFactoryAdministrator(page, identity.session);
   return (
-    <div className="app">
+    <div className="app" aria-busy={identity.loading}>
       <a className="skip-link" href="#main">
         Skip to content
       </a>
@@ -711,6 +739,15 @@ export default function App() {
           }))}
           current={navigationPage}
           onNavigate={(id) => navigate(id as Page)}
+          account={
+            identity.session
+              ? {
+                  label: `Signed in as ${identityLabel(identity.session)}`,
+                  content: <IdentitySummary session={identity.session} />,
+                  onOpen: () => setAccountRequest((value) => value + 1),
+                }
+              : undefined
+          }
         />
         <div className="workspace">
           <span className="workspace-mark">
@@ -728,7 +765,7 @@ export default function App() {
               onClick={() => navigate(item.page)}
               aria-current={navigationPage === item.page ? "page" : undefined}
             >
-              <item.icon size={19} />
+              <item.icon size={20} />
               <span>{item.label}</span>
               {item.page === "repositories" && (
                 <small>{repositories.length}</small>
@@ -737,14 +774,27 @@ export default function App() {
           ))}
         </nav>
         <div className="sidebar-bottom">
-          <a
-            href="https://github.com/fireflyframework/firefly-forge"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Source on GitHub
-            <ExternalLink size={13} />
-          </a>
+          {identity.session && (
+            <IdentityMenu
+              connection={connection}
+              session={identity.session}
+              appearance={appearance}
+              onAppearance={setAppearance}
+              openRequest={accountRequest}
+              onAccess={() => navigate("access")}
+              onSignedOut={() => {
+                productDrafts.clear();
+                runDrafts.clear();
+                identity.forgetSession();
+                restoredGoal.current = false;
+                identity.refresh();
+                setConnected(false);
+                setNotice("");
+                setAccountRequest(0);
+                setPage("overview");
+              }}
+            />
+          )}
         </div>
       </aside>
       <div className="workspace-main">
@@ -777,661 +827,542 @@ export default function App() {
                 <option value="dark">Dark</option>
               </select>
             </label>
-            <button
-              className={"connection-indicator " + (connected ? "online" : "")}
-              aria-label={connected ? "API connected" : "Connect your API"}
-              onClick={() => navigate("settings")}
-            >
-              <span />
-              <b className="connection-desktop-label">
-                {connected ? "API connected" : "Connect your API"}
-              </b>
-              <b className="connection-mobile-label" aria-hidden="true">
-                {connected ? "Connected" : "Connect API"}
-              </b>
-              <Settings2 size={14} />
-            </button>
-            {identity.session && (
-              <IdentityMenu
-                connection={connection}
-                session={identity.session}
-                onAccess={() => navigate("access")}
-                onSignedOut={() => {
-                  productDrafts.clear();
-                  runDrafts.clear();
-                  identity.forgetSession();
-                  restoredGoal.current = false;
-                  identity.refresh();
-                  setConnected(false);
-                  setNotice("");
-                }}
-              />
-            )}
           </div>
         </header>
         <main id="main" tabIndex={-1}>
-          {connected &&
-            executionHealth?.execution_ready === false &&
-            !(
-              executionHealth.service_role === "api" &&
-              executionHealth.status === "ok" &&
-              executionHealth.admission_ready === true &&
-              executionHealth.execution?.local_enabled === false &&
-              !executionHealth.detail
-            ) && (
-              <div className="alert" role="alert">
-                {executionHealth.detail ||
-                  "Execution is unavailable. Inspect interrupted work before restarting the factory."}
-              </div>
-            )}
-          {error && (
-            <div className="alert" role="alert">
-              <Unplug size={18} />
-              <span>{error}</span>
-              <button onClick={() => void refresh()}>Try again</button>
-            </div>
-          )}
-          {notice && currentData && (
-            <div className="notice" role="status">
-              <Check size={17} />
-              {notice}
-              <button
-                aria-label="Dismiss notification"
-                onClick={() => setNotice("")}
-              >
-                <X size={16} />
-              </button>
-            </div>
-          )}
-          {page === "overview" && !connected && (
-            <FactoryWelcome
-              theme={theme}
-              onConnect={() => {
-                setSetupGoal("overview");
-                navigate("settings");
-              }}
-              onProduct={() => {
-                setSetupGoal("product");
-                navigate("settings");
-              }}
-            />
-          )}
-          {page === "overview" && connected && (
+          {restrictedPage ? (
+            <section className="panel" aria-label="Factory administration">
+              <h1>Factory administration</h1>
+              <p>
+                Sign in with a factory administrator account to manage the
+                factory.
+              </p>
+              <p>
+                Your project access and personal account preferences remain
+                available.
+              </p>
+            </section>
+          ) : (
             <>
-              <div className="page-heading factory-overview-heading">
-                <div>
-                  <h1>Your factory.</h1>
-                </div>
-                <button className="primary" onClick={() => navigate("product")}>
-                  <Plus size={17} />
-                  New product
-                </button>
-              </div>
-              <FactoryFloor
-                key={floorScope}
-                connection={connection}
-                connected={connected}
-                repositories={repositories}
-                runs={runs}
-                theme={theme}
-                onOpen={(run) => void openRun(run)}
-                onCreate={() => startStandalone(floorProject)}
-                selection={floorSelection}
-                onSelectionChange={selectFloor}
-              />
-              <div className="metrics">
-                <div>
-                  <span>Repositories</span>
-                  <strong>
-                    {repositories.length.toString().padStart(2, "0")}
-                  </strong>
-                  <FolderGit2 size={20} />
-                </div>
-                <div>
-                  <span>Factory active runs</span>
-                  <strong>
-                    {runs
-                      .filter((run) => working(run.status))
-                      .length.toString()
-                      .padStart(2, "0")}
-                  </strong>
-                  <Activity size={20} />
-                </div>
-                <div>
-                  <span>Factory completed runs</span>
-                  <strong>
-                    {runs
-                      .filter((run) =>
-                        ["completed", "succeeded"].includes(run.status),
-                      )
-                      .length.toString()
-                      .padStart(2, "0")}
-                  </strong>
-                  <CheckCircle2 size={20} />
-                </div>
-              </div>
-              <section className="runs-section">
-                <div className="section-heading">
-                  <h2>
-                    Project runs <span>{projectRuns.length}</span>
-                  </h2>
-                  <button
-                    className="quiet"
-                    onClick={() => void refresh()}
-                    disabled={!connected || loading}
-                  >
-                    <RefreshCw size={15} className={loading ? "spin" : ""} />
-                    Refresh
-                  </button>
-                </div>
-                {loading && !projectRuns.length ? (
-                  <Loading />
-                ) : projectRuns.length ? (
-                  <div className="run-list">
-                    {projectRuns.map((run) => (
-                      <button
-                        className="run-row"
-                        key={run.id}
-                        onClick={() => void openRun(run)}
-                      >
-                        <span className="run-icon">
-                          <GitBranch size={19} />
-                        </span>
-                        <span className="run-description">
-                          <strong>
-                            {run.brief?.split("\n")[0] ||
-                              "Software generation run"}
-                          </strong>
-                          <small>
-                            {repositoryName(run.repository_id)} ·{" "}
-                            {run.agent || "Agent"} · {run.backend || "Stack"}
-                          </small>
-                        </span>
-                        <Badge status={run.status} />
-                        <time>{date(run.created_at)}</time>
-                        <ChevronRight size={17} />
-                      </button>
-                    ))}
+              {connected &&
+                executionHealth?.execution_ready === false &&
+                !(
+                  executionHealth.service_role === "api" &&
+                  executionHealth.status === "ok" &&
+                  executionHealth.admission_ready === true &&
+                  executionHealth.execution?.local_enabled === false &&
+                  !executionHealth.detail
+                ) && (
+                  <div className="alert" role="alert">
+                    {executionHealth.detail ||
+                      "Execution is unavailable. Inspect interrupted work before restarting the factory."}
                   </div>
-                ) : (
-                  <Empty
-                    title={
-                      connected
-                        ? "Ready for your first run"
-                        : "Bring your workspace online"
-                    }
-                    body={
-                      connected
-                        ? "Start with a brief and a repository. The complete run history will appear here."
-                        : "Connect to your forge API to see repositories, provider readiness and real run history."
-                    }
-                    action={
-                      <button
-                        className="secondary"
-                        onClick={() => navigate(connected ? "new" : "settings")}
-                      >
-                        {connected ? "Create a product" : "Connect your API"}
-                        <ArrowRight size={15} />
-                      </button>
-                    }
-                  />
                 )}
-              </section>
-            </>
-          )}
-          {page === "projects" && (
-            <Projects
-              session={identity.session}
-              connection={connection}
-              connected={connected}
-              repositories={repositories}
-              onOpen={(run) => void openRun(run)}
-              onProduct={(id, project) => {
-                setRunProject(id);
-                navigate("product");
-                setProductProject(project);
-              }}
-              onStart={(context) => {
-                setRunProject(context.component.repository_id);
-                navigate("new");
-                setRunComponent(context);
-              }}
-            />
-          )}
-          {page === "product" && (
-            <ProductDefinition
-              key={productDrafts.id}
-              drafts={productDrafts}
-              onRepositoryChange={setRunProject}
-              logicalProject={productProject}
-              onConfigure={() => {
-                navigate("settings");
-                setSetupStep(1);
-              }}
-              connection={connection}
-              connected={connected}
-              repositories={repositories}
-              initialRepository={runProject}
-              onStart={startStandalone}
-            />
-          )}
-          {page === "knowledge" && (
-            <KnowledgeExplorer
-              session={identity.session}
-              onConfigure={() => {
-                navigate("settings");
-                setSetupStep(3);
-              }}
-              connection={connection}
-              connected={connected}
-              repositories={repositories}
-            />
-          )}
-          {page === "collaboration" && (
-            <Collaboration
-              onConfigure={() => {
-                navigate("settings");
-                setSetupStep(2);
-              }}
-              connection={connection}
-              connected={connected}
-              repositories={repositories}
-              onOpen={(run) => void openRun(run)}
-            />
-          )}
-          {page === "new" && (
-            <NewProduct
-              key={
-                `${runDrafts.id}/` +
-                (runComponent
-                  ? `${runComponent.project.id}/${runComponent.project.revision}/${runComponent.component.id}`
-                  : `standalone/${runProject}`)
-              }
-              drafts={runDrafts}
-              initialComponent={runComponent}
-              onStandalone={() => setRunComponent(null)}
-              initialRepository={runProject}
-              repositories={repositories}
-              profiles={profiles}
-              connected={connected}
-              connection={connection}
-              onRepository={() => navigate("repositories")}
-              onConnection={() => navigate("settings")}
-              onCreated={(run, notice) => {
-                setNotice(notice);
-                void refresh();
-                void openRun(run);
-              }}
-            />
-          )}
-          {page === "repositories" && (
-            <>
-              <div className="page-heading">
-                <div>
-                  <h1>Your source, connected.</h1>
-                  <p>
-                    Register a Git repository to give every run a clear starting
-                    point.
-                  </p>
+              {error && (
+                <div className="alert" role="alert">
+                  <Unplug size={18} />
+                  <span>{error}</span>
+                  <button onClick={() => void refresh()}>Try again</button>
                 </div>
-                <div className="integration-actions">
+              )}
+              {notice && currentData && (
+                <div className="notice" role="status">
+                  <Check size={17} />
+                  {notice}
                   <button
-                    className="primary"
-                    onClick={() => {
-                      navigate("settings");
-                      setSetupStep(2);
-                    }}
+                    aria-label="Dismiss notification"
+                    onClick={() => setNotice("")}
                   >
-                    Connect applications
-                    <ArrowRight size={17} />
-                  </button>
-                  <button
-                    className="secondary"
-                    onClick={() => setDialog(true)}
-                    disabled={!connected}
-                  >
-                    <Plus size={17} />
-                    Add repository
+                    <X size={16} />
                   </button>
                 </div>
-              </div>
-              <div className="repository-list">
-                {repositories.length ? (
-                  repositories.map((repository) => (
-                    <article className="repository" key={repository.id}>
-                      <span className="repository-icon">
-                        <FolderGit2 size={24} />
-                      </span>
-                      <div>
-                        <h2>{repository.name}</h2>
-                        <p>{repository.url}</p>
-                        <div className="repo-meta">
-                          <span>{human(repository.provider)}</span>
-                          <span>
-                            <GitBranch size={13} />
-                            {repository.default_branch}
-                          </span>
-                        </div>
-                      </div>
-                      <button
-                        className="quiet"
-                        onClick={() => startStandalone(repository.id)}
-                      >
-                        Start a run
-                        <ArrowRight size={15} />
-                      </button>
-                    </article>
-                  ))
-                ) : (
-                  <Empty
-                    title="No repositories registered"
-                    body={
-                      connected
-                        ? "Grant repository access through your GitHub, GitLab or Bitbucket application. Local and generic Git sources can be added separately."
-                        : "Connect your API first, then register a repository."
-                    }
-                    action={
-                      <button
-                        className="secondary"
-                        onClick={() =>
-                          connected ? setDialog(true) : navigate("settings")
-                        }
-                      >
-                        {connected ? "Add repository" : "Connect API"}
-                        <Plus size={15} />
-                      </button>
-                    }
-                  />
-                )}
-              </div>
-              <div className="inline-note">
-                <ShieldCheck size={17} />
-                <p>
-                  Repository access stays on the server. The factory creates an
-                  isolated branch and workspace for each run.
-                </p>
-              </div>
-            </>
-          )}
-          {page === "settings" && (
-            <Connections
-              current={connection}
-              canConfigure={!!identity.session?.global_admin}
-              session={identity.session}
-              connected={connected}
-              providers={providers}
-              loading={loading}
-              onUpdated={() => void refresh()}
-              initialStep={setupStep}
-              repositories={repositories}
-              onDone={() => navigate(setupGoal)}
-              doneLabel={
-                setupGoal === "product"
-                  ? "Open product definition"
-                  : "Open production floor"
-              }
-              signin={
-                <SignIn
-                  connection={connection}
-                  configuration={identity.configuration}
-                  loading={identity.loading}
-                  configurationError={identity.error}
-                  pendingGoal={setupGoal}
-                  onRefresh={identity.refresh}
-                  onReady={identity.refresh}
-                  onAddress={(base) => {
-                    setConnection({ base, token: "", authenticated: false });
-                    setConnected(false);
+              )}
+              {page === "overview" && !connected && (
+                <FactoryWelcome
+                  theme={theme}
+                  onConnect={() => {
+                    setSetupGoal("overview");
+                    navigate("settings");
+                  }}
+                  onProduct={() => {
+                    setSetupGoal("product");
+                    navigate("settings");
                   }}
                 />
-              }
-            />
-          )}
-          {page === "admin" && (
-            <Administration session={identity.session} onNavigate={navigate} />
-          )}
-          {page === "users" && (
-            <UserAdministration
-              connection={connection}
-              session={identity.session}
-              onConfigure={() => navigate("settings")}
-              onAssign={(id) => {
-                setAccessUser(id);
-                navigate("access");
-              }}
-            />
-          )}
-          {page === "search" && (
-            <SearchConfiguration
-              connection={connection}
-              session={identity.session}
-            />
-          )}
-          {page === "runners" && (
-            <RunnerSetup
-              connection={connection}
-              session={identity.session}
-              repositories={repositories}
-              onAgents={() => navigate("workflow")}
-            />
-          )}
-          {page === "learning" && (
-            <LearningConfiguration
-              connection={connection}
-              session={identity.session}
-            />
-          )}
-          {page === "analytics" && (
-            <Analytics connection={connection} session={identity.session} />
-          )}
-          {page === "external-tools" && (
-            <ExternalTools
-              connection={connection}
-              session={identity.session}
-              onAgents={() => setPage("workflow")}
-            />
-          )}
-          {page === "browser-connections" && (
-            <BrowserConnections
-              connection={connection}
-              session={identity.session}
-              onTools={() => navigate("external-tools")}
-            />
-          )}
-          {page === "access" && (
-            <ProjectAccess
-              connection={connection}
-              session={identity.session}
-              initialUser={accessUser}
-              onConfigure={() => navigate("settings")}
-              onUpdated={() => {
-                setAccessUser(undefined);
-                identity.refresh();
-              }}
-            />
-          )}
-          {page === "workflow" && (
-            <Workshop
-              connection={connection}
-              connected={connected}
-              repositories={repositories}
-            />
-          )}
-          {page === "delivery" && (
-            <DeliverySetup
-              connection={connection}
-              connected={connected}
-              repositories={repositories}
-            />
-          )}
-          {page === "operations" && (
-            <Operations
-              connection={connection}
-              connected={connected}
-              repositories={repositories}
-              providers={providers}
-              onOpen={(run) => void openRun(run)}
-              onConfigure={() => navigate("delivery")}
-            />
-          )}
-          {page === "run" && selected && (
-            <>
-              <button
-                className="back quiet"
-                onClick={() => navigate("overview")}
-              >
-                <ArrowLeft size={16} />
-                All runs
-              </button>
-              <div className="page-heading run-heading">
-                <div>
-                  <div className="run-id">Run {selected.id}</div>
-                  <h1>
-                    {selected.operation === "test"
-                      ? "Verify existing behavior"
-                      : selected.brief?.split("\n")[0]?.length > 96
-                        ? `${selected.brief
-                            .split("\n")[0]
-                            .slice(0, 96)
-                            .replace(/\s+\S*$/, "")}…`
-                        : selected.brief?.split("\n")[0] ||
-                          "Software generation"}
-                  </h1>
-                  <p>
-                    {repositoryName(selected.repository_id)} ·{" "}
-                    {selected.backend} / {selected.frontend} ·{" "}
-                    {selected.operation === "test"
-                      ? "No coding provider · checks only"
-                      : selected.agent}
-                  </p>
-                </div>
-                <Badge status={selected.status} />
-              </div>
-              <details className="run-brief-details">
-                <summary>Full run brief</summary>
-                <p>{selected.brief}</p>
-              </details>
-              <div
-                className="run-controls"
-                id={`run-controls-${selected.id}`}
-                tabIndex={-1}
-              >
-                <span>
-                  <GitBranch size={16} />
-                  Isolated change
-                </span>
-                {working(selected.status) ? (
-                  <button
-                    className="secondary"
-                    disabled={
-                      busy || selected.cancel_request?.status === "requested"
-                    }
-                    onClick={() => void runAction("cancel")}
-                  >
-                    <Square size={14} />
-                    {selected.cancel_request?.status === "requested"
-                      ? "Cancellation requested"
-                      : "Cancel run"}
-                  </button>
-                ) : ["failed", "cancelled"].includes(selected.status) &&
-                  selected.pause?.kind !== "provider_outcome_unknown" ? (
-                  <button
-                    className="secondary"
-                    disabled={busy}
-                    onClick={() => void runAction("retry")}
-                  >
-                    <RefreshCw size={15} />
-                    Retry run
-                  </button>
-                ) : null}
-                {selected.status === "succeeded" &&
-                  selected.operation !== "test" &&
-                  !selected.pr_url && (
+              )}
+              {page === "overview" && connected && (
+                <>
+                  <div className="page-heading factory-overview-heading">
+                    <div>
+                      <h1>Factory</h1>
+                    </div>
                     <button
                       className="primary"
-                      disabled={
-                        busy ||
-                        [
-                          "queued",
-                          "executing",
-                          "needs_reconciliation",
-                        ].includes(selected.publication_request?.status ?? "")
-                      }
-                      onClick={() => void runAction("publish")}
+                      onClick={() => navigate("product")}
                     >
-                      <GitBranch size={15} />
-                      {selected.publication_request?.status === "queued"
-                        ? "Publication queued"
-                        : selected.publication_request?.status === "executing"
-                          ? "Publishing pull request"
-                          : selected.publication_request?.status ===
-                              "needs_reconciliation"
-                            ? "Publication needs review"
-                            : "Publish pull request"}
+                      <Plus size={17} />
+                      New product
                     </button>
-                  )}
-                {selected.pr_url && /^https?:\/\//.test(selected.pr_url) && (
-                  <a
-                    className="primary"
-                    href={selected.pr_url}
-                    target="_blank"
-                    rel="noreferrer"
+                  </div>
+                  <FactoryFloor
+                    key={floorScope}
+                    connection={connection}
+                    connected={connected}
+                    theme={theme}
+                    onOpen={(id) => void openRun({ id })}
+                    selection={floorSelection}
+                    onSelectionChange={selectFloor}
+                  />
+                </>
+              )}
+              {page === "projects" && (
+                <Projects
+                  session={identity.session}
+                  connection={connection}
+                  connected={connected}
+                  repositories={repositories}
+                  onOpen={(run) => void openRun(run)}
+                  onProduct={(id, project) => {
+                    setRunProject(id);
+                    navigate("product");
+                    setProductProject(project);
+                  }}
+                  onStart={(context) => {
+                    setRunProject(context.component.repository_id);
+                    navigate("new");
+                    setRunComponent(context);
+                  }}
+                />
+              )}
+              {page === "product" && (
+                <ProductDefinition
+                  key={productDrafts.id}
+                  drafts={productDrafts}
+                  onRepositoryChange={setRunProject}
+                  logicalProject={productProject}
+                  onConfigure={() => {
+                    navigate("settings");
+                    setSetupStep(1);
+                  }}
+                  connection={connection}
+                  connected={connected}
+                  repositories={repositories}
+                  initialRepository={runProject}
+                  onStart={startStandalone}
+                />
+              )}
+              {page === "knowledge" && (
+                <KnowledgeExplorer
+                  session={identity.session}
+                  onConfigure={() => {
+                    navigate("settings");
+                    setSetupStep(3);
+                  }}
+                  connection={connection}
+                  connected={connected}
+                  repositories={repositories}
+                />
+              )}
+              {page === "collaboration" && (
+                <Collaboration
+                  onConfigure={() => {
+                    navigate("settings");
+                    setSetupStep(2);
+                  }}
+                  connection={connection}
+                  connected={connected}
+                  repositories={repositories}
+                  onOpen={(run) => void openRun(run)}
+                />
+              )}
+              {page === "new" && (
+                <NewProduct
+                  key={
+                    `${runDrafts.id}/` +
+                    (runComponent
+                      ? `${runComponent.project.id}/${runComponent.project.revision}/${runComponent.component.id}`
+                      : `standalone/${runProject}`)
+                  }
+                  drafts={runDrafts}
+                  initialComponent={runComponent}
+                  onStandalone={() => setRunComponent(null)}
+                  initialRepository={runProject}
+                  repositories={repositories}
+                  profiles={profiles}
+                  connected={connected}
+                  connection={connection}
+                  onRepository={() => navigate("repositories")}
+                  onConnection={() => navigate("settings")}
+                  onCreated={(run, notice) => {
+                    setNotice(notice);
+                    void refresh();
+                    void openRun(run);
+                  }}
+                />
+              )}
+              {page === "repositories" && (
+                <>
+                  <div className="page-heading">
+                    <div>
+                      <h1>Your source, connected.</h1>
+                      <p>
+                        Register a Git repository to give every run a clear
+                        starting point.
+                      </p>
+                    </div>
+                    <div className="integration-actions">
+                      <button
+                        className="primary"
+                        onClick={() => {
+                          navigate("settings");
+                          setSetupStep(2);
+                        }}
+                      >
+                        Connect applications
+                        <ArrowRight size={17} />
+                      </button>
+                      <button
+                        className="secondary"
+                        onClick={() => setDialog(true)}
+                        disabled={!connected}
+                      >
+                        <Plus size={17} />
+                        Add repository
+                      </button>
+                    </div>
+                  </div>
+                  <div className="repository-list">
+                    {repositories.length ? (
+                      repositories.map((repository) => (
+                        <article className="repository" key={repository.id}>
+                          <span className="repository-icon">
+                            <FolderGit2 size={24} />
+                          </span>
+                          <div>
+                            <h2>{repository.name}</h2>
+                            <p>{repository.url}</p>
+                            <div className="repo-meta">
+                              <span>{human(repository.provider)}</span>
+                              <span>
+                                <GitBranch size={13} />
+                                {repository.default_branch}
+                              </span>
+                            </div>
+                          </div>
+                          <button
+                            className="quiet"
+                            onClick={() => startStandalone(repository.id)}
+                          >
+                            Start a run
+                            <ArrowRight size={15} />
+                          </button>
+                        </article>
+                      ))
+                    ) : (
+                      <Empty
+                        title="No repositories registered"
+                        body={
+                          connected
+                            ? "Grant repository access through your GitHub, GitLab or Bitbucket application. Local and generic Git sources can be added separately."
+                            : "Connect your API first, then register a repository."
+                        }
+                        action={
+                          <button
+                            className="secondary"
+                            onClick={() =>
+                              connected ? setDialog(true) : navigate("settings")
+                            }
+                          >
+                            {connected ? "Add repository" : "Connect API"}
+                            <Plus size={15} />
+                          </button>
+                        }
+                      />
+                    )}
+                  </div>
+                  <div className="inline-note">
+                    <ShieldCheck size={17} />
+                    <p>
+                      Repository access stays on the server. The factory creates
+                      an isolated branch and workspace for each run.
+                    </p>
+                  </div>
+                </>
+              )}
+              {page === "settings" && (
+                <Connections
+                  current={connection}
+                  canConfigure={!!identity.session?.global_admin}
+                  session={identity.session}
+                  connected={connected}
+                  providers={providers}
+                  loading={loading}
+                  onUpdated={() => void refresh()}
+                  initialStep={setupStep}
+                  repositories={repositories}
+                  onDone={() => navigate(setupGoal)}
+                  doneLabel={
+                    setupGoal === "product"
+                      ? "Open product definition"
+                      : "Open production floor"
+                  }
+                  signin={
+                    <SignIn
+                      connection={connection}
+                      configuration={identity.configuration}
+                      loading={identity.loading}
+                      configurationError={identity.error}
+                      pendingGoal={setupGoal}
+                      onRefresh={identity.refresh}
+                      onReady={identity.refresh}
+                      onAddress={(base) => {
+                        setConnection({
+                          base,
+                          token: "",
+                          authenticated: false,
+                        });
+                        setConnected(false);
+                      }}
+                    />
+                  }
+                />
+              )}
+              {page === "admin" && (
+                <Administration
+                  session={identity.session}
+                  onNavigate={navigate}
+                />
+              )}
+              {page === "users" && (
+                <UserAdministration
+                  connection={connection}
+                  session={identity.session}
+                  onConfigure={() => navigate("settings")}
+                  onAssign={(id) => {
+                    setAccessUser(id);
+                    navigate("access");
+                  }}
+                />
+              )}
+              {page === "search" && (
+                <SearchConfiguration
+                  connection={connection}
+                  session={identity.session}
+                />
+              )}
+              {page === "runners" && (
+                <RunnerSetup
+                  connection={connection}
+                  session={identity.session}
+                  repositories={repositories}
+                  onAgents={() => navigate("workflow")}
+                />
+              )}
+              {page === "learning" && (
+                <LearningConfiguration
+                  connection={connection}
+                  session={identity.session}
+                />
+              )}
+              {page === "analytics" && (
+                <Analytics connection={connection} session={identity.session} />
+              )}
+              {page === "external-tools" && (
+                <ExternalTools
+                  connection={connection}
+                  session={identity.session}
+                  onAgents={() => setPage("workflow")}
+                />
+              )}
+              {page === "browser-connections" && (
+                <BrowserConnections
+                  connection={connection}
+                  session={identity.session}
+                  onTools={() => navigate("external-tools")}
+                />
+              )}
+              {page === "access" && (
+                <ProjectAccess
+                  connection={connection}
+                  session={identity.session}
+                  initialUser={accessUser}
+                  onConfigure={() => navigate("settings")}
+                  onUpdated={() => {
+                    setAccessUser(undefined);
+                    identity.refresh();
+                  }}
+                />
+              )}
+              {page === "workflow" && (
+                <Workshop
+                  connection={connection}
+                  connected={connected}
+                  repositories={repositories}
+                />
+              )}
+              {page === "delivery" && (
+                <DeliverySetup
+                  connection={connection}
+                  connected={connected}
+                  repositories={repositories}
+                />
+              )}
+              {page === "operations" && (
+                <Operations
+                  connection={connection}
+                  connected={connected}
+                  repositories={repositories}
+                  providers={providers}
+                  onOpen={(run) => void openRun(run)}
+                  onConfigure={() => navigate("delivery")}
+                />
+              )}
+              {page === "run" && selected && (
+                <>
+                  <button
+                    className="back quiet"
+                    onClick={() => navigate("overview")}
                   >
-                    Open pull request
-                    <ExternalLink size={15} />
-                  </a>
-                )}
-              </div>
-              {detailError && (
-                <div className="alert" role="alert">
-                  {detailError}
-                </div>
+                    <ArrowLeft size={16} />
+                    All runs
+                  </button>
+                  <div className="page-heading run-heading">
+                    <div>
+                      <div className="run-id">Run {selected.id}</div>
+                      <h1>
+                        {selected.operation === "test"
+                          ? "Verify existing behavior"
+                          : selected.brief?.split("\n")[0]?.length > 96
+                            ? `${selected.brief
+                                .split("\n")[0]
+                                .slice(0, 96)
+                                .replace(/\s+\S*$/, "")}…`
+                            : selected.brief?.split("\n")[0] ||
+                              "Software generation"}
+                      </h1>
+                      <p>
+                        {repositoryName(selected.repository_id)} ·{" "}
+                        {selected.backend} / {selected.frontend} ·{" "}
+                        {selected.operation === "test"
+                          ? "No coding provider · checks only"
+                          : selected.agent}
+                      </p>
+                    </div>
+                    <Badge status={selected.status} />
+                  </div>
+                  <details className="run-brief-details">
+                    <summary>Full run brief</summary>
+                    <p>{selected.brief}</p>
+                  </details>
+                  <div
+                    className="run-controls"
+                    id={`run-controls-${selected.id}`}
+                    tabIndex={-1}
+                  >
+                    <span>
+                      <GitBranch size={16} />
+                      Isolated change
+                    </span>
+                    {working(selected.status) ? (
+                      <button
+                        className="secondary"
+                        disabled={
+                          busy ||
+                          selected.cancel_request?.status === "requested"
+                        }
+                        onClick={() => void runAction("cancel")}
+                      >
+                        <Square size={14} />
+                        {selected.cancel_request?.status === "requested"
+                          ? "Cancellation requested"
+                          : "Cancel run"}
+                      </button>
+                    ) : ["failed", "cancelled"].includes(selected.status) &&
+                      selected.pause?.kind !== "provider_outcome_unknown" ? (
+                      <button
+                        className="secondary"
+                        disabled={busy}
+                        onClick={() => void runAction("retry")}
+                      >
+                        <RefreshCw size={15} />
+                        Retry run
+                      </button>
+                    ) : null}
+                    {selected.status === "succeeded" &&
+                      selected.operation !== "test" &&
+                      !selected.pr_url && (
+                        <button
+                          className="primary"
+                          disabled={
+                            busy ||
+                            [
+                              "queued",
+                              "executing",
+                              "needs_reconciliation",
+                            ].includes(
+                              selected.publication_request?.status ?? "",
+                            )
+                          }
+                          onClick={() => void runAction("publish")}
+                        >
+                          <GitBranch size={15} />
+                          {selected.publication_request?.status === "queued"
+                            ? "Publication queued"
+                            : selected.publication_request?.status ===
+                                "executing"
+                              ? "Publishing pull request"
+                              : selected.publication_request?.status ===
+                                  "needs_reconciliation"
+                                ? "Publication needs review"
+                                : "Publish pull request"}
+                        </button>
+                      )}
+                    {selected.pr_url &&
+                      /^https?:\/\//.test(selected.pr_url) && (
+                        <a
+                          className="primary"
+                          href={selected.pr_url}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Open pull request
+                          <ExternalLink size={15} />
+                        </a>
+                      )}
+                  </div>
+                  {detailError && (
+                    <div className="alert" role="alert">
+                      {detailError}
+                    </div>
+                  )}
+                  {selected.error && (
+                    <div className="alert" role="alert">
+                      {selected.error}
+                    </div>
+                  )}
+                  <ContinueRun
+                    key={selected.id}
+                    run={selected}
+                    connection={connection}
+                    onUpdated={(run) => {
+                      setSelected(run);
+                      void refresh();
+                    }}
+                  />
+                  <RunDetail
+                    key={`detail:${selected.id}`}
+                    run={selected}
+                    busy={busy}
+                    connection={connection}
+                    onDelivery={() => navigate("delivery")}
+                    session={identity.session}
+                  />
+                </>
               )}
-              {selected.error && (
-                <div className="alert" role="alert">
-                  {selected.error}
-                </div>
-              )}
-              <ContinueRun
-                key={selected.id}
-                run={selected}
-                connection={connection}
-                onUpdated={(run) => {
-                  setSelected(run);
-                  void refresh();
-                }}
-              />
-              <RunDetail
-                key={`detail:${selected.id}`}
-                run={selected}
-                busy={busy}
-                connection={connection}
-                onDelivery={() => navigate("delivery")}
-                session={identity.session}
-              />
             </>
           )}
         </main>
-        <footer>
-          <span>© 2026 Firefly Software Foundation</span>
-          <span className="footer-links">
-            <a
-              href="https://github.com/fireflyframework/firefly-forge/blob/main/LICENSE"
-              target="_blank"
-              rel="noreferrer"
-            >
-              Apache 2.0
-            </a>
-            <a
-              href="https://fireflyframework.github.io/firefly-forge/"
-              target="_blank"
-              rel="noreferrer"
-            >
-              Documentation
-            </a>
-          </span>
-          <span>v{studioVersion}</span>
-        </footer>
+        <FoundationFooter version={studioVersion} documentation />
       </div>
       {dialog && (
         <RepositoryDialog

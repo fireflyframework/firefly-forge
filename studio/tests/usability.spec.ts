@@ -2,6 +2,7 @@
 import { expect, test } from "@playwright/test";
 import { navigate } from "./navigation";
 import { mockIdentity } from "./auth-fixture";
+import { factoryDashboardFixture } from "./factory-dashboard-fixture";
 test.beforeEach(async ({ page }) => {
   const first = "a".repeat(32),
     chosen = "b".repeat(32);
@@ -39,7 +40,11 @@ test.beforeEach(async ({ page }) => {
     if (path.endsWith("/skills")) json = { skills: [] };
     if (path.endsWith("/policies")) json = { skills: [] };
     if (path.endsWith("/health")) json = { execution_ready: true };
-    await route.fulfill({ json });
+    const dashboard = factoryDashboardFixture(new URL(route.request().url()), {
+      projects: [],
+      runs: [],
+    });
+    await route.fulfill({ json: dashboard ?? json });
   });
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await navigate(page, "Connections");
@@ -182,6 +187,8 @@ test("phone test result keeps checks reachable and retains the full brief withou
   const run = {
     id: "c".repeat(32),
     repository_id: chosen,
+    project_id: "e".repeat(32),
+    project_name: "Billing product",
     brief,
     operation: "test",
     backend: "pyfly",
@@ -196,17 +203,32 @@ test("phone test result keeps checks reachable and retains the full brief withou
     const path = new URL(route.request().url()).pathname;
     await route.fulfill({ json: path.endsWith("/runs") ? [run] : run });
   });
+  await page.route("**/api/v1/factory-dashboard**", async (route) =>
+    route.fulfill({
+      json: factoryDashboardFixture(new URL(route.request().url()), {
+        projects: [
+          {
+            id: run.project_id,
+            name: run.project_name,
+            component_count: 2,
+            repository_count: 1,
+          },
+        ],
+        runs: [run],
+      }),
+    }),
+  );
   await navigate(page, "Factory");
-  await page
-    .locator(".runs-section")
-    .getByRole("button", { name: "Refresh", exact: true })
-    .click();
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByLabel("Project", { exact: true }).selectOption(chosen);
+  await page.getByRole("button", { name: "Browse work", exact: true }).click();
   await page
-    .getByLabel("Manufacturing run", { exact: true })
-    .selectOption(run.id);
-  await page.getByRole("button", { name: "Inspect run", exact: true }).click();
+    .getByRole("dialog", { name: "Factory work" })
+    .getByRole("button", { name: /^Billing product / })
+    .click();
+  await page
+    .locator(".factory-run-record")
+    .getByRole("button", { name: "Open run", exact: true })
+    .click();
   await expect(
     page.getByRole("heading", {
       name: "Verify existing behavior",

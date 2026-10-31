@@ -1,6 +1,7 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { expect, test, type Page } from "@playwright/test";
 import { mockIdentity } from "./auth-fixture";
+import { mockFactoryDashboard } from "./factory-dashboard-fixture";
 import { navigate } from "./navigation";
 
 const projectId = "a".repeat(32),
@@ -58,6 +59,22 @@ async function setup(page: Page, reader = false) {
         },
       });
     if (await mockIdentity(route)) return;
+    if (
+      route.request().method() === "GET" &&
+      (await mockFactoryDashboard(route, {
+        projects: [
+          {
+            id: projectId,
+            name: project.definition.name,
+            component_count: 1,
+            repository_count: 1,
+          },
+        ],
+        runs: [],
+        administrator: !reader,
+      }))
+    )
+      return;
     if (path.includes("scm-actor-bindings")) {
       if (route.request().method() === "GET") state.delegationReads++;
       else state.writes++;

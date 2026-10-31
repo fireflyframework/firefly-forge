@@ -1,6 +1,6 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { expect, test } from "@playwright/test";
-import { navigate } from "./navigation";
+import { navigate, expectAuthenticated } from "./navigation";
 import { mockIdentity } from "./auth-fixture";
 import { expectProgressFits } from "./wizard-progress";
 
@@ -18,9 +18,7 @@ async function connect(page: import("@playwright/test").Page) {
     .getByLabel("API token", { exact: true })
     .fill("operator-token-for-ui-verification");
   await page.getByRole("button", { name: "Save connection" }).click();
-  await expect(
-    page.getByRole("button", { name: "API connected" }),
-  ).toBeVisible();
+  await expectAuthenticated(page);
 }
 
 test("application grant discovery and optional knowledge setup use real API contracts without storing credentials", async ({

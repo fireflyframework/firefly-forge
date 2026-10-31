@@ -1,7 +1,7 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { expect, test, type Page } from "@playwright/test";
 import { mockIdentity } from "./auth-fixture";
-import { navigate } from "./navigation";
+import { navigate, expectAuthenticated } from "./navigation";
 import { verifiedReport, unknownReport } from "./campaign-report-fixture";
 // These controlled API fixtures qualify read presentation, not native campaign execution.
 const projectId = verifiedReport.project_id,
@@ -106,9 +106,7 @@ async function setup(page: Page) {
   await page
     .getByRole("button", { name: "Save connection", exact: true })
     .click();
-  await expect(
-    page.getByRole("button", { name: "API connected", exact: true }),
-  ).toBeVisible();
+  await expectAuthenticated(page);
   await navigate(page, "Product projects");
   await expect(
     page.getByRole("heading", { name: "Owned campaign product", exact: true }),

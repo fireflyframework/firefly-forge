@@ -3,8 +3,40 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { navigate } from "./navigation";
 import { expect, test } from "@playwright/test";
-import { setup } from "./worker-decision-evidence-fixture";
+import {
+  setup as setupQuestion,
+  run,
+} from "./worker-decision-evidence-fixture";
+import {
+  mockFactoryDashboard,
+  openFactoryRun,
+} from "./factory-dashboard-fixture";
+import type { Page } from "@playwright/test";
 import { captureWalkthrough } from "./walkthrough-capture";
+
+async function setup(page: Page, viewer = false) {
+  await page.route("**/api/v1/factory-dashboard**", async (route) => {
+    if (
+      route.request().method() === "GET" &&
+      (await mockFactoryDashboard(route, {
+        projects: [
+          {
+            id: run.project_id,
+            name: "Controlled decision project",
+            component_count: 1,
+            repository_count: 1,
+          },
+        ],
+        runs: [run],
+        administrator: !viewer,
+      }))
+    )
+      return;
+    await route.fallback();
+  });
+  return setupQuestion(page, viewer);
+}
+
 test("screenshot modal boundaries apply only to the registered evidence preview stage", async ({
   page,
 }) => {
@@ -94,7 +126,7 @@ for (const frame of [
       await page.getByLabel("Appearance", { exact: true }).selectOption(theme);
       await navigate(page, "Factory");
       await expect(
-        page.getByRole("heading", { name: "Your factory.", exact: true }),
+        page.getByRole("heading", { name: "Factory overview", exact: true }),
       ).toBeVisible();
       await expect(
         page.getByRole("heading", {
@@ -106,10 +138,13 @@ for (const frame of [
         page.getByRole("tab", { name: "Agent questions", exact: true }),
       ).toHaveCount(0);
       await page
-        .getByRole("button", {
-          name: /Controlled decision and screenshot fixture/,
-        })
+        .getByRole("button", { name: "Browse work", exact: true })
         .click();
+      await page
+        .getByRole("dialog", { name: "Factory work" })
+        .getByRole("button", { name: /^Controlled decision project / })
+        .click();
+      await openFactoryRun(page, run.brief);
       await expect(
         page.getByRole("heading", {
           name: "Waiting for your answer",

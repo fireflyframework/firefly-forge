@@ -2,7 +2,7 @@
 // Controlled run-admission decisions; no native run or provider executes.
 import { expect, type BrowserContext, type Page } from "@playwright/test";
 import { mockIdentity } from "./auth-fixture";
-import { navigate } from "./navigation";
+import { navigate, expectSignedIn } from "./navigation";
 const repository = "a".repeat(32);
 function canonical(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonical);
@@ -192,12 +192,7 @@ export async function open(page: Page, login = false) {
     await page
       .getByRole("button", { name: "Save connection", exact: true })
       .click();
-    await expect(
-      page.getByRole("button", {
-        name: "Signed in as Test operator",
-        exact: true,
-      }),
-    ).toBeVisible();
+    await expectSignedIn(page, "Test operator");
   }
   await navigate(page, "Repositories");
   await page

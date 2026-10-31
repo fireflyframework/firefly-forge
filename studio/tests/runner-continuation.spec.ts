@@ -1,7 +1,11 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { expect, test, type Page } from "@playwright/test";
 import { mockIdentity } from "./auth-fixture";
-import { navigate } from "./navigation";
+import {
+  mockFactoryDashboard,
+  openFactoryRun,
+} from "./factory-dashboard-fixture";
+import { navigate, expectAuthenticated } from "./navigation";
 const run = {
   id: "2".repeat(32),
   repository_id: "3".repeat(32),
@@ -37,6 +41,11 @@ async function setup(page: Page, mode = "lost") {
   };
   await page.route("**/api/v1/**", async (route) => {
     if (await mockIdentity(route)) return;
+    if (
+      route.request().method() === "GET" &&
+      (await mockFactoryDashboard(route, { projects: [], runs: [currentRun] }))
+    )
+      return;
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith("/runner-continuations/candidates"))
       return route.fulfill({
@@ -135,13 +144,9 @@ async function setup(page: Page, mode = "lost") {
   await page
     .getByRole("button", { name: "Save connection", exact: true })
     .click();
-  await expect(
-    page.getByRole("button", { name: "API connected", exact: true }),
-  ).toBeVisible();
+  await expectAuthenticated(page);
   await navigate(page, "Factory");
-  await page
-    .getByRole("button", { name: /Owned continuation fixture/ })
-    .click();
+  await openFactoryRun(page, /Owned continuation fixture/);
   await page.getByRole("tab", { name: "Plan", exact: true }).click();
   await expect(
     page.getByRole("region", {
@@ -183,9 +188,7 @@ test("lost response and exact404 retain one identity across reload; only exactGE
   expect(state.posts).toBe(1);
   const request = state.request;
   await page.reload();
-  await page
-    .getByRole("button", { name: /Owned continuation fixture/ })
-    .click();
+  await openFactoryRun(page, /Owned continuation fixture/);
   await page.getByRole("tab", { name: "Plan", exact: true }).click();
   await page
     .getByRole("button", { name: "Check original request", exact: true })
@@ -462,9 +465,7 @@ test("a changed actor cannot inherit the retained marker or private receipt", as
     }),
   );
   await page.reload();
-  await page
-    .getByRole("button", { name: /Owned continuation fixture/ })
-    .click();
+  await openFactoryRun(page, /Owned continuation fixture/);
   await page.getByRole("tab", { name: "Plan", exact: true }).click();
   await expect(
     page.getByText("Original request retained", { exact: true }),

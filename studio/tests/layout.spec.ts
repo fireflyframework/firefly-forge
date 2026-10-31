@@ -1,5 +1,30 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { expect, test, type Page } from "@playwright/test";
+import { expectAuthenticated } from "./navigation";
+
+async function signedInLayout(page: Page) {
+  await page.route("**/api/v1/**", (route) => {
+    const path = new URL(route.request().url()).pathname;
+    return route.fulfill({
+      json: path.endsWith("/auth/configuration")
+        ? { mode: "oidc", issuer: "https://identity.example.test" }
+        : path.endsWith("/auth/session")
+          ? {
+              authenticated: true,
+              user: {
+                id: "f".repeat(32),
+                display_name: "Layout reviewer",
+                email: null,
+                authentication_method: "oidc_session",
+              },
+              global_admin: false,
+              memberships: [],
+              roles: {},
+            }
+          : [],
+    });
+  });
+}
 
 async function alignedFooter(page: Page) {
   const geometry = await page.evaluate(() => {
@@ -7,27 +32,38 @@ async function alignedFooter(page: Page) {
     const footer = document.querySelector(".workspace-main > footer")!;
     const left = rail.getBoundingClientRect();
     const right = footer.getBoundingClientRect();
-    const leftLine = rail.querySelector("a")!.getBoundingClientRect();
-    const rightLine = footer.querySelector("span")!.getBoundingClientRect();
+    const account = rail
+      .querySelector(".identity-trigger")!
+      .getBoundingClientRect();
     return {
       top: Math.abs(left.top - right.top),
       height: Math.abs(left.height - right.height),
-      baseline: Math.abs(leftLine.top - rightLine.top),
+      accountCenter: Math.abs(
+        account.top + account.height / 2 - (right.top + right.height / 2),
+      ),
+      accountInside:
+        account.left >= left.left &&
+        account.right <= left.right &&
+        account.top >= left.top &&
+        account.bottom <= left.bottom,
       footerHeight: right.height,
       overflow: document.documentElement.scrollWidth > innerWidth,
     };
   });
   expect(geometry.top).toBeLessThanOrEqual(1);
   expect(geometry.height).toBeLessThanOrEqual(1);
-  expect(geometry.baseline).toBeLessThanOrEqual(1);
+  expect(geometry.accountCenter).toBeLessThanOrEqual(1);
+  expect(geometry.accountInside).toBe(true);
   expect(geometry.footerHeight).toBe(64);
   expect(geometry.overflow).toBe(false);
 }
 
-test("desktop footer borders and text align with the rail in both themes", async ({
+test("desktop footer borders align with the rail and its account control is centered in both themes", async ({
   page,
 }) => {
+  await signedInLayout(page);
   await page.goto("/");
+  await expectAuthenticated(page);
   await page.evaluate(() => document.fonts.ready);
   for (const theme of ["light", "dark"]) {
     await page.getByLabel("Appearance", { exact: true }).selectOption(theme);
@@ -52,7 +88,9 @@ test("footer alignment holds at a two-times display scale with desktop CSS width
     deviceScaleFactor: 2,
   });
   const page = await context.newPage();
+  await signedInLayout(page);
   await page.goto("/");
+  await expectAuthenticated(page);
   for (const theme of ["light", "dark"]) {
     await page.getByLabel("Appearance", { exact: true }).selectOption(theme);
     await alignedFooter(page);

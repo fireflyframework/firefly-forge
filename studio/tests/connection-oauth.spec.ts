@@ -1,7 +1,7 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 // Contract fixtures for native OAuth lifecycle and create-only registration; not provider acceptance.
 import { expect, test, type Page } from "@playwright/test";
-import { navigate } from "./navigation";
+import { navigate, expectAuthenticated } from "./navigation";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 
@@ -394,7 +394,8 @@ async function fixture(
     });
   });
   await page.goto("/");
-  await navigate(page, "Administration");
+  if (admin) await navigate(page, "Administration");
+  else await expectAuthenticated(page);
   return writes;
 }
 test("default inactive providers cannot create a registration or send a remote request", async ({
@@ -702,10 +703,13 @@ test("project ownership cannot enter connection administration", async ({
 }) => {
   const writes = await fixture(page, true, false);
   await expect(
+    page.getByRole("button", { name: "Administration", exact: true }),
+  ).toHaveCount(0);
+  await expect(
     page
       .locator("main")
       .getByRole("button", { name: "Connected accounts", exact: true }),
-  ).toBeDisabled();
+  ).toHaveCount(0);
   expect(writes).toEqual([]);
 });
 test("changing to a public client discards the secret before keyboard submission", async ({
