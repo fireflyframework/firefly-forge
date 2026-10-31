@@ -208,6 +208,12 @@ class WalkthroughTests(unittest.TestCase):
                 "scm-protected-resume-review",
                 "scm-protected-product-edit-scope",
                 "scm-protected-product-edit-review",
+                "scm-protected-delegation-flow-scope",
+                "scm-protected-delegation-flow-review",
+                "scm-protected-resume-flow-scope",
+                "scm-protected-resume-flow-review",
+                "scm-protected-product-edit-flow-scope",
+                "scm-protected-product-edit-flow-review",
             ):
                 producer = (
                     "studio/tests/scm-protected-consents.spec.ts"

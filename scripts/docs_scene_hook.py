@@ -194,6 +194,12 @@ def _load_walkthrough(config, root=ROOT):
             "scm-protected-resume-review",
             "scm-protected-product-edit-scope",
             "scm-protected-product-edit-review",
+            "scm-protected-delegation-flow-scope",
+            "scm-protected-delegation-flow-review",
+            "scm-protected-resume-flow-scope",
+            "scm-protected-resume-flow-review",
+            "scm-protected-product-edit-flow-scope",
+            "scm-protected-product-edit-flow-review",
         }
         if stage.startswith("scm-protected-") and stage not in protected_stages:
             raise ValueError("Unknown protected consent capture stage: " + name)
