@@ -44,6 +44,28 @@ for (const width of [1440, 320])
         .getByRole("combobox", { name: "Appearance", exact: true })
         .selectOption(theme);
       await page.evaluate(() => document.fonts.ready);
+      const mobile = width === 320;
+      if (mobile)
+        await page
+          .getByRole("button", { name: "Open navigation", exact: true })
+          .click();
+      const navigation = page.getByRole("navigation", {
+        name: "Main navigation",
+      });
+      await expect(
+        navigation.locator(".workspace-navigation-group"),
+      ).toHaveText([
+        "Plan and build",
+        "Deliver and support",
+        "Resources and settings",
+      ]);
+      await page.screenshot({
+        path: info.outputPath(`navigation-${width}-${theme}.png`),
+      });
+      if (mobile)
+        await page
+          .getByRole("button", { name: "Close navigation", exact: true })
+          .click();
       const guide = page.locator(".factory-process-guide");
       await expect(guide).not.toHaveAttribute("open");
       const summary = guide.locator("summary");

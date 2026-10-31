@@ -1,0 +1,12 @@
+/* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+.sidebar nav .workspace-navigation-group {
+  margin: 16px 12px 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+  letter-spacing: 0;
+}
+.sidebar nav .workspace-navigation-group:first-child {
+  margin-top: 4px;
+}

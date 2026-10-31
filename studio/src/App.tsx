@@ -84,6 +84,7 @@ import { DeliverySetup, RunDelivery } from "./Delivery";
 import { Operations } from "./Operations";
 import { Projects } from "./Projects";
 import { MobileNavigation } from "./MobileNavigation";
+import { WorkspaceNavigationItems } from "./WorkspaceNavigationItems";
 import { FactoryWelcome } from "./FactoryWelcome";
 import { FactoryProcessGuide } from "./FactoryProcessGuide";
 import {
@@ -663,28 +664,88 @@ export default function App() {
   const repositoryName = (id: string) =>
     repositories.find((repository) => repository.id === id)?.name ?? id;
   const nav = [
-    { page: "overview" as const, icon: Layers3, label: "Factory" },
-    { page: "new" as const, icon: Hammer, label: "Start a run" },
-    { page: "projects" as const, icon: Box, label: "Product projects" },
-    { page: "product" as const, icon: Layers3, label: "Product definition" },
-    { page: "repositories" as const, icon: FolderGit2, label: "Repositories" },
-    { page: "delivery" as const, icon: Box, label: "Deployment" },
-    { page: "operations" as const, icon: Activity, label: "Applications" },
-    { page: "knowledge" as const, icon: BookOpen, label: "Knowledge" },
+    {
+      page: "overview" as const,
+      icon: Layers3,
+      label: "Factory",
+      group: "Plan and build",
+    },
+    {
+      page: "projects" as const,
+      icon: Box,
+      label: "Product projects",
+      group: "Plan and build",
+    },
+    {
+      page: "product" as const,
+      icon: Layers3,
+      label: "Product definition",
+      group: "Plan and build",
+    },
+    {
+      page: "new" as const,
+      icon: Hammer,
+      label: "Start a run",
+      group: "Plan and build",
+    },
+    {
+      page: "delivery" as const,
+      icon: Box,
+      label: "Deployment",
+      group: "Deliver and support",
+    },
+    {
+      page: "operations" as const,
+      icon: Activity,
+      label: "Applications",
+      group: "Deliver and support",
+    },
+    {
+      page: "repositories" as const,
+      icon: FolderGit2,
+      label: "Repositories",
+      group: "Resources and settings",
+    },
+    {
+      page: "knowledge" as const,
+      icon: BookOpen,
+      label: "Knowledge",
+      group: "Resources and settings",
+    },
     ...(identity.session
       ? [
-          { page: "workflow" as const, icon: Bot, label: "Agents & skills" },
+          {
+            page: "workflow" as const,
+            icon: Bot,
+            label: "Agents & skills",
+            group: "Resources and settings",
+          },
           {
             page: "analytics" as const,
             icon: Database,
             label: "Structured analytics",
+            group: "Resources and settings",
           },
         ]
       : []),
     ...(identity.session?.global_admin
-      ? [{ page: "admin" as const, icon: Settings2, label: "Administration" }]
+      ? [
+          {
+            page: "admin" as const,
+            icon: Settings2,
+            label: "Administration",
+            group: "Resources and settings",
+          },
+        ]
       : []),
   ];
+  const navigationItems = nav.map((item) => ({
+    id: item.page,
+    label: item.label,
+    icon: item.icon,
+    group: item.group,
+    ...(item.page === "repositories" ? { count: repositories.length } : {}),
+  }));
   const administrationLabels: Partial<Record<Page, string>> = {
     settings: "Connections",
     workflow: "Agents & skills",
@@ -730,14 +791,7 @@ export default function App() {
           <img src={`/assets/forge-lockup-${theme}.svg`} alt="Firefly forge" />
         </a>
         <MobileNavigation
-          items={nav.map((item) => ({
-            id: item.page,
-            label: item.label,
-            icon: item.icon,
-            ...(item.page === "repositories"
-              ? { count: repositories.length }
-              : {}),
-          }))}
+          items={navigationItems}
           current={navigationPage}
           onNavigate={(id) => navigate(id as Page)}
           account={
@@ -759,20 +813,11 @@ export default function App() {
           </div>
         </div>
         <nav ref={navigation} aria-label="Main navigation">
-          {nav.map((item) => (
-            <button
-              key={item.page}
-              className={navigationPage === item.page ? "active" : ""}
-              onClick={() => navigate(item.page)}
-              aria-current={navigationPage === item.page ? "page" : undefined}
-            >
-              <item.icon size={20} />
-              <span>{item.label}</span>
-              {item.page === "repositories" && (
-                <small>{repositories.length}</small>
-              )}
-            </button>
-          ))}
+          <WorkspaceNavigationItems
+            items={navigationItems}
+            current={navigationPage}
+            onNavigate={(id) => navigate(id as Page)}
+          />
         </nav>
         <div className="sidebar-bottom">
           {identity.session && (
@@ -907,7 +952,10 @@ export default function App() {
                   </div>
                   <FactoryProcessGuide
                     canConfigure={
-                      !requiresFactoryAdministrator("settings", identity.session)
+                      !requiresFactoryAdministrator(
+                        "settings",
+                        identity.session,
+                      )
                     }
                     onNavigate={navigate}
                   />

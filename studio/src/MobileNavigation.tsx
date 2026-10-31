@@ -1,6 +1,10 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Menu, X, type LucideIcon } from "lucide-react";
+import { Menu, X } from "lucide-react";
+import {
+  WorkspaceNavigationItems,
+  type WorkspaceNavigationItem,
+} from "./WorkspaceNavigationItems";
 import "./MobileNavigation.css";
 export function MobileNavigation({
   items,
@@ -8,7 +12,7 @@ export function MobileNavigation({
   onNavigate,
   account,
 }: {
-  items: { id: string; label: string; icon: LucideIcon; count?: number }[];
+  items: WorkspaceNavigationItem[];
   current: string;
   onNavigate: (id: string) => void;
   account?: { label: string; content: ReactNode; onOpen: () => void };
@@ -59,21 +63,14 @@ export function MobileNavigation({
           </button>
         </header>
         <nav aria-label="Main navigation">
-          {items.map(({ id, label, icon: Icon, count }) => (
-            <button
-              key={id}
-              className={current === id ? "active" : ""}
-              aria-current={current === id ? "page" : undefined}
-              onClick={() => {
-                setOpen(false);
-                onNavigate(id);
-              }}
-            >
-              <Icon size={20} />
-              <span>{label}</span>
-              {count !== undefined && <small>{count}</small>}
-            </button>
-          ))}
+          <WorkspaceNavigationItems
+            items={items}
+            current={current}
+            onNavigate={(id) => {
+              setOpen(false);
+              onNavigate(id);
+            }}
+          />
         </nav>
         {account && (
           <div className="mobile-account">
