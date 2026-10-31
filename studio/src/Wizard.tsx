@@ -73,8 +73,9 @@ export function Wizard({
         return;
       }
       const available = owner.clientHeight;
-      const clearance =
-        Number.parseFloat(getComputedStyle(owner).paddingBottom) + 16;
+      const clearance = Number.parseFloat(
+        getComputedStyle(owner).paddingBottom,
+      );
       const offset = rect.top - parent.top + owner.scrollTop;
       const remaining = Math.max(0, available - offset - clearance);
       const content = element.querySelector<HTMLElement>(".wizard-content");
@@ -142,8 +143,7 @@ export function Wizard({
       return;
     const bottom =
       owner.getBoundingClientRect().bottom -
-      Number.parseFloat(getComputedStyle(owner).paddingBottom) -
-      16;
+      Number.parseFloat(getComputedStyle(owner).paddingBottom);
     const overflow = element.getBoundingClientRect().bottom - bottom;
     if (overflow > 1) owner.scrollTop += overflow;
   }, [height, pageFlow, parentLayout, flow]);

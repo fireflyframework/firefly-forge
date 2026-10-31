@@ -6,13 +6,15 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import os
 import re
+import sys
 import uuid
 from collections.abc import Callable
 from contextlib import AsyncExitStack
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import httpx
 from filelock import FileLock, Timeout
@@ -31,6 +33,7 @@ from firefly_forge.diagnostic_recipes import (
     profile_observation,
     trace_observation,
 )
+from firefly_forge.engine_activity import EngineActivity
 from firefly_forge.git_diff_models import GitDiffBudget
 from firefly_forge.git_workspace import git_environment, metadata_digest, trusted_git
 from firefly_forge.models import Command, NewWorkCommand, configured_commands
@@ -144,12 +147,14 @@ class Engine:
         concurrency: int = 2,
         connections: Any = None,
         journal: Any = None,
+        stage_activity: EngineActivity | None = None,
     ) -> None:
         if not 1 <= concurrency <= 64:
             raise ValueError("Execution concurrency must be between 1 and 64")
         self.store = store
         self.connections = connections
         self.journal = journal
+        self.stage_activity = stage_activity
         from firefly_forge.communication import CommunicationWriter
 
         self.communication_writer = CommunicationWriter(store)
@@ -281,12 +286,30 @@ class Engine:
             self.ownership_failure = "Execution consumers have not drained; storage ownership remains fenced"
             self.execution_state = "degraded"
             return
-        if self.enforce_ownership:
-            try:
-                await self.store.release_ownership()
-            finally:
-                self.owner_lock.release()
-                RETAINED_EXECUTION_FENCES.discard(self.owner_lock)
+        try:
+            await self._observe_stage("close")
+        finally:
+            if self.enforce_ownership:
+                try:
+                    await self.store.release_ownership()
+                finally:
+                    self.owner_lock.release()
+                    RETAINED_EXECUTION_FENCES.discard(self.owner_lock)
+
+    async def _observe_stage(self, operation: Literal["begin", "end", "close"], *args: str) -> None:
+        if self.stage_activity is None:
+            return
+        pending = sys.exception()
+        try:
+            await getattr(self.stage_activity, operation)(*args)
+        except asyncio.CancelledError:
+            task = asyncio.current_task()
+            # A cancelled observer is not a cancellation request for productive work.
+            if task is not None and task.cancelling() and not isinstance(pending, asyncio.CancelledError):
+                raise
+            logging.getLogger(__name__).warning("Engine stage observer unavailable; activity remains unknown")
+        except Exception:
+            logging.getLogger(__name__).warning("Engine stage observer unavailable; activity remains unknown")
 
     async def assert_ownership(self) -> None:
         if self.store.runtime_roles:
@@ -1717,10 +1740,13 @@ class Engine:
                 await emit("publication", f"Publication failed: {exc}")
         finally:
             try:
-                await credential_scopes.aclose()
+                await self._observe_stage("end", identifier)
             finally:
-                if consumed_execution is not None:
-                    consumed_execution.close_snapshot()
+                try:
+                    await credential_scopes.aclose()
+                finally:
+                    if consumed_execution is not None:
+                        consumed_execution.close_snapshot()
 
     async def _worker_feedback(
         self,
@@ -1903,6 +1929,8 @@ class Engine:
             payload.update(reason="verification_repair", failed_checks=failed_checks)
         intent = await self.journal.intent(identifier, task_id, attempt=attempt, payload=payload)
         if intent["disposition"] != "needs_reconciliation":
+            if intent["disposition"] == "execute":
+                await self._observe_stage("begin", identifier, task_id, intent["idempotency_key"])
             return dict(intent)
         run = await self.store.get_run(identifier)
         if not run.get("resume_existing"):
@@ -1931,6 +1959,7 @@ class Engine:
                 await self.journal._receipt(identifier, key, evidence, checkpoint=checkpoint, terminal=terminal)
             else:
                 await self.journal.receipt(identifier, key, evidence, checkpoint=checkpoint)
+            await self._observe_stage("end", identifier, key)
 
     @staticmethod
     def component_directory(run: dict[str, Any], workspace: Path, *, create: bool = False) -> Path:

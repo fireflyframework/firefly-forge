@@ -1,0 +1,90 @@
+/* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+.identity-dialog:has(.personal-tokens) {
+  width: min(800px, calc(100vw - 32px));
+}
+.personal-tokens {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+}
+.personal-tokens p {
+  margin: 0;
+}
+.token-toolbar,
+.token-scope,
+.token-disclosure h3 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.token-editor,
+.token-disclosure {
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  min-width: 0;
+}
+.token-disclosure {
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+}
+.token-editor fieldset {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.token-project {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  overflow-wrap: anywhere;
+}
+.token-project input {
+  width: auto;
+  flex: 0 0 auto;
+  accent-color: var(--amber);
+}
+.token-scope {
+  color: var(--muted);
+  font-size: 13px;
+}
+.token-list {
+  min-width: 0;
+}
+.token-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: start;
+  padding: 20px 0;
+  border-top: 1px solid var(--line);
+}
+.token-row h3,
+.token-row p,
+.token-row code {
+  overflow-wrap: anywhere;
+}
+.token-row p {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 6px 0;
+}
+.personal-tokens input:not([type="checkbox"]) {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+@media (max-width: 600px) {
+  .token-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .token-editor,
+  .token-disclosure {
+    padding: 16px;
+  }
+}

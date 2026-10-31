@@ -7,12 +7,43 @@ import {
   NumberKeyframeTrack,
 } from "three";
 import type { FactoryStation } from "./FactoryScene";
-import { FactoryMotion, syncStationClips } from "./FactoryMotion";
+import {
+  FactoryMotion,
+  syncStationClips,
+  aggregateActiveStations,
+} from "./FactoryMotion";
 const layout = [
   { id: "prepare", x: 0 },
   { id: "implement", x: 4 },
   { id: "verify", x: 8 },
 ];
+it("runs several aggregate machines without treating a paused neighbour as a global stop", () => {
+  const observed = [
+    { id: "prepare", label: "Prepare", state: "active", detail: "1 active" },
+    { id: "implement", label: "Develop", state: "active", detail: "4 active" },
+    { id: "verify", label: "Test", state: "paused", detail: "2 paused" },
+  ] as FactoryStation[];
+  const active = aggregateActiveStations(observed, {});
+  expect([...active]).toEqual(["prepare", "implement"]);
+  const mixer = new AnimationMixer(new Object3D());
+  const actions = new Map(
+    layout.map(({ id }) => [
+      id,
+      mixer.clipAction(new AnimationClip(id, 1, [])),
+    ]),
+  );
+  syncStationClips(actions, active);
+  mixer.update(0.1);
+  expect(actions.get("prepare")?.time).toBeGreaterThan(0);
+  expect(actions.get("implement")?.time).toBeGreaterThan(0);
+  expect(actions.get("verify")?.time).toBe(0);
+  for (const gate of ["hidden", "offscreen", "suspended", "reduced"] as const) {
+    const held = aggregateActiveStations(observed, { [gate]: true });
+    expect(held.size).toBe(0);
+    syncStationClips(actions, held);
+    expect([...actions.values()].every((action) => action.paused)).toBe(true);
+  }
+});
 function stations(
   active: string,
   state: FactoryStation["state"] = "active",

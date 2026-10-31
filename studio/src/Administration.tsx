@@ -27,6 +27,26 @@ export type AdministrationPage =
   | "runners"
   | "browser-connections"
   | "external-tools";
+const factoryPages = new Set([
+  "admin",
+  "users",
+  "settings",
+  "search",
+  "learning",
+  "runners",
+  "browser-connections",
+  "external-tools",
+]);
+export function requiresFactoryAdministrator(
+  page: string,
+  session: IdentitySession | null,
+): boolean {
+  return (
+    factoryPages.has(page) &&
+    !session?.global_admin &&
+    !(page === "settings" && !session)
+  );
+}
 export function Administration({
   session,
   onNavigate,
@@ -35,97 +55,107 @@ export function Administration({
   onNavigate: (page: AdministrationPage) => void;
 }) {
   const administrator = Boolean(session?.global_admin);
-  const owner = Boolean(
-    session?.memberships.some((item) => item.permissions.includes("members")),
-  );
+  if (!administrator)
+    return (
+      <section className="panel" aria-label="Factory administration">
+        <h1>Factory administration</h1>
+        <p>Factory administration requires an administrator account.</p>
+        <p>
+          Use your account menu for personal tokens, preferences and project
+          access.
+        </p>
+      </section>
+    );
   const cards = [
     {
       page: "runners" as const,
       icon: Server,
       title: "Runners & processes",
       body: "Configure repository execution and owned process waits for new runs.",
-      allowed: administrator,
-      scope: "Factory administrator",
     },
     {
       page: "analytics" as const,
       icon: Database,
       title: "Structured analytics",
-      body: "Inspect a project’s Flyquery catalog and exact schema objects through its saved read-only scope.",
-      allowed: Boolean(session),
-      scope: "Project readers; setup by factory administrator",
+      body: "Inspect structured project knowledge through its saved read-only catalog scope.",
     },
     {
       page: "learning" as const,
       icon: GraduationCap,
       title: "Learning",
-      body: "Choose how new runs reuse verified project knowledge and keep retrieval bounded.",
-      allowed: administrator,
-      scope: "Factory administrator",
+      body: "Choose which verified project knowledge new runs can reuse.",
     },
     {
       page: "browser-connections" as const,
       icon: Globe,
       title: "Connected accounts",
       body: "Register a client, authorize an account in your browser, and manage its connection.",
-      allowed: administrator,
-      scope: "Factory administrator",
     },
     {
       page: "access" as const,
       icon: ShieldCheck,
       title: "Project access",
       body: "Choose who can work on each project and what they can do.",
-      allowed: Boolean(session),
-      scope: "Project owner or factory administrator",
     },
     {
       page: "users" as const,
       icon: Users,
       title: "People",
       body: "Add people, send invitations, and manage account access.",
-      allowed: administrator,
-      scope: "Factory administrator",
     },
     {
       page: "settings" as const,
       icon: Settings2,
       title: "Connections",
       body: "Connect coding providers, repositories, and project knowledge.",
-      allowed: administrator || !session,
-      scope: "Factory administrator",
     },
     {
       page: "search" as const,
       icon: Globe,
       title: "Internet search",
       body: "Choose a search provider, store its key privately, and restrict public sources.",
-      allowed: administrator,
-      scope: "Factory administrator",
     },
     {
       page: "workflow" as const,
       icon: Bot,
       title: "Agents & skills",
       body: "Choose how coding agents work and which tools they can use.",
-      allowed: Boolean(session),
-      scope: "Catalog read; project policies restricted",
     },
     {
       page: "external-tools" as const,
       icon: Waypoints,
       title: "External tools",
-      body: "Connect reviewed tools and grant access to a project repository.",
-      allowed: administrator,
-      scope: "Factory administrator",
+      body: "Connect tools and choose the repositories that can use them.",
     },
     {
       page: "collaboration" as const,
       icon: GitBranch,
       title: "Repository workflow",
       body: "Connect issue and pull-request activity to project work.",
-      allowed: administrator || owner,
-      scope: "Project owner; global bootstrap restricted",
+    },
+  ];
+  const groups = [
+    {
+      name: "People & access",
+      detail: "Manage accounts and project permissions.",
+      pages: ["users", "access"],
+    },
+    {
+      name: "Connections",
+      detail: "Connect services and control how the factory reaches them.",
+      pages: [
+        "settings",
+        "browser-connections",
+        "external-tools",
+        "collaboration",
+        "search",
+        "analytics",
+      ],
+    },
+    {
+      name: "Execution",
+      detail: "Configure runners, agents and the knowledge they use.",
+      pages: ["runners", "workflow", "learning"],
     },
   ];
   return (
@@ -136,34 +166,44 @@ export function Administration({
           <p>Manage people, connected services, and how work is performed.</p>
         </div>
       </div>
-      <section
-        className="administration-cards"
-        aria-label="Administration areas"
-      >
-        {cards.map((card) => (
-          <article key={card.page}>
-            <card.icon size={24} />
-            <h2>{card.title}</h2>
-            <p>{card.body}</p>
-            <small>{card.scope}</small>
-            <button
-              className="secondary"
-              disabled={!card.allowed}
-              onClick={() => onNavigate(card.page)}
-            >
-              {card.title}
-              <ArrowRight size={16} />
-            </button>
-            {!card.allowed && (
-              <span className="administration-restriction">
-                {session
-                  ? "Your session does not grant this permission."
-                  : "Sign in to inspect your permissions."}
-              </span>
-            )}
-          </article>
+      <div className="administration-groups" aria-label="Factory settings">
+        {groups.map((group) => (
+          <section
+            className="administration-group"
+            aria-label={group.name}
+            key={group.name}
+          >
+            <header>
+              <h2>{group.name}</h2>
+              <p>{group.detail}</p>
+            </header>
+            <div className="administration-rows">
+              {group.pages
+                .flatMap((page) => cards.filter((card) => card.page === page))
+                .map((card) => (
+                  <button
+                    className="administration-row"
+                    key={card.page}
+                    aria-label={card.title}
+                    aria-describedby={`administration-${card.page}-description`}
+                    onClick={() => onNavigate(card.page)}
+                  >
+                    <span className="administration-icon">
+                      <card.icon size={20} />
+                    </span>
+                    <span>
+                      <strong>{card.title}</strong>
+                      <small id={`administration-${card.page}-description`}>
+                        {card.body}
+                      </small>
+                    </span>
+                    <ArrowRight size={18} />
+                  </button>
+                ))}
+            </div>
+          </section>
         ))}
-      </section>
+      </div>
     </>
   );
 }

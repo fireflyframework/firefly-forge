@@ -1,6 +1,7 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+import { mockFactoryDashboard } from "./factory-dashboard-fixture";
 import { expect, test, type Page } from "@playwright/test";
-import { navigate } from "./navigation";
+import { navigate, expectAuthenticated } from "./navigation";
 import { captureWalkthrough } from "./walkthrough-capture";
 
 const repository = {
@@ -35,6 +36,7 @@ async function fixture(
   const writes: Record<string, unknown>[] = [];
   let changed = false;
   await page.route("**/api/v1/**", async (route) => {
+    if (await mockFactoryDashboard(route)) return;
     const req = route.request(),
       path = new URL(req.url()).pathname;
     if (path.endsWith("/auth/configuration"))
@@ -85,7 +87,8 @@ async function fixture(
   });
   await page.goto("/");
   await page.evaluate(() => document.fonts.ready);
-  await navigate(page, "Administration");
+  if (options.admin !== false) await navigate(page, "Administration");
+  else await expectAuthenticated(page);
   return {
     writes,
     changeRevision: () => {
@@ -140,7 +143,7 @@ for (const view of [
     const action = page.getByRole("button", { name: "Continue", exact: true });
     await action.scrollIntoViewIfNeeded();
     const rect = await action.boundingBox(),
-      footer = await page.locator("footer").last().boundingBox();
+      footer = await page.locator(".workspace-main > footer").boundingBox();
     if (rect && footer)
       expect(rect.y + rect.height).toBeLessThanOrEqual(footer.y + 1);
     await next(page);
@@ -281,10 +284,13 @@ test("administration does not expose runner configuration to nonadministrators",
 }) => {
   await fixture(page, { admin: false });
   await expect(
+    page.getByRole("button", { name: "Administration", exact: true }),
+  ).toHaveCount(0);
+  await expect(
     page
       .locator("main")
       .getByRole("button", { name: "Runners & processes", exact: true }),
-  ).toBeDisabled();
+  ).toHaveCount(0);
 });
 
 for (const theme of ["light", "dark"] as const) {

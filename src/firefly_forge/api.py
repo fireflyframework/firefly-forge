@@ -101,11 +101,16 @@ from firefly_forge.controllers import (
     SCMRepositorySelection,
 )
 from firefly_forge.engine import Engine
+from firefly_forge.engine_activity import EngineActivity, EngineActivitySettings
+from firefly_forge.engine_activity_persistence import ForgeEngineActivityRepository
 from firefly_forge.execution_request_persistence import (
     ForgeExecutionRequestEventRepository,
     ForgeExecutionRequestRepository,
 )
 from firefly_forge.execution_requests import ExecutionRequests
+from firefly_forge.factory_dashboard import FactoryDashboard
+from firefly_forge.factory_dashboard_controllers import FactoryDashboardController
+from firefly_forge.factory_dashboard_persistence import FactoryDashboardRepository
 from firefly_forge.final_outcome_controllers import FinalOutcomeContinuationController
 from firefly_forge.framework_knowledge import FrameworkKnowledge
 from firefly_forge.framework_knowledge_controllers import FrameworkKnowledgeController
@@ -173,6 +178,10 @@ from firefly_forge.persistence import (
     ForgeRunRepository,
     ForgeTaskRepository,
 )
+from firefly_forge.personal_token_controllers import PersonalTokenController
+from firefly_forge.personal_token_models import PersonalTokenInput, PersonalTokenRotationInput
+from firefly_forge.personal_token_persistence import ForgePersonalTokenEventRepository, ForgePersonalTokenRepository
+from firefly_forge.personal_tokens import PersonalTokenAuthenticationProvider, PersonalTokens
 from firefly_forge.policies import PolicyCatalog, PolicySync, ProjectPolicies
 from firefly_forge.product_architecture import ProductArchitectureService
 from firefly_forge.product_assistant import ProductAssistant
@@ -334,6 +343,10 @@ class OperatorAuth(OncePerRequestFilter):
 
 
 def openapi_document(context: Any = None) -> dict[str, Any]:
+    security_schemes = {
+        "operator": {"type": "http", "scheme": "bearer"},
+        "browserSession": {"type": "apiKey", "in": "cookie", "name": SESSION_COOKIE},
+    }
     if context is not None:
         from pyfly.web.adapters.starlette.controller import ControllerRegistrar
         from pyfly.web.openapi import OpenAPIGenerator
@@ -341,7 +354,7 @@ def openapi_document(context: Any = None) -> dict[str, Any]:
         document = OpenAPIGenerator(
             title="firefly forge",
             version=__version__,
-            security_schemes={"operator": {"type": "http", "scheme": "bearer"}},
+            security_schemes=security_schemes,
             security=[{"operator": []}],
         ).generate(ControllerRegistrar().collect_route_metadata(context))
         document["paths"]["/api/v1/scm/connections/{id}/callback"]["get"]["security"] = []
@@ -351,9 +364,24 @@ def openapi_document(context: Any = None) -> dict[str, Any]:
         webhook = document["paths"].get("/api/v1/webhooks/{provider}")
         if webhook:
             webhook["post"]["security"] = []
+        for path, operations in document["paths"].items():
+            if path.startswith("/api/v1/identity/tokens") or path.startswith("/api/v1/factory-dashboard"):
+                for method in ("get", "post"):
+                    if method in operations:
+                        operations[method]["security"] = (
+                            [{"browserSession": []}]
+                            if path.startswith("/api/v1/identity/tokens")
+                            else [{"operator": []}, {"browserSession": []}]
+                        )
         return dict(document)
     paths: dict[str, Any] = {}
     specifications = [
+        ("/factory-dashboard", "get", None),
+        ("/factory-dashboard/projects", "get", None),
+        ("/identity/tokens", "get", None),
+        ("/identity/tokens", "post", "PersonalTokenInput"),
+        ("/identity/tokens/{token_id}/revoke", "post", None),
+        ("/identity/tokens/{token_id}/rotate", "post", "PersonalTokenRotationInput"),
         ("/repositories", "get", None),
         ("/repositories", "post", "RepositoryInput"),
         ("/repositories/{id}/policies", "get", None),
@@ -403,6 +431,8 @@ def openapi_document(context: Any = None) -> dict[str, Any]:
     ]
     schemas: dict[str, Any] = {}
     models: list[type[BaseModel]] = [
+        PersonalTokenInput,
+        PersonalTokenRotationInput,
         RepositoryInput,
         RunInput,
         ProviderConfiguration,
@@ -432,6 +462,62 @@ def openapi_document(context: Any = None) -> dict[str, Any]:
                 "422": {"description": "Invalid request"},
             },
         }
+        if path.startswith("/identity/tokens"):
+            operation["security"] = [{"browserSession": []}]
+            if method == "post" and not path.endswith("/revoke"):
+                operation["responses"]["201"] = operation["responses"].pop("200")
+        if "{token_id}" in path:
+            operation.setdefault("parameters", []).append(
+                {
+                    "name": "token_id",
+                    "in": "path",
+                    "required": True,
+                    "schema": {"type": "string", "pattern": "^[a-f0-9]{32}$"},
+                }
+            )
+        if path.startswith("/factory-dashboard"):
+            operation["security"] = [{"operator": []}, {"browserSession": []}]
+            fields = [
+                ("cursor", {"type": "string"}),
+                ("limit", {"type": "integer", "minimum": 1, "maximum": 200, "default": 40}),
+            ]
+            if path.endswith("/projects"):
+                fields.append(("search", {"type": "string", "maxLength": 200}))
+            else:
+                fields.extend(
+                    [
+                        (
+                            "kind",
+                            {
+                                "type": "string",
+                                "enum": ["factory", "project", "standalone", "run"],
+                                "default": "factory",
+                            },
+                        ),
+                        ("project_id", {"type": "string", "pattern": "^[a-f0-9]{32}$"}),
+                        ("run_id", {"type": "string", "pattern": "^[a-f0-9]{32}$"}),
+                        (
+                            "bucket",
+                            {
+                                "type": "string",
+                                "enum": [
+                                    "active",
+                                    "queued",
+                                    "needs_action",
+                                    "completed",
+                                    "failed",
+                                    "cancelled",
+                                    "expired",
+                                    "quarantined",
+                                    "unknown",
+                                ],
+                            },
+                        ),
+                    ]
+                )
+            operation["parameters"] = [
+                {"name": name, "in": "query", "required": False, "schema": schema} for name, schema in fields
+            ]
         if "{id}" in path:
             operation["parameters"] = [{"name": "id", "in": "path", "required": True, "schema": {"type": "string"}}]
         if "{request_id}" in path:
@@ -462,7 +548,7 @@ def openapi_document(context: Any = None) -> dict[str, Any]:
         "openapi": "3.1.0",
         "info": {"title": "firefly forge", "version": __version__},
         "paths": paths,
-        "components": {"schemas": schemas, "securitySchemes": {"operator": {"type": "http", "scheme": "bearer"}}},
+        "components": {"schemas": schemas, "securitySchemes": security_schemes},
         "security": [{"operator": []}],
     }
 
@@ -583,12 +669,39 @@ class FactoryConfiguration:
         users: ForgeIdentityUserRepository,
         sessions: ForgeIdentitySessionRepository,
         attempts: ForgeIdentityAttemptRepository,
+        tokens: PersonalTokens,
     ) -> IdentityService:
-        return IdentityService(store, self.identity_configuration, users, sessions, attempts)
+        return IdentityService(
+            store,
+            self.identity_configuration,
+            users,
+            sessions,
+            attempts,
+            personal_token_provider=PersonalTokenAuthenticationProvider(tokens),
+        )
 
     @bean
-    def project_access(self, store: Store, records: ForgeMembershipRepository) -> ProjectAccess:
-        return ProjectAccess(store, records)
+    def personal_tokens(
+        self,
+        store: Store,
+        records: ForgePersonalTokenRepository,
+        events: ForgePersonalTokenEventRepository,
+        users: ForgeIdentityUserRepository,
+        memberships: ForgeMembershipRepository,
+    ) -> PersonalTokens:
+        tokens = PersonalTokens(store, records, events, users, memberships)
+        store.personal_tokens = tokens
+        return tokens
+
+    @bean
+    def project_access(self, store: Store, records: ForgeMembershipRepository, tokens: PersonalTokens) -> ProjectAccess:
+        return ProjectAccess(store, records, personal_tokens=tokens)
+
+    @bean
+    def factory_dashboard(
+        self, store: Store, access: ProjectAccess, records: FactoryDashboardRepository
+    ) -> FactoryDashboard:
+        return FactoryDashboard(store, access, records)
 
     @bean
     def oauth_provider_policies(self, store: Store, records: OAuthProviderPolicyRepository) -> OAuthProviderPolicies:
@@ -669,6 +782,18 @@ class FactoryConfiguration:
         return UserAdministration(store, identity, operations, events)
 
     @bean
+    def engine_activity(self, store: Store, records: ForgeEngineActivityRepository) -> EngineActivity:
+        return EngineActivity(
+            store,
+            records,
+            EngineActivitySettings(
+                heartbeat_seconds=float(os.environ.get("FORGE_ACTIVITY_HEARTBEAT_SECONDS", "5")),
+                stale_seconds=float(os.environ.get("FORGE_ACTIVITY_STALE_SECONDS", "20")),
+                sample_timeout_seconds=float(os.environ.get("FORGE_ACTIVITY_SAMPLE_TIMEOUT_SECONDS", "1")),
+            ),
+        )
+
+    @bean
     def coordinator(
         self,
         store: Store,
@@ -686,6 +811,7 @@ class FactoryConfiguration:
         routing: TaskRouting,
         runtime_roles: RuntimeRoles,
         worker_evidence: WorkerEvidence,
+        stage_activity: EngineActivity,
     ) -> Engine:
         engine = Engine(
             store,
@@ -693,6 +819,7 @@ class FactoryConfiguration:
             concurrency=int(os.environ.get("FORGE_CONCURRENCY", "2")),
             connections=connections,
             journal=journal,
+            stage_activity=stage_activity,
         )
         engine.assurance = assurance
         engine.worker_evidence = worker_evidence
@@ -1260,6 +1387,12 @@ def create_runtime(
         ForgeIdentityUserRepository,
         ForgeIdentitySessionRepository,
         ForgeIdentityAttemptRepository,
+        ForgePersonalTokenRepository,
+        ForgePersonalTokenEventRepository,
+        PersonalTokenController,
+        FactoryDashboardRepository,
+        ForgeEngineActivityRepository,
+        FactoryDashboardController,
         ForgeMembershipRepository,
         ForgeAccessEventRepository,
         IdentityController,

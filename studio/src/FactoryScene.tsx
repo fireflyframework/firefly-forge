@@ -1,6 +1,6 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Focus, Maximize2 } from "lucide-react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { ChevronRight, Focus, Maximize2 } from "lucide-react";
 import type {
   AnimationAction,
   Object3D,
@@ -8,13 +8,26 @@ import type {
   MeshStandardMaterial,
 } from "three";
 import "./FactoryScene.css";
-import { FactoryMotion, syncStationClips } from "./FactoryMotion";
+import { factoryViewportHeight, overviewCameraOffset } from "./FactoryViewport";
+import {
+  FactoryMotion,
+  syncStationClips,
+  aggregateActiveStations,
+} from "./FactoryMotion";
 
 export type FactoryStation = {
   id: string;
   label: string;
-  state: "waiting" | "active" | "done" | "failed" | "paused" | "skipped";
+  state:
+    "waiting" | "active" | "done" | "failed" | "paused" | "skipped" | "unknown";
   detail: string;
+  counts?: {
+    active: number;
+    waiting: number;
+    needs_action: number;
+    unknown: number;
+    done: number;
+  };
 };
 export type FactorySceneProps = {
   stations: FactoryStation[];
@@ -22,6 +35,8 @@ export type FactorySceneProps = {
   onSelect: (id: string) => void;
   selectedId: string | null;
   suspended?: boolean;
+  aggregate?: boolean;
+  observationLabel?: string;
 };
 type Model = {
   version: number;
@@ -50,6 +65,51 @@ async function loadModel(signal: AbortSignal): Promise<Model> {
 
 export function FactoryScene(props: FactorySceneProps) {
   const viewport = useRef<HTMLDivElement>(null);
+  const rail = useRef<HTMLDivElement>(null);
+  const railId = useId();
+  const [moreStages, setMoreStages] = useState(false);
+  useLayoutEffect(() => {
+    const node = rail.current;
+    if (!node) return;
+    const measure = () =>
+      setMoreStages(node.scrollWidth - node.clientWidth - node.scrollLeft > 2);
+    measure();
+    const resize = new ResizeObserver(measure);
+    resize.observe(node);
+    node.addEventListener("scroll", measure, { passive: true });
+    return () => {
+      resize.disconnect();
+      node.removeEventListener("scroll", measure);
+    };
+  }, [props.stations.length]);
+  useLayoutEffect(() => {
+    const node = viewport.current;
+    const main = node?.closest<HTMLElement>("main");
+    if (!node || !main || !node.closest(".production-floor")) return;
+    let pending = 0;
+    const measure = () => {
+      node.style.setProperty(
+        "--factory-available-height",
+        `${factoryViewportHeight(main.clientHeight, main.clientWidth)}px`,
+      );
+    };
+    const schedule = () => {
+      if (!pending)
+        pending = requestAnimationFrame(() => {
+          pending = 0;
+          measure();
+        });
+    };
+    measure();
+    const resize = new ResizeObserver(schedule);
+    resize.observe(main);
+    window.addEventListener("resize", schedule);
+    return () => {
+      resize.disconnect();
+      window.removeEventListener("resize", schedule);
+      if (pending) cancelAnimationFrame(pending);
+    };
+  }, []);
   const current = useRef({ ...props, focusSelected: false });
   const controller = useRef<Controller | null>(null);
   const [rendererType, setRendererType] = useState<"loading" | "webgl" | "svg">(
@@ -58,7 +118,11 @@ export function FactoryScene(props: FactorySceneProps) {
   const [reason, setReason] = useState("");
   const [generation, setGeneration] = useState(0);
   const [reducedMotion, setReducedMotion] = useState(false);
-  const [focusSelected, setFocusSelected] = useState(false);
+  const [focusSelected, setFocusSelected] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      window.matchMedia("(max-width: 600px)").matches,
+  );
   useEffect(() => {
     const query = matchMedia("(prefers-reduced-motion: reduce)");
     const update = () => setReducedMotion(query.matches);
@@ -262,6 +326,27 @@ export function FactoryScene(props: FactorySceneProps) {
               );
         }
       });
+      const geometryCorners = new Map<Object3D, import("three").Vector3[]>();
+      function corners(root: Object3D) {
+        const retained = geometryCorners.get(root);
+        if (retained) return retained;
+        root.updateWorldMatrix(true, true);
+        const points: import("three").Vector3[] = [];
+        root.traverse((node) => {
+          if (!(node instanceof THREE.Mesh)) return;
+          node.geometry.computeBoundingBox();
+          const box = node.geometry.boundingBox;
+          if (!box) return;
+          for (const x of [box.min.x, box.max.x])
+            for (const y of [box.min.y, box.max.y])
+              for (const z of [box.min.z, box.max.z])
+                points.push(
+                  new THREE.Vector3(x, y, z).applyMatrix4(node.matrixWorld),
+                );
+        });
+        geometryCorners.set(root, points);
+        return points;
+      }
       function fit() {
         if (!renderer || !isVisible()) return;
         const width = container!.clientWidth,
@@ -273,31 +358,34 @@ export function FactoryScene(props: FactorySceneProps) {
           current.current.focusSelected && current.current.selectedId
             ? groups.get(current.current.selectedId)
             : null;
-        const bounds = new THREE.Box3().setFromObject(focused ?? world),
+        const points = corners(focused ?? world);
+        const bounds = new THREE.Box3().setFromPoints(points),
           center = bounds.getCenter(new THREE.Vector3());
-        camera.position.copy(center).add(new THREE.Vector3(10, 14, 27));
+        camera.position
+          .copy(center)
+          .add(
+            focused
+              ? new THREE.Vector3(12, 20, 30)
+              : new THREE.Vector3(
+                  ...overviewCameraOffset(points, width / height),
+                ),
+          );
         camera.lookAt(center);
         camera.updateMatrixWorld(true);
-        const corners = [];
-        for (const x of [bounds.min.x, bounds.max.x])
-          for (const y of [bounds.min.y, bounds.max.y])
-            for (const z of [bounds.min.z, bounds.max.z])
-              corners.push(
-                new THREE.Vector3(x, y, z).applyMatrix4(
-                  camera.matrixWorldInverse,
-                ),
-              );
-        const horizontal =
-          Math.max(...corners.map((p) => p.x)) -
-          Math.min(...corners.map((p) => p.x));
-        const vertical =
-          Math.max(...corners.map((p) => p.y)) -
-          Math.min(...corners.map((p) => p.y));
-        const span = Math.max(vertical, horizontal / (width / height)) * 1.18;
-        camera.left = (-span * width) / height / 2;
-        camera.right = -camera.left;
-        camera.top = span / 2;
-        camera.bottom = -camera.top;
+        // Fit the visible geometry rather than empty corners of the long factory's world box.
+        const projected = new THREE.Box3();
+        for (const point of points)
+          projected.expandByPoint(
+            point.clone().applyMatrix4(camera.matrixWorldInverse),
+          );
+        const horizontal = projected.max.x - projected.min.x;
+        const vertical = projected.max.y - projected.min.y;
+        const target = projected.getCenter(new THREE.Vector3());
+        const span = Math.max(vertical, horizontal / (width / height)) * 1.1;
+        camera.left = target.x - (span * width) / height / 2;
+        camera.right = target.x + (span * width) / height / 2;
+        camera.top = target.y + span / 2;
+        camera.bottom = target.y - span / 2;
         camera.updateProjectionMatrix();
       }
       function paint(time: number) {
@@ -305,12 +393,22 @@ export function FactoryScene(props: FactorySceneProps) {
         if (!renderer || !isVisible()) return;
         const delta = Math.min((time - lastTime) / 1000, 0.05);
         lastTime = time;
+        const aggregate = current.current.aggregate;
+        const gates = {
+          hidden: window.document.hidden,
+          offscreen,
+          suspended: current.current.suspended,
+          reduced: motionQuery.matches,
+        };
+        motion.update(current.current.stations, gates);
+        const active = aggregateActiveStations(current.current.stations, gates);
         const from = motion.x;
-        motion.advance(delta);
+        if (!aggregate) motion.advance(delta);
         carrier.position.x = motion.x;
-        syncStationClips(actions, motion.workingStation);
-        if (motion.workingStation) mixer.update(delta);
-        if (motion.x !== from)
+        syncStationClips(actions, aggregate ? active : motion.workingStation);
+        if (aggregate ? active.size > 0 : motion.workingStation)
+          mixer.update(delta);
+        if (!aggregate && motion.x !== from)
           for (const belt of treadTextures)
             if (
               Math.max(from, motion.x) >= belt.from &&
@@ -318,7 +416,8 @@ export function FactoryScene(props: FactorySceneProps) {
             )
               belt.texture.offset.x -= Math.sign(motion.x - from) * delta * 0.6;
         renderer.render(scene, camera);
-        if (motion.needsMotion) frame = requestAnimationFrame(paint);
+        if (aggregate ? active.size > 0 : motion.needsMotion)
+          frame = requestAnimationFrame(paint);
       }
       function schedule() {
         if (!isVisible()) return;
@@ -373,9 +472,20 @@ export function FactoryScene(props: FactorySceneProps) {
           suspended: current.current.suspended,
           reduced: motionQuery.matches,
         });
-        carrier.visible = motion.targetStation !== null;
+        carrier.visible =
+          !current.current.aggregate && motion.targetStation !== null;
         carrier.position.x = motion.x;
-        syncStationClips(actions, motion.workingStation);
+        syncStationClips(
+          actions,
+          current.current.aggregate
+            ? aggregateActiveStations(stations, {
+                hidden: window.document.hidden,
+                offscreen,
+                suspended: current.current.suspended,
+                reduced: motionQuery.matches,
+              })
+            : motion.workingStation,
+        );
         fit();
         schedule();
       }
@@ -483,6 +593,7 @@ export function FactoryScene(props: FactorySceneProps) {
       data-theme={props.theme}
       data-reduced-motion={reducedMotion}
       data-camera={focusSelected ? "selected-stage" : "overview"}
+      data-carrier-mode={props.aggregate ? "hidden" : "single-run"}
     >
       <div ref={viewport} className="factory-live-viewport">
         {rendererType === "webgl" && (
@@ -510,21 +621,34 @@ export function FactoryScene(props: FactorySceneProps) {
         <div className="factory-live-caption">
           <span>
             {rendererType === "webgl"
-              ? "3D production floor"
+              ? focusSelected
+                ? `${props.stations.find((station) => station.id === props.selectedId)?.label ?? "Selected stage"} · stage view`
+                : "Production floor"
               : rendererType === "loading"
                 ? "Loading the 3D production floor"
                 : "Static factory view"}
           </span>
           <span>
-            {props.suspended
-              ? "Updates unavailable; showing last recorded state"
-              : reducedMotion
-                ? "Motion reduced"
-                : props.stations.some((station) => station.state === "paused")
-                  ? "Paused"
-                  : props.stations.some((station) => station.state === "active")
-                    ? "Recorded work is active"
-                    : "No active machinery"}
+            {props.observationLabel ??
+              (props.suspended
+                ? "Updates unavailable; showing last recorded state"
+                : reducedMotion
+                  ? "Motion reduced"
+                  : props.aggregate
+                    ? props.stations.some(
+                        (station) => station.state === "active",
+                      )
+                      ? "Recorded tasks are active across runs"
+                      : "No recorded active tasks"
+                    : props.stations.some(
+                          (station) => station.state === "paused",
+                        )
+                      ? "Paused"
+                      : props.stations.some(
+                            (station) => station.state === "active",
+                          )
+                        ? "Recorded work is active"
+                        : "No active machinery")}
           </span>
         </div>
       </div>
@@ -539,41 +663,76 @@ export function FactoryScene(props: FactorySceneProps) {
           </button>
         </div>
       )}
-      <figcaption
-        className="factory-live-stations"
-        aria-label="Recorded execution stages"
-      >
-        {props.stations.map((station, index) => (
+      <figcaption className="factory-stage-navigation">
+        <div
+          className="factory-live-stations"
+          aria-label="Recorded execution stages"
+          role="group"
+          ref={rail}
+          id={railId}
+        >
+          {props.stations.map((station, index) => (
+            <button
+              key={station.id}
+              type="button"
+              onClick={() => props.onSelect(station.id)}
+              onKeyDown={(event) => {
+                if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
+                  event.preventDefault();
+                  const buttons =
+                    event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>(
+                      "button",
+                    );
+                  buttons?.[
+                    (index +
+                      (event.key === "ArrowRight" ? 1 : -1) +
+                      props.stations.length) %
+                      props.stations.length
+                  ]?.focus();
+                }
+              }}
+              aria-pressed={props.selectedId === station.id}
+              className={`factory-live-station ${station.state}`}
+              title={station.detail}
+            >
+              <span>{station.label}</span>
+              <strong>
+                {props.aggregate && station.counts
+                  ? station.counts.active ||
+                    station.counts.waiting ||
+                    station.counts.needs_action
+                    ? `${station.counts.active} active${station.counts.waiting ? ` · ${station.counts.waiting} queued` : ""}${station.counts.needs_action ? ` · ${station.counts.needs_action} need action` : ""}`
+                    : station.counts.unknown
+                      ? `${station.counts.unknown} unknown`
+                      : station.counts.done
+                        ? `${station.counts.done} completed`
+                        : "No stage records"
+                  : station.state}
+              </strong>
+              <small>{station.detail}</small>
+            </button>
+          ))}
+          {!props.stations.length && (
+            <p>Choose a run to inspect its recorded execution stages.</p>
+          )}
+        </div>
+        {moreStages && (
           <button
-            key={station.id}
             type="button"
-            onClick={() => props.onSelect(station.id)}
-            onKeyDown={(event) => {
-              if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
-                event.preventDefault();
-                const buttons =
-                  event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>(
-                    "button",
-                  );
-                buttons?.[
-                  (index +
-                    (event.key === "ArrowRight" ? 1 : -1) +
-                    props.stations.length) %
-                    props.stations.length
-                ]?.focus();
-              }
-            }}
-            aria-pressed={props.selectedId === station.id}
-            className={`factory-live-station ${station.state}`}
-            title={station.detail}
+            className="quiet factory-stage-more"
+            aria-label="Show more stages"
+            aria-controls={railId}
+            title="Show more stages"
+            onClick={() =>
+              rail.current?.scrollBy({
+                left: rail.current.clientWidth * 0.75,
+                behavior: reducedMotion ? "instant" : "smooth",
+              })
+            }
           >
-            <span>{station.label}</span>
-            <strong>{station.state}</strong>
-            <small>{station.detail}</small>
+            <ChevronRight size={18} />
+            <span>More</span>
           </button>
-        ))}
-        {!props.stations.length && (
-          <p>Choose a run to inspect its recorded execution stages.</p>
         )}
       </figcaption>
     </figure>

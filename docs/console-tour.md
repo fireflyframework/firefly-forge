@@ -328,7 +328,9 @@ On a real factory, Start building admits the request. The retained source, produ
 
 ## 4. Inspect the run before continuing
 
-Choose the **Project** and **Manufacturing run**, then switch between **Floor** and **Board**. Studio keeps these choices when you inspect a run or visit another page and return to Factory. The selection stays in memory for this session; changing the signed-in user or factory API, or disconnecting, resets it. If a selected project or run is no longer in the accessible list, choose from the current records. On phones, each selector uses a full row.
+Use **Browse work** below the model to choose a product project, then switch between **Floor** and **Board**. A product can span several component repositories. Factory overview and standalone work remain separate scopes. **Focus run** selects one run's plan and source-control links; **Open run** opens its detail. See [Follow work across the factory](factory-dashboard.md) for scope counts, project selection and the board.
+
+Studio keeps the selection when you inspect a run or visit another page and return to Factory. Changing the signed-in user, factory API or connection resets it. A denied read discards the previous observation. On phones, the model initially focuses the selected station; **Show full floor** restores the overview.
 
 Factory lists the work. Select the inventory run to open its state, timeline and evidence tabs. In this example, the fixture reports `needs_reconciliation`, a failed verification command and an intent without a completion receipt.
 
@@ -336,7 +338,7 @@ Factory lists the work. Select the inventory run to open its state, timeline and
 
 ![Factory overview and fixture run](assets/screenshots/factory-overview-desktop-light.png)
 
-<figcaption>Factory overview: select Fixture reservation verification to open its retained detail. The camera starts with the whole floor; use Focus selected stage for a closer view and Show full floor to return. Animation does not establish a job outcome.</figcaption>
+<figcaption>Factory overview: use Open run to inspect the reservation change. The model and run counts describe separate task and execution records. Current worker activity is unavailable in this fixture, so the machinery stays still.</figcaption>
 </figure>
 
 <figure class="forge-shot" markdown="1">

@@ -1,7 +1,11 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { expect, test, type Page } from "@playwright/test";
 import { mockIdentity } from "./auth-fixture";
-import { navigate } from "./navigation";
+import { navigate, expectAuthenticated } from "./navigation";
+import { factoryDashboardFixture } from "./factory-dashboard-fixture";
+const runA = "1".repeat(32),
+  runB = "2".repeat(32),
+  runCId = "3".repeat(32);
 const actorA = "f".repeat(32),
   actorB = "e".repeat(32);
 const a = "a".repeat(32),
@@ -25,7 +29,13 @@ async function fixture(page: Page) {
   const holds = new Map<string, ReturnType<typeof gate>>();
   const reads = new Map<string, number>(),
     settled = new Map<string, number>();
-  const repositories = [a, b].map((id) => ({
+  const projects = [a, b].map((id) => ({
+    id,
+    name: id === a ? "Project A" : "Project B",
+    component_count: 1,
+    repository_count: 1,
+  }));
+  const repositories = ["4".repeat(32), "5".repeat(32)].map((id) => ({
     id,
     name: id === a ? "Project A" : "Project B",
     url: `https://github.com/example/${id}`,
@@ -33,12 +43,14 @@ async function fixture(page: Page) {
     default_branch: "main",
   }));
   const runs = [
-    ["a-1", a],
-    ["b-2", b],
-  ].map(([id, repository_id]) => ({
+    [runA, a, repositories[0].id, "a-1"],
+    [runB, b, repositories[1].id, "b-2"],
+  ].map(([id, project_id, repository_id, label]) => ({
     id,
+    project_id,
+    project_name: project_id === a ? "Project A" : "Project B",
     repository_id,
-    brief: `Recorded ${id}`,
+    brief: `Recorded ${label}`,
     backend: "pyfly",
     frontend: "none",
     agent: "codex",
@@ -55,7 +67,9 @@ async function fixture(page: Page) {
   };
   const runC = {
     ...runs[0],
-    id: "c-1",
+    id: runCId,
+    project_id: "c".repeat(32),
+    project_name: "Project C",
     repository_id: repositoryC.id,
     brief: "Recorded c-1",
   };
@@ -92,7 +106,7 @@ async function fixture(page: Page) {
     if (await mockIdentity(route)) return;
     if (route.request().method() !== "GET") writes++;
     const scope = path.startsWith("/second/") ? "apiB" : actor;
-    if (path.endsWith("/runs/b-2/publish")) {
+    if (path.endsWith(`/runs/${runB}/publish`)) {
       reads.set("action", (reads.get("action") ?? 0) + 1);
       await holds.get("action")?.pending;
       await route.fulfill(
@@ -117,10 +131,11 @@ async function fixture(page: Page) {
       json = {
         tasks: [
           {
-            id: "private-plan",
+            id: "prepare",
             title: scope === actorA ? "Previous actor plan" : "New actor plan",
             status: "done",
-            instructions: "Fictional prior actor content",
+            instructions:
+              scope === actorA ? "Previous actor plan" : "New actor plan",
           },
         ],
       };
@@ -130,35 +145,61 @@ async function fixture(page: Page) {
         scope === actorA
           ? runs.find((run) => path.endsWith(`/runs/${run.id}`))
           : null;
-    if (scope !== actorA && path.endsWith("/runs/c-1") && allowB) json = runC;
+    if (scope !== actorA && path.endsWith(`/runs/${runCId}`) && allowB)
+      json = runC;
+    const visibleRuns = scope === actorA ? runs : allowB ? [runC] : [];
+    const plans = Object.fromEntries(
+      visibleRuns.map((run) => [
+        run.id,
+        { tasks: [{ id: "prepare", status: "done" }] },
+      ]),
+    );
+    const dashboard = factoryDashboardFixture(new URL(route.request().url()), {
+      projects:
+        scope === actorA
+          ? projects
+          : allowB
+            ? [
+                {
+                  id: "c".repeat(32),
+                  name: "Project C",
+                  component_count: 1,
+                  repository_count: 1,
+                },
+              ]
+            : [],
+      runs: visibleRuns,
+      plans,
+    });
+    if (dashboard !== undefined) json = dashboard;
     const snapshot = structuredClone(json);
-    if (path.endsWith("/repositories")) {
+    if (path.endsWith("/factory-dashboard")) {
       reads.set(scope, (reads.get(scope) ?? 0) + 1);
       await holds.get(scope)?.pending;
     }
-    if (path.endsWith("/runs/b-2")) {
+    if (path.endsWith(`/runs/${runB}`)) {
       reads.set("detail", (reads.get("detail") ?? 0) + 1);
       await holds.get("detail")?.pending;
     }
-    if (path.endsWith("/runs/c-1")) {
+    if (path.endsWith(`/runs/${runCId}`)) {
       reads.set("new-detail", (reads.get("new-detail") ?? 0) + 1);
       await holds.get("new-detail")?.pending;
     }
     if (
       scope === actorA &&
-      ((path.endsWith("/repositories") && failRead) ||
-        (path.endsWith("/runs/b-2") && failDetail))
+      ((path.endsWith("/factory-dashboard") && failRead) ||
+        (path.endsWith(`/runs/${runB}`) && failDetail))
     ) {
       await route.fulfill({
         status: 403,
         json: { detail: "Prior-actor public error marker" },
       });
     } else await route.fulfill({ json: snapshot });
-    if (path.endsWith("/runs/c-1"))
+    if (path.endsWith(`/runs/${runCId}`))
       settled.set("new-detail", (settled.get("new-detail") ?? 0) + 1);
-    if (path.endsWith("/runs/b-2"))
+    if (path.endsWith(`/runs/${runB}`))
       settled.set("detail", (settled.get("detail") ?? 0) + 1);
-    if (path.endsWith("/repositories"))
+    if (path.endsWith("/factory-dashboard"))
       settled.set(scope, (settled.get(scope) ?? 0) + 1);
   });
   await page.goto("/");
@@ -170,11 +211,28 @@ async function fixture(page: Page) {
     .getByRole("button", { name: "Save connection", exact: true })
     .click();
   await navigate(page, "Factory");
-  await page.getByLabel("Project", { exact: true }).selectOption(b);
-  await page.getByRole("button", { name: "Board", exact: true }).click();
-  await expect(
-    page.getByRole("region", { name: "Selected run tasks" }),
-  ).toContainText("Previous actor plan");
+  await expectAuthenticated(page);
+  await page.getByRole("button", { name: "Browse work", exact: true }).click();
+  await page
+    .getByRole("dialog", { name: "Factory work" })
+    .getByRole("button", { name: /^Project B / })
+    .click();
+  await page
+    .getByRole("button", { name: "Show run board", exact: true })
+    .click();
+  await page
+    .locator(".factory-run-record")
+    .filter({
+      has: page.getByRole("heading", { name: "Recorded b-2", exact: true }),
+    })
+    .getByRole("button", { name: "Focus run", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Show production floor", exact: true })
+    .click();
+  await expect(page.locator(".factory-inspection")).toContainText(
+    "Previous actor plan",
+  );
   return {
     hold: (scope: string) => {
       const value = gate();
@@ -209,24 +267,32 @@ async function fixture(page: Page) {
 async function changeActor(
   page: Page,
   state: Awaited<ReturnType<typeof fixture>>,
+  returnFromEditor = false,
 ) {
   state.switchActor();
   await page.evaluate(() =>
     window.dispatchEvent(new Event("forge-session-expired")),
   );
+  if (returnFromEditor) {
+    await expect(
+      page.locator(".sidebar-bottom .identity-trigger"),
+    ).toHaveAttribute("aria-label", "Signed in as Other operator");
+    await expect(page.locator(".run-id")).toHaveCount(0);
+    await navigate(page, "Factory");
+  }
 }
 async function emptyFactory(page: Page) {
-  await expect(
-    page.getByRole("button", { name: "API connected", exact: true }),
-  ).toBeVisible();
-  await expect(page.getByLabel("Project", { exact: true })).toHaveValue("");
+  await expectAuthenticated(page);
+  await expect(page.locator(".factory-scope-caption h2")).toHaveText(
+    "Factory overview",
+  );
   await expect(page.locator(".production-floor")).toContainText(
-    "No connected projects",
+    "No recorded runs are visible in this scope",
   );
   await expect(page.locator(".production-floor")).not.toContainText(
     "Previous actor plan",
   );
-  await expect(page.locator(".runs-section")).not.toContainText("Recorded b-2");
+  await expect(page.locator(".factory-run-record")).toHaveCount(0);
 }
 test("identity resolution and fresh actor data never expose the previous actor project or plan", async ({
   page,
@@ -240,7 +306,10 @@ test("identity resolution and fresh actor data never expose the previous actor p
     await expect(page.locator(".production-floor")).toHaveCount(0);
     auth.release();
     await expect.poll(() => state.reads(actorB)).toBeGreaterThan(0);
-    await expect(page.locator(".production-floor")).toHaveCount(0);
+    await expect(page.locator(".factory-run-record")).toHaveCount(0);
+    await expect(page.locator(".production-floor")).not.toContainText(
+      "Previous actor plan",
+    );
     fresh.release();
     await emptyFactory(page);
     expect(state.writes()).toBe(0);
@@ -258,8 +327,7 @@ for (const mode of ["actor", "API"] as const)
       settled = state.settled(actorA);
     try {
       await page
-        .locator(".runs-section")
-        .getByRole("button", { name: "Refresh", exact: true })
+        .getByRole("button", { name: "Refresh factory records", exact: true })
         .click();
       await expect.poll(() => state.reads(actorA)).toBeGreaterThan(oldCount);
       if (mode === "actor") await changeActor(page, state);
@@ -300,15 +368,12 @@ test("late prior-actor run detail cannot reappear after a fresh empty actor load
     detail = state.hold("detail");
   try {
     await page
-      .locator(".flow-card.selected")
-      .getByRole("button", { name: "Inspect run", exact: true })
+      .getByRole("button", { name: "Open this run", exact: true })
       .click();
     await expect.poll(() => state.reads("detail")).toBeGreaterThan(0);
-    await changeActor(page, state);
+    await changeActor(page, state, true);
     await expect.poll(() => state.reads(actorB)).toBeGreaterThan(0);
-    await expect(
-      page.getByRole("button", { name: "API connected", exact: true }),
-    ).toBeVisible();
+    await expectAuthenticated(page);
     await expect(page.locator(".run-id")).toHaveCount(0);
     detail.release();
     await expect.poll(() => state.settled("detail")).toBeGreaterThan(0);
@@ -329,8 +394,7 @@ test("late old refresh errors cannot disconnect or disclose errors under the new
   state.rejectRead();
   try {
     await page
-      .locator(".runs-section")
-      .getByRole("button", { name: "Refresh", exact: true })
+      .getByRole("button", { name: "Refresh factory records", exact: true })
       .click();
     await expect.poll(() => state.reads(actorA)).toBeGreaterThan(count);
     await changeActor(page, state);
@@ -356,36 +420,39 @@ test("late old run error and finally cannot alter a newer actor's pending detail
   state.rejectDetail();
   try {
     await page
-      .locator(".flow-card.selected")
-      .getByRole("button", { name: "Inspect run", exact: true })
+      .getByRole("button", { name: "Open this run", exact: true })
       .click();
     await expect.poll(() => state.reads("detail")).toBeGreaterThan(0);
-    await changeActor(page, state);
+    await changeActor(page, state, true);
     await expect.poll(() => state.reads(actorB)).toBeGreaterThan(0);
     await navigate(page, "Factory");
-    await expect(page.getByLabel("Project", { exact: true })).toHaveValue(
-      "c".repeat(32),
-    );
-    await page.getByRole("button", { name: "Board", exact: true }).click();
+    await expect(
+      page.getByRole("heading", { name: "Recorded c-1", exact: true }),
+    ).toBeVisible();
     await page
-      .locator(".flow-card.selected")
-      .getByRole("button", { name: "Inspect run", exact: true })
+      .locator(".factory-run-record")
+      .filter({
+        has: page.getByRole("heading", { name: "Recorded c-1", exact: true }),
+      })
+      .getByRole("button", { name: "Open run", exact: true })
       .click();
     await expect.poll(() => state.reads("new-detail")).toBeGreaterThan(0);
     const publish = page.getByRole("button", {
       name: "Publish pull request",
       exact: true,
     });
-    await expect(publish).toBeDisabled();
+    await expect(publish).toHaveCount(0);
+    await expect(page.locator(".run-id")).toHaveCount(0);
     old.release();
     await expect.poll(() => state.settled("detail")).toBeGreaterThan(0);
     await expect(page.locator("main")).not.toContainText(
       "Prior-actor public error marker",
     );
-    await expect(publish).toBeDisabled();
+    await expect(publish).toHaveCount(0);
+    await expect(page.locator(".run-id")).toHaveCount(0);
     fresh.release();
     await expect.poll(() => state.settled("new-detail")).toBeGreaterThan(0);
-    await expect(page.locator(".run-id")).toHaveText("Run c-1");
+    await expect(page.locator(".run-id")).toHaveText(`Run ${runCId}`);
     await expect(publish).toBeEnabled();
     expect(state.writes()).toBe(0);
   } finally {
@@ -419,9 +486,6 @@ test("failed identity validation keeps retained actor data hidden", async ({
     ).toBeVisible();
     await navigate(page, "Factory");
     await expect(page.locator(".production-floor")).toHaveCount(0);
-    await expect(
-      page.getByRole("button", { name: "API connected", exact: true }),
-    ).toHaveCount(0);
     expect(state.writes()).toBe(0);
   } finally {
     state.releaseAll();
@@ -438,8 +502,7 @@ for (const outcome of ["success", "error"] as const)
     if (outcome === "error") state.rejectAction();
     try {
       await page
-        .locator(".flow-card.selected")
-        .getByRole("button", { name: "Inspect run", exact: true })
+        .getByRole("button", { name: "Open this run", exact: true })
         .click();
       const publishA = page.getByRole("button", {
         name: "Publish pull request",
@@ -448,26 +511,29 @@ for (const outcome of ["success", "error"] as const)
       await expect(publishA).toBeEnabled();
       await publishA.click();
       await expect.poll(() => state.reads("action")).toBeGreaterThan(0);
-      await changeActor(page, state);
+      await changeActor(page, state, true);
       await expect.poll(() => state.reads(actorB)).toBeGreaterThan(0);
       await navigate(page, "Factory");
-      await expect(page.getByLabel("Project", { exact: true })).toHaveValue(
-        "c".repeat(32),
-      );
-      await page.getByRole("button", { name: "Board", exact: true }).click();
+      await expect(
+        page.getByRole("heading", { name: "Recorded c-1", exact: true }),
+      ).toBeVisible();
       await page
-        .locator(".flow-card.selected")
-        .getByRole("button", { name: "Inspect run", exact: true })
+        .locator(".factory-run-record")
+        .filter({
+          has: page.getByRole("heading", { name: "Recorded c-1", exact: true }),
+        })
+        .getByRole("button", { name: "Open run", exact: true })
         .click();
       await expect.poll(() => state.reads("new-detail")).toBeGreaterThan(0);
       const publishB = page.getByRole("button", {
         name: "Publish pull request",
         exact: true,
       });
-      await expect(publishB).toBeDisabled();
+      await expect(publishB).toHaveCount(0);
+      await expect(page.locator(".run-id")).toHaveCount(0);
       const before = state.reads(actorB);
       const response = page.waitForResponse((value) =>
-        value.url().endsWith("/runs/b-2/publish"),
+        value.url().endsWith(`/runs/${runB}/publish`),
       );
       action.release();
       await (await response).finished();
@@ -484,7 +550,8 @@ for (const outcome of ["success", "error"] as const)
       await expect(page.locator("main")).not.toContainText(
         "Prior-actor public error marker",
       );
-      await expect(publishB).toBeDisabled();
+      await expect(publishB).toHaveCount(0);
+      await expect(page.locator(".run-id")).toHaveCount(0);
       fresh.release();
       await expect.poll(() => state.settled("new-detail")).toBeGreaterThan(0);
       await expect(publishB).toBeEnabled();

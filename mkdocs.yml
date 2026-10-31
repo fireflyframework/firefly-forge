@@ -79,6 +79,7 @@ nav:
       - Install and start: installation.md
       - Your first product: quickstart.md
       - Studio console tour: console-tour.md
+      - Follow factory work: factory-dashboard.md
       - Capabilities and limits: capabilities.md
   - Products:
       - Define a product: product-definition.md
@@ -140,6 +141,7 @@ nav:
       - Application health and maintenance: application-operations.md
       - Security: security.md
       - Sign in and manage project access: identity.md
+      - Personal project API tokens: personal-api-tokens.md
       - Add and manage users: user-administration.md
   - Reference:
       - Architecture: architecture.md

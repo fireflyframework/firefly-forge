@@ -51,6 +51,16 @@ Source: [`api.py`](https://github.com/fireflyframework/firefly-forge/blob/main/s
 
 `Store.event()` retains the sanitized message separately from that bounded projection. Studio renders supported summaries, leaves plain logs readable and offers an explicit verified reader for complete content. Unsupported structured previews receive a generic card. The optional Claude summary fields preserve the existing descriptor version and byte/hash binding; the archive writer, current-authority checks, credential fences and D04 export limits are shared. See [the activity contract](agent-integrations.md#read-complete-retained-provider-activity) and [the operator walkthrough](run-evidence.md#read-complete-provider-activity).
 
+### Current Engine stage observations
+
+`EngineActivity` is a native pyfly service with a separate PostgreSQL observation table. After a new native task intent is admitted, Engine records the exact run, task, attempt, current plan and frozen scope. One heartbeat renews its current local tasks together. Receipts and shutdown end those observations. SQL checks the current canonical execution identity and project permission, the owning PostgreSQL backend and advisory fence, and the observation's expiry before the dashboard counts it as active.
+
+This describes an Engine-owned stage, including a stage awaiting another system. It does not establish remote runner CPU work, provider availability or a person's presence. The existing execution snapshot retains a canonical user ID and its durable grants; it does not retain the original browser cookie. Signing out revokes that browser session, not the queued job. Suspending the execution identity, removing its required project permission or losing its current administrator grant invalidates the corresponding observation. Dashboard readers independently need current read authority and, for cookie access, their exact active session after the snapshot read.
+
+Unsupported SCM-mapped and personal-token execution actors stay unknown. Personal read tokens can still observe their selected projects through the existing read boundary. Observation failure expires to unknown and cannot retry productive work, approve an effect or skip credential and ownership cleanup. The two new observation modules enter the prospective runtime/admission material; their presence does not register a coding profile.
+
+Source: `engine_activity.py`, `engine_activity_persistence.py`, `engine.py` (`_observe_stage`, `_begin_task`, `_receipt`) and `factory_dashboard_persistence.py`. See [the operator guide](factory-dashboard.md#engine-stage-observations) for freshness settings and the limits of the display.
+
 ### Durable natural ticket conversations
 
 `SCMNaturalTasks` retains a human message before its configured `communication`

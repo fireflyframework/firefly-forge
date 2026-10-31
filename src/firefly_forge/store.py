@@ -37,6 +37,7 @@ from firefly_forge.models import RepositoryInput, RunInput, capture_new_work_com
 
 if TYPE_CHECKING:
     from firefly_forge.native_location_runtime import NativeLocationState
+    from firefly_forge.project_access import PersonalObservationAuthority
 
 from firefly_forge.persistence import (
     ForgeDeploymentEntity,
@@ -280,6 +281,7 @@ class Store:
         self.product_records = product_records or ForgeProductDefinitionRepository()
         self.campaign_records = campaign_records or ForgeCampaignRepository()
         self.campaign_children = campaign_children or ForgeCampaignChildRepository()
+        self.personal_tokens: PersonalObservationAuthority | None = None
 
     async def start(self) -> None:
         await self.initialize()

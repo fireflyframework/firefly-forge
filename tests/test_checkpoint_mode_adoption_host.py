@@ -183,6 +183,7 @@ async def test_real_begin_task_claims_old_intent_once_without_new_attempt_or_fak
     await c.service.request(c.run_id, uuid4().hex, request(candidate))
     prepared = await prepare_current_mode(c.journal, c.run_id)
     engine = object.__new__(Engine)
+    engine.stage_activity = None
     engine.store = c.store
     engine.journal = c.journal
     engine.assert_ownership = c.store.assert_ownership
@@ -274,6 +275,7 @@ async def test_new_mode_configuration_io_never_occurs_in_the_native_writer(mode_
     await c.service.request(c.run_id, uuid4().hex, request(candidate))
     prepared = await prepare_current_mode(c.journal, c.run_id)
     engine = object.__new__(Engine)
+    engine.stage_activity = None
     engine.store = c.store
     engine.journal = c.journal
     engine.assert_ownership = c.store.assert_ownership

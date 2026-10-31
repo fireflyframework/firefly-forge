@@ -1,7 +1,11 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { expect, test } from "@playwright/test";
 import { mockIdentity } from "./auth-fixture";
-import { navigate } from "./navigation";
+import {
+  mockFactoryDashboard,
+  openFactoryRun,
+} from "./factory-dashboard-fixture";
+import { navigate, expectAuthenticated } from "./navigation";
 
 // Controlled API responses verify presentation, not a live Bridge execution.
 for (const width of [1440, 390]) {
@@ -27,6 +31,11 @@ for (const width of [1440, 390]) {
         };
         await page.route("**/api/v1/**", async (route) => {
           if (await mockIdentity(route)) return;
+          if (
+            route.request().method() === "GET" &&
+            (await mockFactoryDashboard(route, { projects: [], runs: [run] }))
+          )
+            return;
           const req = route.request();
           const path = new URL(req.url()).pathname;
           if (req.method() !== "GET") {
@@ -63,11 +72,9 @@ for (const width of [1440, 390]) {
           .getByLabel("API token", { exact: true })
           .fill("fictional-ui-only-token");
         await page.getByRole("button", { name: "Save connection" }).click();
-        await expect(
-          page.getByRole("button", { name: "API connected" }),
-        ).toBeVisible();
+        await expectAuthenticated(page);
         await navigate(page, "Factory");
-        await page.getByRole("button", { name: "Inspect run" }).click();
+        await openFactoryRun(page, run.brief);
         const panel = page.getByRole("region", {
           name: "Review the original Bridge execution",
         });
@@ -91,7 +98,9 @@ for (const width of [1440, 390]) {
         );
         expect(overflow).toBe(false);
         const panelBounds = await panel.boundingBox();
-        const footerBounds = await page.locator("footer").boundingBox();
+        const footerBounds = await page
+          .locator(".workspace-main > footer")
+          .boundingBox();
         expect(panelBounds).not.toBeNull();
         expect(footerBounds).not.toBeNull();
         expect(panelBounds!.x).toBeGreaterThanOrEqual(0);
