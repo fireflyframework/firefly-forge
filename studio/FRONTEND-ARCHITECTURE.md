@@ -24,6 +24,8 @@ A bounded Wizard uses the available space measured from its actual container. It
 
 On short or narrow layouts that use page flow, the fields expand naturally and the existing `main` element owns scrolling. Actions remain in normal flow rather than covering fields through a fixed or sticky overlay. Product-specific parent layouts keep their existing breakpoints. Avoid adding another overflow container around these forms.
 
+Short-height rules apply only to Wizards whose actual layout is `flow`. Bounded dialogs retain their grid, named field viewport and reserved actions at the same short height. A viewport media query alone must never turn a modal's field region into unbounded page content. The long source-inspection modal regression checks keyboard and wheel scrolling, the final field and action bounds at 320×568 in both themes.
+
 The main page's scroll status occupies a real grid row above the footer. It never overlays form content or moves the footer into the content scroller. When a title has naturally scrolled away, **Back to section start** returns the form's progress and heading to view using actual element bounds. It creates no execution or submission action.
 
 Step changes focus the new heading without forcing an outer page scroll to a small progress indicator. The current step is still brought into horizontal view when needed. Field focus uses the browser's native scrolling rather than a product-specific handler that moves an unrelated ancestor.
