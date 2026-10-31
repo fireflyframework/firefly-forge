@@ -26,7 +26,11 @@ def test_native_api_browser_consent_private_creation_sdk_readback_and_logout(tmp
     with TestClient(app, base_url=origin, client=("127.0.0.1", 50000), follow_redirects=False) as browser:
         assert browser.get("/api/v1/connection-oauth/providers").status_code == 401
         browser.headers["Origin"] = origin
-        assert browser.post("/api/v1/auth/login", json={"token": TOKEN}).status_code == 200
+        missing_csrf = browser.post("/api/v1/auth/login", json={"token": TOKEN})
+        assert missing_csrf.status_code == 403 and missing_csrf.json()["error"] == "CSRF token missing"
+        browser.headers["X-XSRF-TOKEN"] = browser.cookies["XSRF-TOKEN"]
+        login = browser.post("/api/v1/auth/login", json={"token": TOKEN})
+        assert login.status_code == 200, login.text
         assert browser.get("/api/v1/auth/session").status_code == 200
         browser.headers["X-XSRF-TOKEN"] = browser.cookies["XSRF-TOKEN"]
         repository = browser.post(
