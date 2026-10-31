@@ -10,6 +10,7 @@ import {
 } from "./api";
 import type { IdentitySession } from "./Identity";
 import { Wizard } from "./Wizard";
+import { useProtectedConsentDialog } from "./useProtectedConsentDialog";
 import {
   RegisteredPersonSelector,
   type RegisteredPerson,
@@ -160,25 +161,7 @@ export function ScmDelegation({
     // This keyed component remounts for changes to API, identity, permissions or project cut.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [repository]);
-  useEffect(() => {
-    const node = dialog.current;
-    if (!open || !node) return;
-    const measure = () => {
-      const value = Number.parseFloat(
-        getComputedStyle(document.documentElement).zoom,
-      );
-      const zoom = Number.isFinite(value) && value > 0 ? value : 1;
-      node.style.setProperty("--delegation-zoom", String(zoom));
-      node.dataset.compact = String(window.innerHeight / zoom <= 600);
-    };
-    measure();
-    node.showModal();
-    window.addEventListener("resize", measure);
-    return () => {
-      window.removeEventListener("resize", measure);
-      node.close();
-    };
-  }, [open]);
+  const protectedLayout = useProtectedConsentDialog(dialog, open, step);
   function begin() {
     if (inflight.current) return null;
     current.current?.abort();
@@ -851,6 +834,8 @@ export function ScmDelegation({
       {open && (
         <dialog
           ref={dialog}
+          data-fit={protectedLayout}
+          tabIndex={protectedLayout === "flow" ? 0 : undefined}
           className="access-member-dialog scm-delegation-dialog"
           aria-label="Review SCM delegation"
           onCancel={(event) => {
@@ -870,7 +855,8 @@ export function ScmDelegation({
             </button>
           </div>
           <Wizard
-            layout="bounded"
+            layout={protectedLayout}
+            preserveFieldStructure
             steps={["Account", "Scope", "Review"]}
             active={step}
             onStep={(value) => {

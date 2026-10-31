@@ -88,22 +88,26 @@ export function ScrollRegion({
   children,
   label = "Form fields",
   bounded = false,
+  preserveFieldStructure = false,
 }: {
   children: ReactNode;
   label?: string;
   bounded?: boolean;
+  preserveFieldStructure?: boolean;
 }) {
-  if (!bounded) return <div className="wizard-field-scroll">{children}</div>;
-  return (
-    <div className="form-scroll-region form-grid">
-      <div
-        className="wizard-field-scroll"
-        role="region"
-        aria-label={label}
-        tabIndex={0}
-      >
-        {children}
-      </div>
+  const fields = (
+    <div
+      className="wizard-field-scroll"
+      role={bounded ? "region" : undefined}
+      aria-label={bounded ? label : undefined}
+      tabIndex={bounded ? 0 : undefined}
+    >
+      {children}
     </div>
+  );
+  return bounded || preserveFieldStructure ? (
+    <div className="form-scroll-region form-grid">{fields}</div>
+  ) : (
+    fields
   );
 }

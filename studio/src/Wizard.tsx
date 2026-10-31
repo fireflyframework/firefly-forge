@@ -31,6 +31,7 @@ export function Wizard({
   variant = "steps",
   stepDescriptions,
   layout,
+  preserveFieldStructure = false,
 }: {
   steps: string[];
   active: number;
@@ -46,6 +47,7 @@ export function Wizard({
   variant?: "steps" | "rail";
   stepDescriptions?: string[];
   layout?: "flow" | "bounded";
+  preserveFieldStructure?: boolean;
 }) {
   const stepSelect = useId();
   const frame = useRef<HTMLElement>(null);
@@ -79,7 +81,11 @@ export function Wizard({
         form,
         { className: `${form.props.className ?? ""} wizard-form` },
         <>
-          <ScrollRegion label={`${title} fields`} bounded={bounded}>
+          <ScrollRegion
+            label={`${title} fields`}
+            bounded={bounded}
+            preserveFieldStructure={preserveFieldStructure}
+          >
             {nodes.filter((item) => item !== actions)}
           </ScrollRegion>
           {isValidElement(actions)
@@ -100,7 +106,11 @@ export function Wizard({
   );
   const content = directActions ? (
     <div className="wizard-form">
-      <ScrollRegion label={`${title} fields`} bounded={bounded}>
+      <ScrollRegion
+        label={`${title} fields`}
+        bounded={bounded}
+        preserveFieldStructure={preserveFieldStructure}
+      >
         {body(directNodes.filter((node) => node !== directActions))}
       </ScrollRegion>
       {isValidElement(directActions)

@@ -152,3 +152,31 @@
   min-width: 0;
   white-space: normal;
 }
+
+.scm-delegation-dialog[data-fit="flow"] {
+  overflow-wrap: anywhere;
+  display: block;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scroll-padding-block: 12px;
+}
+.scm-delegation-dialog[data-fit="flow"] .access-dialog-heading {
+  align-items: flex-start;
+}
+.scm-delegation-dialog[data-fit="flow"] .wizard-actions {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.scm-delegation-dialog[data-fit="flow"] .wizard-frame {
+  grid-template-columns: minmax(0, 1fr);
+}
+.scm-delegation-dialog[data-fit="flow"] .wizard-body,
+.scm-delegation-dialog[data-fit="flow"] .wizard-content,
+.scm-delegation-dialog[data-fit="flow"] .wizard-form,
+.scm-delegation-dialog[data-fit="flow"] .access-dialog-heading h2 {
+  min-width: 0;
+}
+.scm-delegation-dialog[data-fit="flow"] .form-scroll-region {
+  display: contents;
+  overflow: visible;
+}

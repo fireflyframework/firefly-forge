@@ -10,6 +10,7 @@ import {
 } from "./api";
 import type { IdentitySession } from "./Identity";
 import { Wizard } from "./Wizard";
+import { useProtectedConsentDialog } from "./useProtectedConsentDialog";
 import { attemptDigest } from "./LearningObservationAttemptData";
 import {
   readDelegationHeads,
@@ -132,23 +133,7 @@ export function ScmProductChangeConsent({
     // The identity includes the selected immutable V1 receipt and current native permissions.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scopeKey]);
-  useEffect(() => {
-    if (!open || !dialog.current) return;
-    const node = dialog.current;
-    const measure = () => {
-      const value = parseFloat(getComputedStyle(document.documentElement).zoom),
-        zoom = Number.isFinite(value) && value > 0 ? value : 1;
-      node.style.setProperty("--delegation-zoom", String(zoom));
-      node.dataset.compact = String(window.innerHeight / zoom <= 600);
-    };
-    measure();
-    node.showModal();
-    window.addEventListener("resize", measure);
-    return () => {
-      window.removeEventListener("resize", measure);
-      node.close();
-    };
-  }, [open]);
+  const protectedLayout = useProtectedConsentDialog(dialog, open, step);
   function begin() {
     if (inflight.current) return null;
     const abort = new AbortController(),
@@ -777,6 +762,8 @@ export function ScmProductChangeConsent({
       {open && (
         <dialog
           ref={dialog}
+          data-fit={protectedLayout}
+          tabIndex={protectedLayout === "flow" ? 0 : undefined}
           className="access-member-dialog scm-delegation-dialog scm-product-change-dialog"
           aria-label="Review whole-product edit consent"
           onCancel={(event) => {
@@ -796,7 +783,8 @@ export function ScmProductChangeConsent({
             </button>
           </div>
           <Wizard
-            layout="bounded"
+            layout={protectedLayout}
+            preserveFieldStructure
             steps={["Mapping", "Scope", "Review"]}
             active={step}
             onStep={(value) => {
