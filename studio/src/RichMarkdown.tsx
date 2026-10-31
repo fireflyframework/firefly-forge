@@ -3,6 +3,23 @@ import { useRef, useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Bold, Italic, List, Code2, Heading2, Eye, Pencil } from "lucide-react";
+import type { Nodes, Root } from "mdast";
+import { CodeSnippet } from "./CodeSnippet";
+
+function retainCodeSource() {
+  return (tree: Root) => {
+    const visit = (node: Nodes) => {
+      // Keep the logical source before HAST serialization adds its display newline.
+      if (node.type === "code")
+        node.data = {
+          ...node.data,
+          hProperties: { "data-snippet-source": node.value },
+        };
+      if ("children" in node) node.children.forEach(visit);
+    };
+    visit(tree);
+  };
+}
 
 export function markdownUrl(value: string): string | undefined {
   if (
@@ -30,10 +47,35 @@ export function RichMarkdown({ value }: { value: string }) {
   return (
     <div className="rich-markdown">
       <Markdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={[remarkGfm, retainCodeSource]}
         skipHtml
         urlTransform={markdownUrl}
         components={{
+          pre: ({ node, children }) => {
+            const code = node?.children.find(
+              (child) => child.type === "element" && child.tagName === "code",
+            );
+            if (
+              code?.type !== "element" ||
+              typeof code.properties["data-snippet-source"] !== "string"
+            )
+              return <pre>{children}</pre>;
+            const names = code.properties.className;
+            const language = Array.isArray(names)
+              ? names.find(
+                  (name) =>
+                    typeof name === "string" && name.startsWith("language-"),
+                )
+              : undefined;
+            return (
+              <CodeSnippet
+                value={code.properties["data-snippet-source"]}
+                language={
+                  typeof language === "string" ? language.slice(9) : undefined
+                }
+              />
+            );
+          },
           a: ({ href, children }) =>
             href ? (
               <a
