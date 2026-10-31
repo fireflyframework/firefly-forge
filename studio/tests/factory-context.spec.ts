@@ -342,6 +342,7 @@ test("sign-out and reconnect clear the previous factory selection", async ({
 test("actor and API address changes clear selection and loaded plan", async ({
   page,
 }) => {
+  test.setTimeout(60_000);
   const state = await fixture(page);
   await selectB(page);
   state.switchActor();

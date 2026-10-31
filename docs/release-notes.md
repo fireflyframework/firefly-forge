@@ -7,7 +7,7 @@ description: Review firefly forge release changes, runtime requirements and the 
 
 ## Unreleased
 
-The factory runtime pins the verified official pyfly `26.10.21` wheel. Its web dependencies resolve to Starlette `1.10.0`, and the lock includes pyfly's required timezone data. The standalone Agentic `26.10.1` and Pydantic AI `2.55.0` dependencies remain unchanged; the upgrade does not enable pyfly's optional Agentic or Kubernetes sandbox extras. Existing runs retain their recorded runtime and require the documented compatibility checks before recovery.
+The factory runtime pins the verified official pyfly `26.10.22` wheel. Its web dependencies resolve to Starlette `1.10.0`, and the lock includes pyfly's required timezone data. The standalone Agentic `26.10.1` and Pydantic AI `2.55.0` dependencies remain unchanged; the upgrade does not enable pyfly's optional Agentic or Kubernetes sandbox extras. Existing runs retain their recorded runtime and require the documented compatibility checks before recovery.
 
 ## 0.2.49
 
