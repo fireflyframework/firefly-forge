@@ -1,0 +1,76 @@
+/* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+.github-projects-settings h3 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.board-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.github-projects-settings code {
+  overflow-wrap: anywhere;
+}
+.github-projects-dialog {
+  width: min(900px, calc(100vw - 32px));
+}
+.github-projects-dialog fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+  display: grid;
+  gap: 18px;
+}
+.board-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 24px;
+}
+.board-proof {
+  display: grid;
+  gap: 8px;
+  padding: 16px 0;
+  border-block: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+.board-proof a {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.board-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  line-height: 1.5;
+}
+.board-check input {
+  accent-color: var(--accent-ink);
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  margin-top: 3px;
+}
+.board-pending {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+@media (max-width: 600px) {
+  .board-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .github-projects-dialog {
+    padding: 16px;
+    height: calc(100dvh - 24px);
+    max-height: calc(100dvh - 24px);
+    width: calc(100vw - 24px);
+  }
+  .board-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

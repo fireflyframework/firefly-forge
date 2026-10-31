@@ -35,6 +35,12 @@ GitHub documents the separate [Projects API permissions](https://docs.github.com
 
 ## Create or discover the board
 
+In Studio, open **Product projects**, select the product and its GitHub repository, then choose **Set up GitHub Projects**. The guided setup reuses a project-scoped connection from **Connected accounts**; it does not ask for a GitHub token. **Verify connected account** reads the current GitHub viewer and the registered repository before board selection. Account verification is read-only and grants no new permissions.
+
+Choose an existing private personal or organization board by owner and number, or explicitly confirm a new private personal board under the verified account. Discovery displays the exact private board and its current update permission. Select its managed single-select field, map every factory state to an existing option, and acknowledge field management before saving. Setup remains unavailable when current factory administrator or project/repository release access is absent.
+
+The browser retains each creation or configuration request ID before sending it. An unconfirmed creation remains visible after reload with **Read creation receipt**; that action cannot resend creation or authorize replay. An unconfirmed settings save requires **Refresh board settings** to inspect the current configuration. The original request remains retained and is never automatically sent again. Browser history is scoped to the API, native user, project and repository.
+
 `forge project github-projects create PROJECT REPOSITORY create.json` submits one `BoardCreateInputV1`. Save its request ID before submitting:
 
 ```json
@@ -104,4 +110,4 @@ The route base is `/api/v1/projects/{project_id}/repositories/{repository_id}/gi
 
 Schema revision 34 follows activity revision 33. Board heads, immutable configuration receipts, creation intents and creation receipts use native pyfly Data repositories and the factory PostgreSQL ledger. The upgrade makes only OAuth grant expiry nullable; earlier grant values and ciphertext stay unchanged. Attempt and effect leases retain their expiry requirements. Existing source profiles, run snapshots and original workspaces are not migrated by board configuration.
 
-Controlled HTTP tests and native PostgreSQL checks are separate from live GitHub acceptance. This feature does not claim a live board, OAuth consent, production webhook delivery, remote milestone synchronization or installed source-profile qualification. Studio board setup is not part of this backend/SDK/MCP slice.
+Controlled HTTP tests, Studio browser journeys and native PostgreSQL checks are separate from live GitHub acceptance. This feature does not claim a live board, OAuth consent, production webhook delivery, remote milestone synchronization or installed source-profile qualification.

@@ -36,6 +36,7 @@ import "./StudioFeatures.css";
 import { CampaignReports } from "./CampaignReports";
 import { DevelopmentWorkflowSettings } from "./DevelopmentWorkflowSettings";
 import { CampaignExecutionSettings } from "./CampaignExecutionSettings";
+import { GitHubProjectsSettings } from "./GitHubProjectsSettings";
 import type { IdentitySession } from "./Identity";
 type ComponentOverview = ProjectComponent & {
   latest_status: string;
@@ -172,8 +173,10 @@ export function Projects({
   onOpen,
   onProduct,
   session,
+  onAccounts,
 }: {
   session: IdentitySession | null;
+  onAccounts?: () => void;
   connection: Connection;
   connected: boolean;
   repositories: Repository[];
@@ -412,6 +415,15 @@ export function Projects({
                 . Each component keeps its own source root, stack and executable
                 checks.
               </p>
+              {session && (
+                <GitHubProjectsSettings
+                  connection={connection}
+                  session={session}
+                  project={current}
+                  repositories={repositories}
+                  onAccounts={onAccounts}
+                />
+              )}
               <ProjectMap
                 key={`${current.id}/${current.revision}`}
                 components={current.definition.components}
