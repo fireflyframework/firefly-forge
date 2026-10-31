@@ -1,5 +1,9 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 // Fictional, fully intercepted API responses exercise Studio only.
+import {
+  mockFactoryDashboard,
+  openFactoryRun,
+} from "./factory-dashboard-fixture";
 import { expect, test, type Page } from "@playwright/test";
 import { mockIdentity } from "./auth-fixture";
 import { navigate, expectAuthenticated } from "./navigation";
@@ -203,6 +207,8 @@ async function setup(page: Page, mode = "valid", theme = "dark") {
       : route.abort(),
   );
   await page.route("**/api/v1/**", async (route) => {
+    if (await mockFactoryDashboard(route, { projects: [], runs: [run] }))
+      return;
     if (await mockIdentity(route)) return;
     const req = route.request(),
       path = new URL(req.url()).pathname;
@@ -403,7 +409,7 @@ async function setup(page: Page, mode = "valid", theme = "dark") {
   return state;
 }
 async function open(page: Page) {
-  await page.getByRole("button", { name: /Saved continuity fixture/ }).click();
+  await openFactoryRun(page, /Saved continuity fixture/);
   await page.getByRole("tab", { name: "Plan", exact: true }).click();
 }
 const panel = (page: Page) =>

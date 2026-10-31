@@ -1,4 +1,8 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+import {
+  mockFactoryDashboard,
+  openFactoryRun,
+} from "./factory-dashboard-fixture";
 import { expect, test, type Page } from "@playwright/test";
 import { writeFile } from "node:fs/promises";
 import fixture from "./git-delivery-contract-fixture.json" with { type: "json" };
@@ -58,6 +62,7 @@ async function openProject(
   let savedBody: Record<string, unknown> | null = null;
   let releaseSave: (() => void) | null = null;
   await page.route("**/api/v1/**", async (route) => {
+    if (await mockFactoryDashboard(route)) return;
     if (await mockIdentity(route)) return;
     const request = route.request();
     const path = new URL(request.url()).pathname;
@@ -338,6 +343,8 @@ async function openRun(
     publish: false,
   };
   await page.route("**/api/v1/**", async (route) => {
+    if (await mockFactoryDashboard(route, { projects: [], runs: [run] }))
+      return;
     const request = route.request();
     const path = new URL(request.url()).pathname;
     let json: unknown;
@@ -373,9 +380,7 @@ async function openRun(
   await page.reload();
   await expectAuthenticated(page);
   await navigate(page, "Factory");
-  await page
-    .getByRole("button", { name: /Save inventory progress for review/ })
-    .click();
+  await openFactoryRun(page, /Save inventory progress for review/);
   await page.getByRole("tab", { name: "Plan", exact: true }).click();
   return { writes: () => writes, reads: () => reads };
 }

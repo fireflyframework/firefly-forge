@@ -1,4 +1,8 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+import {
+  mockFactoryDashboard,
+  openFactoryRun,
+} from "./factory-dashboard-fixture";
 import { expect, test } from "@playwright/test";
 import { createHash } from "node:crypto";
 import { mockIdentity } from "./auth-fixture";
@@ -171,6 +175,47 @@ for (const device of ["desktop", "mobile"])
         },
       };
       await page.route("**/api/v1/**", async (route) => {
+        if (
+          await mockFactoryDashboard(route, {
+            projects: [
+              {
+                id: "4".repeat(32),
+                name: "Warehouse inventory",
+                component_count: 1,
+                repository_count: 1,
+              },
+            ],
+            runs: admitted
+              ? [
+                  {
+                    ...run,
+                    project_id: "4".repeat(32),
+                    project_name: "Warehouse inventory",
+                    repository_name: repository.name,
+                    component_id: "api",
+                    component_name: "Inventory API",
+                    branch: "forge/reservation",
+                    issue_context: {
+                      url: "https://github.com/example/inventory/issues/42",
+                      number: 42,
+                      title: "Reserve available stock",
+                    },
+                  },
+                ]
+              : [],
+            plans: {
+              [run.id]: {
+                tasks: [
+                  { id: "prepare", status: "done" },
+                  { id: "implement", status: "done" },
+                  { id: "verify", status: "needs_reconciliation" },
+                  { id: "checkpoint", status: "queued" },
+                ],
+              },
+            },
+          })
+        )
+          return;
         if (await mockIdentity(route)) return;
         const request = route.request(),
           path = new URL(request.url()).pathname;
@@ -603,7 +648,34 @@ for (const device of ["desktop", "mobile"])
       ).toBeLessThanOrEqual(floorBounds.footerTop);
       expect(floorBounds.height).toBeGreaterThanOrEqual(180);
       await capture(page, "factory-overview", theme, device);
-      await page.getByRole("button", { name: new RegExp(run.brief) }).click();
+      await page
+        .getByRole("button", { name: "Browse work", exact: true })
+        .click();
+      await expect(page.locator(".factory-project-row")).toContainText(
+        "Warehouse inventory",
+      );
+      await capture(page, "factory-projects", theme, device, {
+        producer: "studio/tests/docs-walkthrough.spec.ts",
+        boundary: "dialog",
+        actionSelector: ".factory-project-row",
+      });
+      await page.locator(".factory-project-row").click();
+      await expect(page.locator(".factory-scope-caption")).toContainText(
+        "Warehouse inventory",
+      );
+      await capture(page, "factory-project", theme, device);
+      await page
+        .getByRole("button", { name: "Show run board", exact: true })
+        .click();
+      await expect(page.locator(".factory-status-board")).toContainText(
+        run.brief,
+      );
+      await capture(page, "factory-board", theme, device);
+      await page
+        .locator(".factory-run-record")
+        .filter({ hasText: run.brief })
+        .getByRole("button", { name: "Open run", exact: true })
+        .click();
       await capture(page, "run-context", theme, device);
       for (const tab of ["Changes", "Verification", "Plan", "Artifacts"]) {
         await page.getByRole("tab", { name: tab, exact: true }).click();
@@ -1078,6 +1150,7 @@ for (const device of ["desktop", "mobile"])
       const reads: string[] = [];
       const attemptReads: string[] = [];
       await page.route("**/api/v1/**", async (route) => {
+        if (await mockFactoryDashboard(route)) return;
         if (await mockIdentity(route)) return;
         const request = route.request(),
           path = new URL(request.url()).pathname;
@@ -1594,6 +1667,8 @@ for (const device of ["desktop", "mobile"])
       ];
       const calls: string[] = [];
       await page.route("**/api/v1/**", async (route) => {
+        if (await mockFactoryDashboard(route, { projects: [], runs: [queued] }))
+          return;
         if (await mockIdentity(route)) return;
         const request = route.request(),
           path = new URL(request.url()).pathname;
@@ -1670,9 +1745,7 @@ for (const device of ["desktop", "mobile"])
         .click();
       await expectAuthenticated(page);
       await navigate(page, "Factory");
-      await page
-        .getByRole("button", { name: /Fixture original queued command/ })
-        .click();
+      await openFactoryRun(page, /Fixture original queued command/);
       await page.getByRole("tab", { name: "Plan", exact: true }).click();
       await page
         .getByRole("button", { name: "Request continuation", exact: true })
@@ -1882,6 +1955,7 @@ for (const device of ["desktop", "mobile"])
         },
       ];
       await page.route("**/api/v1/**", async (route) => {
+        if (await mockFactoryDashboard(route)) return;
         if (await mockIdentity(route)) return;
         const request = route.request(),
           path = new URL(request.url()).pathname;
@@ -2322,6 +2396,10 @@ for (const device of ["desktop", "mobile"])
       const posts: Record<string, string>[] = [],
         reads: string[] = [];
       await page.route("**/api/v1/**", async (route) => {
+        if (
+          await mockFactoryDashboard(route, { projects: [], runs: [guideRun] })
+        )
+          return;
         if (await mockIdentity(route)) return;
         const request = route.request(),
           path = new URL(request.url()).pathname;
@@ -2411,9 +2489,7 @@ for (const device of ["desktop", "mobile"])
       });
       const openConversation = async () => {
         await navigate(page, "Factory");
-        await page
-          .getByRole("button", { name: /Fixture inventory decision/ })
-          .click();
+        await openFactoryRun(page, /Fixture inventory decision/);
         await page
           .getByRole("tab", { name: "Agent questions", exact: true })
           .click();
@@ -2796,6 +2872,7 @@ for (const device of ["desktop", "mobile"])
         exactReads: string[] = [];
       const base = `/api/v1/projects/${projectId}/repositories/${repositoryId}/scm-actor-bindings`;
       await page.route("**/api/v1/**", async (route) => {
+        if (await mockFactoryDashboard(route)) return;
         if (await mockIdentity(route)) return;
         const request = route.request(),
           url = new URL(request.url()),
@@ -3497,6 +3574,10 @@ for (const device of ["desktop", "mobile"])
       };
       let contentReads = 0;
       await page.route("**/api/v1/**", async (route) => {
+        if (
+          await mockFactoryDashboard(route, { projects: [], runs: [selected] })
+        )
+          return;
         if (await mockIdentity(route)) return;
         const url = new URL(route.request().url()),
           path = url.pathname;
@@ -3534,9 +3615,7 @@ for (const device of ["desktop", "mobile"])
         .click();
       await expectAuthenticated(page);
       await navigate(page, "Factory");
-      await page
-        .getByRole("button", { name: /Review recorded coding activity/ })
-        .click();
+      await openFactoryRun(page, /Review recorded coding activity/);
       const panel = page.getByRole("tabpanel");
       await expect(
         panel.getByRole("heading", {
@@ -3582,6 +3661,10 @@ for (const device of ["desktop", "mobile"])
       };
       let reads = 0;
       await page.route("**/api/v1/**", async (route) => {
+        if (
+          await mockFactoryDashboard(route, { projects: [], runs: [selected] })
+        )
+          return;
         if (await mockIdentity(route)) return;
         const url = new URL(route.request().url()),
           path = url.pathname;
@@ -3614,9 +3697,7 @@ for (const device of ["desktop", "mobile"])
         .getByRole("button", { name: "Save connection", exact: true })
         .click();
       await navigate(page, "Factory");
-      await page
-        .getByRole("button", { name: /Inspect observed Claude activity/ })
-        .click();
+      await openFactoryRun(page, /Inspect observed Claude activity/);
       const panel = page.getByRole("tabpanel");
       await expect(
         panel.getByRole("heading", {
@@ -3792,6 +3873,10 @@ for (const device of ["desktop", "mobile"])
       };
       let reads = 0;
       await page.route("**/api/v1/**", async (route) => {
+        if (
+          await mockFactoryDashboard(route, { projects: [], runs: [selected] })
+        )
+          return;
         if (await mockIdentity(route)) return;
         const url = new URL(route.request().url()),
           path = url.pathname;
@@ -3824,9 +3909,7 @@ for (const device of ["desktop", "mobile"])
         .getByRole("button", { name: "Save connection", exact: true })
         .click();
       await navigate(page, "Factory");
-      await page
-        .getByRole("button", { name: /Inspect reported MCP activity/ })
-        .click();
+      await openFactoryRun(page, /Inspect reported MCP activity/);
       const result = page
         .getByRole("region", { name: "Archived provider event", exact: true })
         .last();
@@ -4187,6 +4270,7 @@ for (const device of ["desktop", "mobile"])
           : { width: 390, height: 844 },
       );
       await page.route("**/api/v1/**", async (route) => {
+        if (await mockFactoryDashboard(route)) return;
         const path = new URL(route.request().url()).pathname.replace(
           "/api/v1",
           "",

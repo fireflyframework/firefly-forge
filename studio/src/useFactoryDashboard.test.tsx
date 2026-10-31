@@ -112,3 +112,24 @@ it("does not display an incompatible or differently scoped server response", asy
   );
   expect(result.result.current.snapshot).toBeNull();
 });
+
+it("ages observed activity from request start, including a delayed response", async () => {
+  let complete: (response: Response) => void = () => {};
+  vi.spyOn(performance, "now").mockReturnValue(1000);
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          complete = resolve;
+        }),
+    ),
+  );
+  const result = renderHook(() =>
+    useFactoryDashboard(connection, true, scope("a".repeat(32)), null, null),
+  );
+  await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+  vi.spyOn(performance, "now").mockReturnValue(11000);
+  await act(async () => complete(Response.json(observation("a".repeat(32)))));
+  expect(result.result.current.requestStartedAt).toBe(1000);
+});

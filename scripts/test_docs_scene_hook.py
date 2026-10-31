@@ -80,6 +80,7 @@ class WalkthroughTests(unittest.TestCase):
                 "studio/tests/coding-check-recovery-browser-fixture.ts": "fixture coding routes",
                 "studio/tests/git-delivery-contract-fixture.json": "fixture Git delivery contract",
                 "studio/tests/framework-knowledge-fixture.ts": "fixture exact framework corpus",
+                "studio/tests/factory-dashboard-fixture.ts": "fixture scoped factory observations",
                 "studio/tests/docs-walkthrough.spec.ts": "fixture console producer",
                 "studio/tests/external-tools.spec.ts": "fixture MCP producer",
                 "studio/tests/docs-provider-allowance.spec.ts": "fixture allowance producer",
@@ -144,6 +145,7 @@ class WalkthroughTests(unittest.TestCase):
                     "studio/tests/coding-check-recovery-browser-fixture.ts",
                     "studio/tests/git-delivery-contract-fixture.json",
                     "studio/tests/framework-knowledge-fixture.ts",
+                    "studio/tests/factory-dashboard-fixture.ts",
                 )
             }
             producers = {name: sha(root / name) for name in paths if name.endswith(".spec.ts")}
@@ -240,9 +242,11 @@ class WalkthroughTests(unittest.TestCase):
                         previous = capture[key]
                         capture[key] = invalid
                         save()
-                        with self.subTest(reuse_stage=stage, invalid_key=key, invalid=invalid):
-                            with self.assertRaisesRegex(ValueError, "Invalid verification reuse observation"):
-                                hook._load_walkthrough({"docs_dir": str(docs)}, root)
+                        with (
+                            self.subTest(reuse_stage=stage, invalid_key=key, invalid=invalid),
+                            self.assertRaisesRegex(ValueError, "Invalid verification reuse observation"),
+                        ):
+                            hook._load_walkthrough({"docs_dir": str(docs)}, root)
                         capture[key] = previous
                 capture["producer"] = "studio/tests/docs-walkthrough.spec.ts"
                 capture["producer_sha256"] = producers[capture["producer"]]
@@ -590,6 +594,7 @@ class WalkthroughTests(unittest.TestCase):
                 "studio/tests/coding-check-recovery-browser-fixture.ts",
                 "studio/tests/git-delivery-contract-fixture.json",
                 "studio/tests/framework-knowledge-fixture.ts",
+                "studio/tests/factory-dashboard-fixture.ts",
                 "studio/tests/native-learning-fixture.ts",
             ]
             for name in operator_inputs:

@@ -22,7 +22,14 @@ export function useFactoryDashboard(
     value: DashboardSnapshot | null;
     error: string;
     loading: boolean;
-  }>({ path: "", value: null, error: "", loading: false });
+    requestStartedAt: number | null;
+  }>({
+    path: "",
+    value: null,
+    error: "",
+    loading: false,
+    requestStartedAt: null,
+  });
   useEffect(() => {
     if (!connected) return;
     const controller = new AbortController();
@@ -38,11 +45,14 @@ export function useFactoryDashboard(
     async function update() {
       if (controller.signal.aborted || pending) return;
       pending = true;
+      const requestStartedAt = performance.now();
       setState((previous) => ({
         path,
         value: previous.path === path ? previous.value : null,
         error: "",
         loading: true,
+        requestStartedAt:
+          previous.path === path ? previous.requestStartedAt : null,
       }));
       try {
         const value = await request<DashboardSnapshot>(connection, path, {
@@ -61,6 +71,7 @@ export function useFactoryDashboard(
         ] as const;
         if (
           value.version !== 1 ||
+          !Number.isFinite(Date.parse(value.observed_at)) ||
           value.scope?.kind !== selection.kind ||
           value.scope.project_id !==
             (selection.kind === "project" ? selection.project : null) ||
@@ -80,7 +91,13 @@ export function useFactoryDashboard(
             "The server returned an incompatible factory observation. Refresh or check the server version.",
           );
         if (!controller.signal.aborted)
-          setState({ path, value, error: "", loading: false });
+          setState({
+            path,
+            value,
+            error: "",
+            loading: false,
+            requestStartedAt,
+          });
       } catch (cause) {
         if (!controller.signal.aborted)
           setState((previous) => ({
@@ -97,6 +114,8 @@ export function useFactoryDashboard(
                 ? cause.message
                 : "Factory records could not be read.",
             loading: false,
+            requestStartedAt:
+              previous.path === path ? previous.requestStartedAt : null,
           }));
       } finally {
         pending = false;
@@ -127,6 +146,8 @@ export function useFactoryDashboard(
   ]);
   return {
     snapshot: connected && state.path === path ? state.value : null,
+    requestStartedAt:
+      connected && state.path === path ? state.requestStartedAt : null,
     error: state.path === path ? state.error : "",
     loading: connected && (state.path !== path || state.loading),
     refresh: () => setRevision((value) => value + 1),

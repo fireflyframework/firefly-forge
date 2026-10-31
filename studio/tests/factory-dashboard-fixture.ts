@@ -4,6 +4,7 @@ import type {
   DashboardRun,
   DashboardSnapshot,
 } from "../src/FactoryDashboard";
+import type { Page, Route } from "@playwright/test";
 
 export type FactoryFixtureRun = Partial<DashboardRun> & {
   id: string;
@@ -18,6 +19,27 @@ export type FactoryFixture = {
   plans?: Record<string, { tasks: FactoryFixtureTask[] }>;
   administrator?: boolean;
 };
+
+export async function mockFactoryDashboard(
+  route: Route,
+  fixture: FactoryFixture = { projects: [], runs: [] },
+): Promise<boolean> {
+  const json = factoryDashboardFixture(new URL(route.request().url()), fixture);
+  if (json === undefined) return false;
+  await route.fulfill({ json });
+  return true;
+}
+
+export async function openFactoryRun(
+  page: Page,
+  brief: string | RegExp,
+): Promise<void> {
+  await page
+    .locator(".factory-run-record")
+    .filter({ hasText: brief })
+    .getByRole("button", { name: "Open run", exact: true })
+    .click();
+}
 
 const buckets = {
   queued: ["pending", "queued"],

@@ -46,6 +46,7 @@ CAPTURE_HELPERS = {
     "studio/tests/coding-check-recovery-browser-fixture.ts",
     "studio/tests/git-delivery-contract-fixture.json",
     "studio/tests/framework-knowledge-fixture.ts",
+    "studio/tests/factory-dashboard-fixture.ts",
 }
 CAPTURE_PRODUCERS = {
     "studio/tests/docs-walkthrough.spec.ts",

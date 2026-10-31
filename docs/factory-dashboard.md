@@ -8,6 +8,13 @@ description: Read factory, product-project and run activity without confusing re
 
 The Factory page brings product projects, their component repositories and recorded runs into one view. Use **Browse work** below the production floor to choose a product project or return to the factory overview. The model stays above the controls; on a phone it initially focuses the selected station. **Show full floor** restores the complete model.
 
+<figure class="forge-shot" markdown="1">
+
+![Factory overview with the production floor, scope navigation and recorded run counts](assets/screenshots/factory-overview-desktop-light.png)
+
+<figcaption>A controlled Studio walkthrough. Counts describe saved records; the still model does not imply a live worker or deployment.</figcaption>
+</figure>
+
 ## Choose the right scope
 
 | Scope | What it includes |
@@ -20,6 +27,13 @@ The Factory page brings product projects, their component repositories and recor
 A repository is not a product project. Two products can use the same repository without sharing their run records or permissions. A run whose referenced project is unavailable is not relabeled as standalone work.
 
 Project choices and run records are paged. Searching projects and requesting another page do not change the totals. Counts cover the complete selected scope, including work outside the current page.
+
+<figure class="forge-shot" markdown="1">
+
+![Browse work drawer showing a product project and its component and repository counts](assets/screenshots/factory-projects-desktop-light.png)
+
+<figcaption>Open Browse work, then choose a product. Product membership determines access; sharing a repository does not share its runs.</figcaption>
+</figure>
 
 ## Read runs and tasks separately
 
@@ -37,6 +51,13 @@ Worker liveness, queue-wait duration, deployment health and runtime metrics rema
 2. Use **Board** to compare recorded run states, or read the run list below the floor. Board totals cover the scope; cards are paged.
 3. Select a run to inspect its plan and source-control links. Only this selected run requests a plan. Aggregate views do not poll one plan per run.
 4. Open the run to inspect its activity, evidence and source changes. A missing plan remains unavailable; the view does not invent a stage sequence or a package position.
+
+<figure class="forge-shot" markdown="1">
+
+![Product-project board showing a recorded run that needs attention](assets/screenshots/factory-board-desktop-light.png)
+
+<figcaption>Board groups the product's recorded runs by state. Focus run returns to its floor context; Open run shows the detailed evidence.</figcaption>
+</figure>
 
 Studio refreshes observations while the page is visible. A transient read failure labels the retained observation and suspends motion. An authorization failure discards the prior observation. Changing identity or project clears the previous selection and pending reads.
 
@@ -68,9 +89,11 @@ flowchart LR
     C --> D[Projects and component repository counts]
     C --> E[Scoped run totals and paged records]
     C --> F[Latest plans and current task states]
-    D --> G[Studio floor, inspector and board]
+    D --> G[Fresh native authority check]
     E --> G
     F --> G
+    G -->|Unchanged| H[Studio floor, inspector and board]
+    G -->|Revoked or changed| I[Discard response and refresh access]
 ```
 
 `FactoryDashboard` uses native pyfly services and repositories over the existing PostgreSQL entities. Visibility predicates, totals and pages share a read-only repeatable-read transaction. SQL aggregates produce counts without loading every run or component into application memory. Reads do not acquire runner invocation locks, renew leases, dispatch work or change execution authority. The database read time is returned as `observed_at`; it is not a worker heartbeat.

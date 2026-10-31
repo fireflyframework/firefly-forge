@@ -1,4 +1,5 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+import { mockFactoryDashboard } from "./factory-dashboard-fixture";
 import { expect, test, type Page } from "@playwright/test";
 import { navigate, expectAuthenticated } from "./navigation";
 import { captureWalkthrough } from "./walkthrough-capture";
@@ -114,6 +115,7 @@ async function fixture(
     })),
   ];
   await page.route("**/api/v1/**", async (route) => {
+    if (await mockFactoryDashboard(route)) return;
     const r = route.request(),
       path = new URL(r.url()).pathname,
       method = r.method();

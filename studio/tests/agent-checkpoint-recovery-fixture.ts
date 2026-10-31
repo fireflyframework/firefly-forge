@@ -1,5 +1,9 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 // Controlled API evidence for browser presentation; no native recovery or model runs.
+import {
+  mockFactoryDashboard,
+  openFactoryRun,
+} from "./factory-dashboard-fixture";
 import { expect, type Page } from "@playwright/test";
 import { mockIdentity } from "./auth-fixture";
 import { navigate, expectAuthenticated } from "./navigation";
@@ -50,6 +54,8 @@ export async function setup(
   if (kind === "observation")
     Object.assign(state.candidate, { state: "awaiting_result", result: null });
   await page.route("**/api/v1/**", async (route) => {
+    if (await mockFactoryDashboard(route, { projects: [], runs: [run] }))
+      return;
     if (await mockIdentity(route)) return;
     const req = route.request(),
       path = new URL(req.url()).pathname;
@@ -186,9 +192,7 @@ export async function setup(
   return state;
 }
 export async function open(page: Page) {
-  await page
-    .getByRole("button", { name: /Owned original result fixture/ })
-    .click();
+  await openFactoryRun(page, /Owned original result fixture/);
   await page.getByRole("tab", { name: "Plan", exact: true }).click();
 }
 export async function continueOriginal(page: Page) {

@@ -52,6 +52,7 @@ export async function captureWalkthrough(
       "agent-question-preview",
       "account-profile",
       "personal-token-create",
+      "factory-projects",
     ],
     "studio/tests/docs-provider-allowance.spec.ts": [
       "provider-allowance-failure",
@@ -515,6 +516,7 @@ export async function captureWalkthrough(
     "studio/tests/coding-check-recovery-browser-fixture.ts",
     "studio/tests/git-delivery-contract-fixture.json",
     "studio/tests/framework-knowledge-fixture.ts",
+    "studio/tests/factory-dashboard-fixture.ts",
   ]);
   const producers = hashInputs([
     "studio/tests/docs-walkthrough.spec.ts",

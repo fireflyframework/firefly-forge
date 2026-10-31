@@ -114,9 +114,6 @@ export function FactoryFloor({
     data.snapshot?.observed_at,
   ]);
   const currentPlan = run && plan.run === run.id ? plan.value : null;
-  const received = useRef({ snapshot: data.snapshot, at: performance.now() });
-  if (received.current.snapshot !== data.snapshot)
-    received.current = { snapshot: data.snapshot, at: performance.now() };
   useEffect(() => {
     if (
       !data.snapshot?.stages.some(
@@ -127,12 +124,13 @@ export function FactoryFloor({
     const timer = window.setInterval(() => tick((value) => value + 1), 1000);
     return () => window.clearInterval(timer);
   }, [data.snapshot]);
-  const asOf = data.snapshot
-    ? new Date(
-        Date.parse(data.snapshot.observed_at) +
-          Math.max(0, performance.now() - received.current.at),
-      ).toISOString()
-    : undefined;
+  const asOf =
+    data.snapshot && data.requestStartedAt !== null
+      ? new Date(
+          Date.parse(data.snapshot.observed_at) +
+            Math.max(0, performance.now() - data.requestStartedAt),
+        ).toISOString()
+      : undefined;
   const stations =
     selection.kind === "run"
       ? recordedRunStations(run, currentPlan, data.snapshot?.stages, asOf)
