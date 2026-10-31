@@ -43,7 +43,7 @@ export function ProgressHeader({
       <h2 ref={headingRef} tabIndex={-1}>
         {title}
       </h2>
-      <p>{description}</p>
+      {description && <p>{description}</p>}
       {action}
     </div>
   );

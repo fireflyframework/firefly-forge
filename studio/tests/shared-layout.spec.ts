@@ -149,10 +149,7 @@ test("a new notice reflows the wizard without losing its draft or focus", async 
   await expect(page.getByLabel("Detail 1", { exact: true })).toBeFocused();
 });
 
-for (const modal of [
-  "feature-dialog",
-  "feature-dialog source-analysis-dialog",
-]) {
+for (const modal of ["feature-dialog"]) {
   test(`${modal} retains visible actions in a short viewport`, async ({
     page,
   }) => {

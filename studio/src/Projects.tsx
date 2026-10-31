@@ -3,6 +3,7 @@ import { repositoryLabels } from "./RepositoryLabels";
 import {
   useEffect,
   useId,
+  useRef,
   useState,
   type FormEvent,
   type ReactNode,
@@ -30,6 +31,7 @@ import {
   type ComponentRunContext,
 } from "./api";
 import { SourceAnalysis } from "./SourceAnalysis";
+import type { ReviewedSourceContext } from "./SourceAnalysisContext";
 import { Wizard } from "./Wizard";
 import { safeExternalLink } from "./FeatureLinks";
 import "./StudioFeatures.css";
@@ -182,7 +184,11 @@ export function Projects({
   repositories: Repository[];
   onStart: (context: ComponentRunContext) => void;
   onOpen: (run: ForgeRun) => void;
-  onProduct: (repositoryId: string, project: ProjectSnapshot) => void;
+  onProduct: (
+    repositoryId: string,
+    project: ProjectSnapshot,
+    source?: ReviewedSourceContext,
+  ) => void;
 }) {
   const [items, setItems] = useState<ProjectSnapshot[]>([]),
     [selected, setSelected] = useState(""),
@@ -191,12 +197,13 @@ export function Projects({
     [error, setError] = useState(""),
     [revision, setRevision] = useState(0),
     [loading, setLoading] = useState(false),
-    [boardSetup, setBoardSetup] = useState<{
-      projectId: string;
-      repositoryId: string;
-      actor: string;
-    } | null>(null),
     [boardNotice, setBoardNotice] = useState("");
+  const [projectView, setProjectView] = useState<
+    | { kind: "board"; projectId: string; repositoryId: string; actor: string }
+    | { kind: "source"; projectId: string; step: number }
+    | null
+  >(null);
+  const pageHeading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     if (!connected) return;
     const controller = new AbortController();
@@ -252,40 +259,64 @@ export function Projects({
     }
   }
   const current = overview?.id === id ? overview : null;
+  const closeProjectView = () => {
+    setProjectView(null);
+    requestAnimationFrame(() => pageHeading.current?.focus());
+  };
   if (
     connected &&
+    !editing &&
     current &&
-    session &&
-    boardSetup?.projectId === current.id &&
-    boardSetup.actor === session.user.id
-  )
-    return (
-      <GitHubProjectsSettings
-        connection={connection}
-        session={session}
-        project={current}
-        repositories={repositories}
-        repositoryId={boardSetup.repositoryId}
-        onAccounts={onAccounts}
-        onClose={() => {
-          setBoardSetup(null);
-          requestAnimationFrame(() =>
-            document.getElementById("product-projects-heading")?.focus(),
-          );
-        }}
-        onUpdated={() => {
-          setBoardNotice(
-            "Board settings saved. Verified progress will use the selected field and options.",
-          );
-          setRevision((value) => value + 1);
-        }}
-      />
-    );
+    projectView?.projectId === current.id
+  ) {
+    if (
+      projectView.kind === "board" &&
+      session &&
+      projectView.actor === session.user.id
+    )
+      return (
+        <GitHubProjectsSettings
+          connection={connection}
+          session={session}
+          project={current}
+          repositories={repositories}
+          repositoryId={projectView.repositoryId}
+          onAccounts={onAccounts}
+          onClose={closeProjectView}
+          onUpdated={() => {
+            setBoardNotice(
+              "Board settings saved. Verified progress will use the selected field and options.",
+            );
+            setRevision((value) => value + 1);
+          }}
+        />
+      );
+    if (projectView.kind === "source")
+      return (
+        <SourceAnalysis
+          key={`${current.id}/source`}
+          connection={connection}
+          project={current}
+          repositories={repositories}
+          initialStep={projectView.step}
+          onRefresh={() => setRevision((value) => value + 1)}
+          onContinueProduct={(source) =>
+            onProduct(
+              current.definition.product_repository_id ||
+                current.definition.components[0].repository_id,
+              current,
+              source,
+            )
+          }
+          onClose={closeProjectView}
+        />
+      );
+  }
   return (
     <section className="projects-page">
       <div className="page-heading">
         <div>
-          <h1 id="product-projects-heading" tabIndex={-1}>
+          <h1 id="product-projects-heading" ref={pageHeading} tabIndex={-1}>
             Product projects
           </h1>
           <p>
@@ -462,7 +493,8 @@ export function Projects({
                   onAccounts={onAccounts}
                   onSetup={(repositoryId) => {
                     setBoardNotice("");
-                    setBoardSetup({
+                    setProjectView({
+                      kind: "board",
                       projectId: current.id,
                       repositoryId,
                       actor: session.user.id,
@@ -501,6 +533,14 @@ export function Projects({
                 key={current.id}
                 connection={connection}
                 project={current}
+                repositories={repositories}
+                onOpen={(step) =>
+                  setProjectView({
+                    kind: "source",
+                    projectId: current.id,
+                    step,
+                  })
+                }
               />
               <div className="project-components">
                 <ComponentCollection

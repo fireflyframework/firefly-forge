@@ -212,8 +212,8 @@ export async function captureWalkthrough(
     "runner-continuation-selection": "Original command",
     "runner-continuation-review": "Review",
     "source-analysis-scope": "Scope",
-    "source-analysis-receipt": "Receipt",
-    "source-analysis-evidence": "Evidence",
+    "source-analysis-receipt": "Report",
+    "source-analysis-evidence": "Source findings",
     "source-analysis-review": "Review",
   };
   if (expectedStep[stage])

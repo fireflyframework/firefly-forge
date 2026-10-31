@@ -12,6 +12,15 @@ Follow an inventory API change from connection and product definition through ru
 
 Screenshots use controlled fixtures.[^captures] Select an image to open its full capture; light and dark variants follow the page appearance.
 
+In **Factory**, expand **How work moves through forge** to choose your next step. The guide links product definition, source understanding, preparation, implementation and delivery; it does not assign progress or start work.
+
+<figure class="forge-shot" markdown="1">
+
+![The five-stage factory process guide.](assets/screenshots/factory-process-guide-desktop-light.png)
+
+<figcaption>Choose a starting point from the current product state. These navigation links open the relevant workspace; this controlled fixture starts no model, build or deployment.</figcaption>
+</figure>
+
 ## 1. Connect the factory
 
 Open Administration, then Connections. Connect to your factory API; server sign-in and the coding provider's login are separate.

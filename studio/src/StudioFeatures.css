@@ -1542,36 +1542,6 @@
 .source-analysis > .feature-meta {
   margin: 0;
 }
-.source-analysis-dialog .feature-meta {
-  display: block;
-  overflow-wrap: anywhere;
-}
-.source-analysis-dialog .feature-actions button {
-  max-width: 100%;
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
-.source-analysis-dialog {
-  height: calc(100dvh - 48px);
-  max-height: calc(100dvh - 48px);
-  padding: 24px;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-.source-analysis-dialog .wizard-frame {
-  flex: 1 1 0;
-  height: auto;
-  min-height: 0;
-}
-.source-analysis-dialog > .source-dialog-heading {
-  gap: 16px;
-  margin-bottom: 16px;
-}
-.source-dialog-close {
-  margin: 0;
-  flex: 0 0 auto;
-}
 .source-evidence-list {
   display: grid;
   gap: 20px;
@@ -1592,14 +1562,6 @@
   .source-analysis > header {
     flex-direction: column;
     gap: 16px;
-  }
-  .source-analysis-dialog {
-    padding: 16px;
-    height: calc(100dvh - 24px);
-    max-height: calc(100dvh - 24px);
-  }
-  .source-dialog-heading h2 {
-    font-size: 20px;
   }
 }
 
