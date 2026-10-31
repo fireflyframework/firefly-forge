@@ -997,7 +997,9 @@ for (const viewport of [
       await fullCopy.scrollIntoViewIfNeeded();
       await expect(fullCopy).toBeInViewport();
       const button = await fullCopy.boundingBox();
-      const footer = await page.locator("footer").boundingBox();
+      const footer = await page
+        .locator(".workspace-main > footer")
+        .boundingBox();
       expect(footer).not.toBeNull();
       expect(button).not.toBeNull();
       expect(button!.y + button!.height).toBeLessThanOrEqual(footer!.y);

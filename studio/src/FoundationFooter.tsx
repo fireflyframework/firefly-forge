@@ -20,8 +20,13 @@ export function FoundationFooter({
     const header = shell?.querySelector<HTMLElement>(":scope > header");
     if (!node || !shell || !header) return;
     const measure = () => {
-      const top = header.getBoundingClientRect().bottom;
-      const bottom = node.getBoundingClientRect().top;
+      // Viewport rectangles include CSS zoom; custom lengths use layout pixels.
+      const scale = shell.offsetWidth
+        ? shell.getBoundingClientRect().width / shell.offsetWidth
+        : 1;
+      const top = header.getBoundingClientRect().bottom / scale;
+      const bottom = node.getBoundingClientRect().top / scale;
+      const viewport = innerHeight / scale;
       shell.style.setProperty("--shell-content-top", `${top}px`);
       shell.style.setProperty(
         "--shell-content-height",
@@ -29,16 +34,23 @@ export function FoundationFooter({
       );
       shell.style.setProperty(
         "--shell-footer-extent",
-        `${Math.max(0, innerHeight - bottom)}px`,
+        `${Math.max(0, viewport - bottom)}px`,
       );
+      shell.style.setProperty("--shell-viewport-height", `${viewport}px`);
     };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(node);
     observer.observe(header);
+    const styles = new MutationObserver(measure);
+    styles.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["style"],
+    });
     window.addEventListener("resize", measure);
     return () => {
       observer.disconnect();
+      styles.disconnect();
       window.removeEventListener("resize", measure);
     };
   }, [version]);

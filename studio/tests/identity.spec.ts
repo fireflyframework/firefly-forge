@@ -320,19 +320,18 @@ test("a project viewer keeps a valid session when the private provider catalog i
   });
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await expectAuthenticated(page);
-  await navigate(page, "Administration");
+  await expect(
+    page.getByRole("button", { name: "Administration", exact: true }),
+  ).toHaveCount(0);
   await expect(
     page.locator("main").getByRole("button", { name: "People", exact: true }),
-  ).toBeDisabled();
+  ).toHaveCount(0);
   await expect(
     page
       .locator("main")
       .getByRole("button", { name: "Connections", exact: true }),
-  ).toBeDisabled();
-  await page
-    .locator("main")
-    .getByRole("button", { name: "Project access", exact: true })
-    .click();
+  ).toHaveCount(0);
+  await navigate(page, "Project access");
   await expect(
     page.getByText("Your role: viewer.", { exact: true }),
   ).toBeVisible();
