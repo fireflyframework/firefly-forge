@@ -95,14 +95,14 @@ async def stored_document(store):
 
 async def test_revision31_upgrade_keeps_legacy_data_and_adds_native_jsonb_timezone_and_constraints(pg_tokens):
     c = pg_tokens
-    assert c.store.schema.startswith("forge_test_") and SCHEMA_REVISION == 32
+    assert c.store.schema.startswith("forge_test_")
     async with c.store._unit() as session:
         before = await session.scalar(text("SELECT jsonb_agg(to_jsonb(u) ORDER BY id) FROM forge_identity_users u"))
         project_before = await session.scalar(text("SELECT jsonb_agg(to_jsonb(p) ORDER BY id) FROM forge_projects p"))
         # These two new tables are empty and belong solely to this disposable fixture schema.
         await session.execute(text("DROP TABLE forge_personal_token_events"))
         await session.execute(text("DROP TABLE forge_personal_tokens"))
-        await session.execute(text("DELETE FROM forge_schema_migrations WHERE revision=32"))
+        await session.execute(text("DELETE FROM forge_schema_migrations WHERE revision>31"))
         await session.execute(text("INSERT INTO forge_schema_migrations(revision) VALUES(31) ON CONFLICT DO NOTHING"))
     async with c.store._unit() as session:
         await migrate(session, c.store.schema)
@@ -115,7 +115,7 @@ async def test_revision31_upgrade_keeps_legacy_data_and_adds_native_jsonb_timezo
             await session.scalar(text("SELECT jsonb_agg(to_jsonb(p) ORDER BY id) FROM forge_projects p"))
             == project_before
         )
-        assert await session.scalar(text("SELECT count(*) FROM forge_schema_migrations WHERE revision=32")) == 1
+        assert await session.scalar(text("SELECT max(revision) FROM forge_schema_migrations")) == SCHEMA_REVISION
         columns = dict(
             (
                 await session.execute(

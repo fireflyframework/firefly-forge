@@ -101,6 +101,8 @@ from firefly_forge.controllers import (
     SCMRepositorySelection,
 )
 from firefly_forge.engine import Engine
+from firefly_forge.engine_activity import EngineActivity, EngineActivitySettings
+from firefly_forge.engine_activity_persistence import ForgeEngineActivityRepository
 from firefly_forge.execution_request_persistence import (
     ForgeExecutionRequestEventRepository,
     ForgeExecutionRequestRepository,
@@ -780,6 +782,18 @@ class FactoryConfiguration:
         return UserAdministration(store, identity, operations, events)
 
     @bean
+    def engine_activity(self, store: Store, records: ForgeEngineActivityRepository) -> EngineActivity:
+        return EngineActivity(
+            store,
+            records,
+            EngineActivitySettings(
+                heartbeat_seconds=float(os.environ.get("FORGE_ACTIVITY_HEARTBEAT_SECONDS", "5")),
+                stale_seconds=float(os.environ.get("FORGE_ACTIVITY_STALE_SECONDS", "20")),
+                sample_timeout_seconds=float(os.environ.get("FORGE_ACTIVITY_SAMPLE_TIMEOUT_SECONDS", "1")),
+            ),
+        )
+
+    @bean
     def coordinator(
         self,
         store: Store,
@@ -797,6 +811,7 @@ class FactoryConfiguration:
         routing: TaskRouting,
         runtime_roles: RuntimeRoles,
         worker_evidence: WorkerEvidence,
+        stage_activity: EngineActivity,
     ) -> Engine:
         engine = Engine(
             store,
@@ -804,6 +819,7 @@ class FactoryConfiguration:
             concurrency=int(os.environ.get("FORGE_CONCURRENCY", "2")),
             connections=connections,
             journal=journal,
+            stage_activity=stage_activity,
         )
         engine.assurance = assurance
         engine.worker_evidence = worker_evidence
@@ -1375,6 +1391,7 @@ def create_runtime(
         ForgePersonalTokenEventRepository,
         PersonalTokenController,
         FactoryDashboardRepository,
+        ForgeEngineActivityRepository,
         FactoryDashboardController,
         ForgeMembershipRepository,
         ForgeAccessEventRepository,

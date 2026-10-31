@@ -249,6 +249,8 @@ def runtime_contract() -> str:
                     "identity_persistence.py",
                     "access_persistence.py",
                     "product_provenance.py",
+                    "engine_activity.py",
+                    "engine_activity_persistence.py",
                 )
             },
         }

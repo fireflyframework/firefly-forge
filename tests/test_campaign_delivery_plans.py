@@ -303,7 +303,6 @@ async def test_native_revision_quota_and_schema25_upgrade_preserve_archives(stor
 
     c = await prepared(store, tmp_path)
     try:
-        assert SCHEMA_REVISION == 32
         async with store._unit() as session:
             assert await session.scalar(text("SELECT count(*) FROM forge_event_content")) == 0
             await session.execute(text("DROP TABLE forge_campaign_delivery_plan_revisions"))

@@ -399,6 +399,8 @@ def admission_contract_digest() -> str:
                 "identity_persistence.py",
                 "access_persistence.py",
                 "product_provenance.py",
+                "engine_activity.py",
+                "engine_activity_persistence.py",
             )
         }
     )

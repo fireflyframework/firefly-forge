@@ -6,6 +6,7 @@ from __future__ import annotations
 import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -160,6 +161,7 @@ class FactoryDashboard:
                 after=int(position) if position else None,
                 limit=page.limit,
                 bucket=page.bucket,
+                schema=self.store.schema,
                 allowed_projects=allowed_projects,
             )
             if scope.kind == "run" and not sum(raw["counts"].values()):
@@ -208,10 +210,21 @@ class FactoryDashboard:
         }
         unmapped = 0
         for record in raw["stages"]:
+            state, deadline = record["state"], record.get("observed_until")
+            if state == "active" and not (
+                isinstance(deadline, datetime) and deadline.tzinfo is not None and deadline > observed_at
+            ):
+                state = "unknown"
             if record["stage"] in stages:
-                stages[record["stage"]][record["state"]] += record["count"]
-                stages[record["stage"]]["recorded_running"] += record.get("recorded_running", 0)
-            elif record["state"] == "active":
+                stage_record = stages[record["stage"]]
+                stage_record[state] += record["count"]
+                stage_record["recorded_running"] += record.get("recorded_running", 0)
+                if state == "active":
+                    expiry = deadline.astimezone(UTC).isoformat()
+                    stage_record["observed_until"] = (
+                        min(stage_record["observed_until"], expiry) if stage_record["observed_until"] else expiry
+                    )
+            elif state == "active":
                 unmapped += record["count"]
         rows = raw["rows"]
         return {
