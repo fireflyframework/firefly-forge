@@ -46,12 +46,17 @@
 .scm-delegation-dialog.access-member-dialog {
   inset: 0;
   width: min(760px, calc(100vw / var(--delegation-zoom, 1) - 24px));
-  height: max-content;
+  height: min(760px, calc(100dvh / var(--delegation-zoom, 1) - 24px));
   max-height: calc(100dvh / var(--delegation-zoom, 1) - 24px);
 }
 .scm-delegation-dialog .wizard,
 .scm-delegation-dialog .wizard-form {
   flex: 1 1 auto;
+}
+.scm-delegation-dialog .wizard-frame {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 .scm-delegation-dialog .field {
   margin: 16px 0;
@@ -122,7 +127,7 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   min-height: 48px;
-  padding: 8px;
+  padding: 8px 8px 8px 0;
 }
 .scm-delegation-dialog[data-compact="true"] .wizard-actions button {
   width: 100%;
@@ -140,9 +145,10 @@
 .scm-delegation-dialog .wizard-actions {
   padding-right: 8px;
   padding-bottom: 8px;
-  padding-left: 8px;
+  padding-left: 0;
 }
 .scm-delegation-dialog .wizard-actions button {
+  min-height: 44px;
   min-width: 0;
   white-space: normal;
 }

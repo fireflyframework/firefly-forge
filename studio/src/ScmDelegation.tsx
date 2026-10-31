@@ -1,13 +1,6 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { useEffect, useRef, useState } from "react";
-import {
-  ArrowRight,
-  GitBranch,
-  History,
-  ShieldCheck,
-  UserRound,
-  X,
-} from "lucide-react";
+import { ArrowRight, GitBranch, History, ShieldCheck, X } from "lucide-react";
 import {
   ApiError,
   normalizeBase,
@@ -17,6 +10,10 @@ import {
 } from "./api";
 import type { IdentitySession } from "./Identity";
 import { Wizard } from "./Wizard";
+import {
+  RegisteredPersonSelector,
+  type RegisteredPerson,
+} from "./RegisteredPersonSelector";
 import { ScmResumeConsent } from "./ScmResumeConsent";
 import { ScmPollResumePanel } from "./ScmPollResumeConsent";
 import { ScmProductChangeConsent } from "./ScmProductChangeConsent";
@@ -41,13 +38,8 @@ import {
 } from "./ScmDelegationData";
 import "./ScmDelegation.css";
 
-type Person = {
-  id: string;
-  display_name: string | null;
-  email: string | null;
-  contact_email?: string | null;
-  enabled: boolean;
-};
+type Person = RegisteredPerson;
+const emptyPersonSearch = { loading: false, complete: false, error: "" };
 const actionNames: Record<DelegatedAction, string> = {
   respond: "Answer agent questions",
   status: "Read run status",
@@ -123,7 +115,8 @@ export function ScmDelegation({
     [previous, setPrevious] = useState<DelegationReceipt | null>(null);
   const [query, setQuery] = useState(""),
     [matches, setMatches] = useState<Person[]>([]),
-    [person, setPerson] = useState<Person | null>(null);
+    [person, setPerson] = useState<Person | null>(null),
+    [personSearch, setPersonSearch] = useState(emptyPersonSearch);
   const [components, setComponents] = useState<string[]>([]),
     [actions, setActions] = useState<DelegatedAction[]>([]),
     [active, setActive] = useState(true),
@@ -218,6 +211,7 @@ export function ScmDelegation({
       setPerson(null);
       setMatches([]);
       setQuery("");
+      setPersonSearch(emptyPersonSearch);
       setPrevious(null);
       setMessage("");
     }
@@ -323,6 +317,7 @@ export function ScmDelegation({
       setPerson(null);
       setQuery("");
       setMatches([]);
+      setPersonSearch(emptyPersonSearch);
       setComponents([]);
       setActions([]);
       setActive(true);
@@ -383,6 +378,7 @@ export function ScmDelegation({
       setPerson(null);
       setQuery("");
       setMatches([]);
+      setPersonSearch(emptyPersonSearch);
       setComponents(
         prior?.request.component_ids.filter((id) =>
           project.definition.components.some(
@@ -406,13 +402,19 @@ export function ScmDelegation({
   async function findPerson() {
     const term = query.trim();
     if (term.length < 3 || term.length > 120) {
-      setError(
-        "Enter 3 to 120 characters to find an existing registered person.",
-      );
+      setPersonSearch({
+        loading: false,
+        complete: false,
+        error: "Enter 3 to 120 characters to find a registered person.",
+      });
       return;
     }
     const op = begin();
     if (!op) return;
+    setMatches([]);
+    setPerson(null);
+    setAck(false);
+    setPersonSearch({ loading: true, complete: false, error: "" });
     try {
       const values = await request<unknown>(
         connection,
@@ -439,12 +441,20 @@ export function ScmDelegation({
       if (op.valid()) {
         setMatches(values as Person[]);
         setPerson(null);
+        setPersonSearch({ loading: false, complete: true, error: "" });
       }
     } catch (cause) {
       if (op.valid()) {
         clearDenied(cause);
         setMatches([]);
-        setError(problem(cause));
+        setPerson(null);
+        setPersonSearch({
+          loading: false,
+          complete: false,
+          error: "People could not be loaded. Search again.",
+        });
+        if (cause instanceof ApiError && [401, 403].includes(cause.status))
+          setError(problem(cause));
       }
     } finally {
       finish(op);
@@ -860,7 +870,7 @@ export function ScmDelegation({
             </button>
           </div>
           <Wizard
-            layout="flow"
+            layout="bounded"
             steps={["Account", "Scope", "Review"]}
             active={step}
             onStep={(value) => {
@@ -874,7 +884,7 @@ export function ScmDelegation({
             description={
               [
                 "Choose a signed delivery.",
-                "No membership is created.",
+                "Choose the person, components and requests to allow.",
                 "No personal OAuth is granted.",
               ][step]
             }
@@ -958,58 +968,36 @@ export function ScmDelegation({
               )}
               {step === 1 && (
                 <>
-                  <div className="field">
-                    <label htmlFor="scm-person-query">
-                      Find a registered person
-                    </label>
-                    <input
-                      id="scm-person-query"
-                      disabled={busy}
-                      value={query}
-                      maxLength={120}
-                      onChange={(event) => {
-                        setQuery(event.target.value);
-                        setPerson(null);
-                        setMatches([]);
-                      }}
-                    />
-                    <button
-                      type="button"
-                      className="secondary"
-                      disabled={busy}
-                      onClick={() => void findPerson()}
-                    >
-                      <UserRound size={16} />
-                      Find person
-                    </button>
-                  </div>
-                  <div className="field">
-                    <label htmlFor="scm-person">Registered person</label>
-                    <select
-                      id="scm-person"
-                      value={person?.id ?? ""}
-                      onChange={(event) =>
-                        setPerson(
-                          matches.find(
-                            (item) => item.id === event.target.value,
-                          ) ?? null,
-                        )
-                      }
-                    >
-                      <option value="">
-                        Choose an existing registered person
-                      </option>
-                      {matches.map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {personName(item)}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  <RegisteredPersonSelector
+                    query={query}
+                    onQuery={(value) => {
+                      setQuery(value);
+                      setPerson(null);
+                      setMatches([]);
+                      setPersonSearch(emptyPersonSearch);
+                      setAck(false);
+                    }}
+                    onSearch={() => void findPerson()}
+                    matches={matches}
+                    value={person}
+                    onSelect={(value) => {
+                      setPerson(value);
+                      setAck(false);
+                    }}
+                    onChange={() => {
+                      setPerson(null);
+                      setMatches([]);
+                      setPersonSearch(emptyPersonSearch);
+                      setAck(false);
+                    }}
+                    disabled={busy}
+                    searching={personSearch.loading}
+                    complete={personSearch.complete}
+                    error={personSearch.error}
+                  />
                   <p>
-                    This does not add the person to the project. Each later
-                    action still needs their current project and repository
-                    permission.
+                    forge checks their current project and repository access on
+                    every request.
                   </p>
                   <fieldset>
                     <legend>Components in this repository</legend>
@@ -1134,6 +1122,7 @@ export function ScmDelegation({
                 </button>
                 <button
                   className="primary"
+                  aria-label={step === 1 ? "Review delegation" : undefined}
                   disabled={
                     busy ||
                     (step === 0 && !candidate) ||
@@ -1145,7 +1134,7 @@ export function ScmDelegation({
                   {step === 0
                     ? "Continue to scope"
                     : step === 1
-                      ? "Review delegation"
+                      ? "Review"
                       : "Save delegation"}
                 </button>
               </div>

@@ -796,7 +796,7 @@ export function ScmProductChangeConsent({
             </button>
           </div>
           <Wizard
-            layout="flow"
+            layout="bounded"
             steps={["Mapping", "Scope", "Review"]}
             active={step}
             onStep={(value) => {
