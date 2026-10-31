@@ -109,7 +109,15 @@ def test_authenticated_provider_http_signed_ingress_feedback_and_reconciliation(
         "gitlab": "gitlab.selfmanaged.example",
         "bitbucket": "bitbucket.org",
     }[provider]
-    state = {"writes": [], "errors": [], "revoked": False, "drop_response": False, "refreshes": 0}
+    state = {
+        "writes": [],
+        "errors": [],
+        "revoked": False,
+        "drop_response": False,
+        "refreshes": 0,
+        "notes": {},
+        "drop_readback": False,
+    }
     expiry = (datetime.now(UTC) + timedelta(hours=1)).isoformat()
 
     class Handler(BaseHTTPRequestHandler):
@@ -176,19 +184,26 @@ def test_authenticated_provider_http_signed_ingress_feedback_and_reconciliation(
                             ]
                             result = {"repositories": [] if state["revoked"] else entries}
                         elif provider == "gitlab":
-                            assert path == "/api/v4/projects" and self.headers["Host"] == host
-                            result = (
-                                []
-                                if state["revoked"]
-                                else [
-                                    {
-                                        "id": 42,
-                                        "path_with_namespace": "team/product",
-                                        "http_url_to_repo": f"https://{host}/team/product.git",
-                                        "default_branch": "main",
-                                    }
-                                ]
-                            )
+                            assert self.headers["Host"] == host
+                            if path.startswith("/api/v4/projects/42/merge_requests/12/notes/"):
+                                if state["drop_readback"]:
+                                    self.close_connection = True
+                                    return
+                                result = state["notes"][int(path.rsplit("/", 1)[1])]
+                            else:
+                                assert path == "/api/v4/projects"
+                                result = (
+                                    []
+                                    if state["revoked"]
+                                    else [
+                                        {
+                                            "id": 42,
+                                            "path_with_namespace": "team/product",
+                                            "http_url_to_repo": f"https://{host}/team/product.git",
+                                            "default_branch": "main",
+                                        }
+                                    ]
+                                )
                         else:
                             assert path == "/2.0/repositories/team" and self.headers["Host"] == "api.bitbucket.org"
                             result = {
@@ -226,6 +241,17 @@ def test_authenticated_provider_http_signed_ingress_feedback_and_reconciliation(
                             "id": len(state["writes"]),
                             "html_url": f"https://{host}/team/product/comments/{len(state['writes'])}",
                         }
+                        if provider == "gitlab":
+                            result = {
+                                "id": len(state["writes"]),
+                                "body": message,
+                                "project_id": 42,
+                                "noteable_id": 999,
+                                "noteable_iid": 12,
+                                "noteable_type": "MergeRequest",
+                                "author": {"id": 123, "username": "service-bot"},
+                            }
+                            state["notes"][result["id"]] = result
                 encoded = json.dumps(result).encode()
                 self.send_response(201 if self.command == "POST" else 200)
                 self.send_header("Content-Type", "application/json")
@@ -306,9 +332,29 @@ def test_authenticated_provider_http_signed_ingress_feedback_and_reconciliation(
             result = client.post(process, headers=auth)
             assert result.status_code == 200, result.text
             assert result.json()["feedback_status"] == "sent"
+            if provider == "gitlab":
+                assert result.json()["feedback_remote"] == {
+                    "id": 1,
+                    "number": 1,
+                    "url": f"https://{host}/team/product/-/merge_requests/12#note_1",
+                }
             assert client.post(ingress, content=raw, headers=signed).json()["id"] == receipt["id"]
             assert client.post(process, headers=auth).json()["feedback_status"] == "sent"
             assert len(state["writes"]) == 1
+            accepted = 1
+            if provider == "gitlab":
+                state["drop_readback"] = True
+                raw, signed = comment(provider, 94)
+                receipt = client.post(ingress, content=raw, headers=signed).json()
+                note_process = f"/api/v1/collaboration/receipts/{receipt['id']}/process"
+                uncertain = client.post(note_process, headers=auth).json()
+                assert uncertain["feedback_status"] == "needs_reconciliation"
+                assert uncertain["feedback_remote"]["id"] == 2
+                assert uncertain["feedback_remote"]["url"].endswith("/merge_requests/12#note_2")
+                assert client.post(note_process, headers=auth).json() == uncertain
+                assert len(state["writes"]) == 2
+                state["drop_readback"] = False
+                accepted = 2
             state["drop_response"] = True
             raw, signed = comment(provider, 92)
             receipt = client.post(ingress, content=raw, headers=signed).json()
@@ -325,13 +371,13 @@ def test_authenticated_provider_http_signed_ingress_feedback_and_reconciliation(
                 == 200
             )
             assert client.post(process, headers=auth).json()["feedback_status"] == "sent"
-            assert len(state["writes"]) == 2
+            assert len(state["writes"]) == accepted + 1
             state["revoked"] = True
             raw, signed = comment(provider, 93)
             receipt = client.post(ingress, content=raw, headers=signed).json()
             result = client.post(f"/api/v1/collaboration/receipts/{receipt['id']}/process", headers=auth).json()
             assert result["feedback_status"] == "needs_reconciliation"
-            assert len(state["writes"]) == 2
+            assert len(state["writes"]) == accepted + 1
             assert client.get("/api/v1/runs", headers=auth).json() == []
             assert not state["errors"], state["errors"]
             if provider == "gitlab":
