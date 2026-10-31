@@ -13,7 +13,7 @@ import pytest
 from pydantic import ValidationError
 from sqlalchemy.dialects import postgresql
 
-from firefly_forge.engine import Engine
+from firefly_forge.engine import RETAINED_EXECUTION_FENCES, Engine
 from firefly_forge.engine_activity import EngineActivity, EngineActivitySettings
 from firefly_forge.engine_activity_persistence import ForgeEngineActivityRepository
 from firefly_forge.project_access import ProjectAccess
@@ -263,7 +263,7 @@ async def test_unsupported_actor_paths_do_not_claim_live_observations(actor):
 
 
 @pytest.mark.asyncio
-async def test_slow_observation_times_out_without_cancelling_the_engine_task(monkeypatch):
+async def test_slow_observation_times_out_without_cancelling_the_engine_task():
     store, records, activity = observer()
     entered = asyncio.Event()
 
@@ -272,9 +272,148 @@ async def test_slow_observation_times_out_without_cancelling_the_engine_task(mon
         await asyncio.Event().wait()
 
     records.begin.side_effect = stalled
-    # Accelerate only the telemetry sampling timer; business logic has no deadline.
-    native_timeout = asyncio.timeout
-    monkeypatch.setattr("firefly_forge.engine_activity.asyncio.timeout", lambda _: native_timeout(0.01))
+    activity.settings = EngineActivitySettings(
+        heartbeat_seconds=0.1,
+        stale_seconds=1,
+        sample_timeout_seconds=0.01,
+    )
     await activity.begin("b" * 32, "implement", "a" * 32)
     assert entered.is_set() and not activity.scopes
     assert not asyncio.current_task().cancelling()
+
+
+def cleanup_engine(tmp_path, monkeypatch, observer_failure):
+    from firefly_forge import checkpoint_mode_runtime
+
+    state = {"entered": False, "closed": False}
+    run = {
+        "id": "b" * 32,
+        "repository_id": "c" * 32,
+        "status": "preparing",
+        "repair_budget": 0,
+        "checkpoint_mode_adoption": {"fixture": True},
+    }
+
+    @asynccontextmanager
+    async def credentials(*args):
+        state["entered"] = True
+        try:
+            yield
+        finally:
+            state["closed"] = True
+
+    async def finish(identifier, status, **fields):
+        run.update(status=status, **fields)
+
+    store = SimpleNamespace(
+        path=tmp_path / "state",
+        runtime_roles=None,
+        configuration=object(),
+        claim=AsyncMock(return_value=True),
+        get_run=AsyncMock(side_effect=lambda _: dict(run)),
+        repository=AsyncMock(side_effect=RuntimeError("business failure")),
+        finish=AsyncMock(side_effect=finish),
+        event=AsyncMock(),
+        release_ownership=AsyncMock(),
+    )
+    activity = SimpleNamespace(
+        begin=AsyncMock(), end=AsyncMock(side_effect=observer_failure), close=AsyncMock(side_effect=observer_failure)
+    )
+    monkeypatch.setattr(checkpoint_mode_runtime, "mode_execution_scope", credentials)
+    monkeypatch.setattr(checkpoint_mode_runtime, "execution_settings", lambda *args: {})
+    engine = Engine(store, tmp_path / "workspaces", provider_factory=lambda _: None, stage_activity=activity)
+    return engine, state, run
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", [RuntimeError("observer failed"), asyncio.CancelledError("observer cancelled")])
+async def test_failing_observer_cannot_skip_actual_engine_credential_cleanup_or_replace_business_outcome(
+    tmp_path, monkeypatch, failure
+):
+    engine, state, run = cleanup_engine(tmp_path, monkeypatch, failure)
+    await engine.execute_run(run["id"])
+    assert state == {"entered": True, "closed": True}
+    assert run["status"] == "failed" and run["error"] == "business failure"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", [RuntimeError("observer failed"), asyncio.CancelledError("observer cancelled")])
+async def test_actual_engine_cancellation_still_closes_credentials_when_observer_fails(tmp_path, monkeypatch, failure):
+    engine, state, run = cleanup_engine(tmp_path, monkeypatch, failure)
+    blocked = asyncio.Event()
+
+    async def repository(*args):
+        blocked.set()
+        await asyncio.Event().wait()
+
+    engine.store.repository.side_effect = repository
+    task = asyncio.create_task(engine.execute_run(run["id"]))
+    await asyncio.wait_for(blocked.wait(), 1)
+    task.cancel("operator requested")
+    with pytest.raises(asyncio.CancelledError) as cancelled:
+        await task
+    assert cancelled.value.args == ("operator requested",)
+    assert state == {"entered": True, "closed": True}
+    assert run["status"] == "cancelled"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", [RuntimeError("observer failed"), asyncio.CancelledError("observer cancelled")])
+async def test_failing_observer_cannot_skip_drained_engine_owner_release(tmp_path, monkeypatch, failure):
+    engine, _, _ = cleanup_engine(tmp_path, monkeypatch, failure)
+    engine.enforce_ownership = True
+    engine.owner_lock.acquire(timeout=0)
+    try:
+        await engine.stop()
+        engine.store.release_ownership.assert_awaited_once()
+        assert not engine.owner_lock.is_locked
+    finally:
+        if engine.owner_lock.is_locked:
+            engine.owner_lock.release()
+
+
+@pytest.mark.asyncio
+async def test_cancellation_during_observer_shutdown_releases_drained_owner_and_propagates(tmp_path, monkeypatch):
+    engine, _, _ = cleanup_engine(tmp_path, monkeypatch, None)
+    engine.enforce_ownership = True
+    engine.owner_lock.acquire(timeout=0)
+    entered = asyncio.Event()
+
+    async def blocked_close():
+        entered.set()
+        await asyncio.Event().wait()
+
+    engine.stage_activity.close.side_effect = blocked_close
+    task = asyncio.create_task(engine.stop())
+    try:
+        await asyncio.wait_for(entered.wait(), 1)
+        task.cancel("shutdown requested")
+        with pytest.raises(asyncio.CancelledError) as cancelled:
+            await task
+        assert cancelled.value.args == ("shutdown requested",)
+        engine.store.release_ownership.assert_awaited_once()
+        assert not engine.owner_lock.is_locked
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        if engine.owner_lock.is_locked:
+            engine.owner_lock.release()
+
+
+@pytest.mark.asyncio
+async def test_undrained_consumer_still_holds_owner_without_calling_observer_close(tmp_path, monkeypatch):
+    engine, _, _ = cleanup_engine(tmp_path, monkeypatch, RuntimeError("observer failed"))
+    engine.enforce_ownership = True
+    engine.owner_lock.acquire(timeout=0)
+    consumer = asyncio.create_task(asyncio.Event().wait())
+    engine.consumer_tasks = lambda: [consumer]
+    try:
+        await engine.stop()
+        assert engine.execution_state == "degraded" and engine.owner_lock.is_locked
+        engine.store.release_ownership.assert_not_awaited()
+        engine.stage_activity.close.assert_not_awaited()
+    finally:
+        consumer.cancel()
+        await asyncio.gather(consumer, return_exceptions=True)
+        engine.owner_lock.release()
+        RETAINED_EXECUTION_FENCES.discard(engine.owner_lock)

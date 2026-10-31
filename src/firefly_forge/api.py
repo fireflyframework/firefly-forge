@@ -768,6 +768,7 @@ class FactoryConfiguration:
             EngineActivitySettings(
                 heartbeat_seconds=float(os.environ.get("FORGE_ACTIVITY_HEARTBEAT_SECONDS", "5")),
                 stale_seconds=float(os.environ.get("FORGE_ACTIVITY_STALE_SECONDS", "20")),
+                sample_timeout_seconds=float(os.environ.get("FORGE_ACTIVITY_SAMPLE_TIMEOUT_SECONDS", "1")),
             ),
         )
 

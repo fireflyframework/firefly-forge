@@ -25,6 +25,7 @@ class EngineActivitySettings(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, allow_inf_nan=False)
     heartbeat_seconds: float = Field(default=5, gt=0)
     stale_seconds: float = Field(default=20, gt=0)
+    sample_timeout_seconds: float = Field(default=1, gt=0)
 
     @model_validator(mode="after")
     def observation_window(self) -> EngineActivitySettings:
@@ -62,7 +63,7 @@ class EngineActivity:
             task = asyncio.current_task()
             if task is None:
                 return
-            async with asyncio.timeout(1), self.lock:
+            async with asyncio.timeout(self.settings.sample_timeout_seconds), self.lock:
                 ownership = self.store.execution_ownership_token
                 await self.store.assert_ownership()
                 async with self.store._unit() as session:
@@ -151,7 +152,7 @@ class EngineActivity:
             return
         try:
             # End only our exact rows; SQL fence/CAS prevents retiring a replacement.
-            async with asyncio.timeout(1), self.store._unit():
+            async with asyncio.timeout(self.settings.sample_timeout_seconds), self.store._unit():
                 await self.records.end([value.row_id for value in scopes], self.epoch, self.store.schema)
         except Exception:
             log.warning("Engine stage observation could not end; its SQL-clock expiry remains in force")
@@ -165,7 +166,7 @@ class EngineActivity:
             if not self.scopes:
                 return
             try:
-                async with asyncio.timeout(1):
+                async with asyncio.timeout(self.settings.sample_timeout_seconds):
                     ownership = self.store.execution_ownership_token
                     await self.store.assert_ownership()
                     selected = [value for value in self.scopes.values() if value.ownership is ownership]

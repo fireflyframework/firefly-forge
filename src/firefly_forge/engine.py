@@ -6,13 +6,15 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import os
 import re
+import sys
 import uuid
 from collections.abc import Callable
 from contextlib import AsyncExitStack
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import httpx
 from filelock import FileLock, Timeout
@@ -283,14 +285,30 @@ class Engine:
             self.ownership_failure = "Execution consumers have not drained; storage ownership remains fenced"
             self.execution_state = "degraded"
             return
-        if self.stage_activity is not None:
-            await self.stage_activity.close()
-        if self.enforce_ownership:
-            try:
-                await self.store.release_ownership()
-            finally:
-                self.owner_lock.release()
-                RETAINED_EXECUTION_FENCES.discard(self.owner_lock)
+        try:
+            await self._observe_stage("close")
+        finally:
+            if self.enforce_ownership:
+                try:
+                    await self.store.release_ownership()
+                finally:
+                    self.owner_lock.release()
+                    RETAINED_EXECUTION_FENCES.discard(self.owner_lock)
+
+    async def _observe_stage(self, operation: Literal["begin", "end", "close"], *args: str) -> None:
+        if self.stage_activity is None:
+            return
+        pending = sys.exception()
+        try:
+            await getattr(self.stage_activity, operation)(*args)
+        except asyncio.CancelledError:
+            task = asyncio.current_task()
+            # A cancelled observer is not a cancellation request for productive work.
+            if task is not None and task.cancelling() and not isinstance(pending, asyncio.CancelledError):
+                raise
+            logging.getLogger(__name__).warning("Engine stage observer unavailable; activity remains unknown")
+        except Exception:
+            logging.getLogger(__name__).warning("Engine stage observer unavailable; activity remains unknown")
 
     async def assert_ownership(self) -> None:
         if self.store.runtime_roles:
@@ -1687,9 +1705,10 @@ class Engine:
                 (await self.store.update(identifier, publication_error=safe(str(exc))))
                 await emit("publication", f"Publication failed: {exc}")
         finally:
-            if self.stage_activity is not None:
-                await self.stage_activity.end(identifier)
-            await credential_scopes.aclose()
+            try:
+                await self._observe_stage("end", identifier)
+            finally:
+                await credential_scopes.aclose()
 
     async def _worker_feedback(
         self,
@@ -1872,8 +1891,8 @@ class Engine:
             payload.update(reason="verification_repair", failed_checks=failed_checks)
         intent = await self.journal.intent(identifier, task_id, attempt=attempt, payload=payload)
         if intent["disposition"] != "needs_reconciliation":
-            if intent["disposition"] == "execute" and self.stage_activity is not None:
-                await self.stage_activity.begin(identifier, task_id, intent["idempotency_key"])
+            if intent["disposition"] == "execute":
+                await self._observe_stage("begin", identifier, task_id, intent["idempotency_key"])
             return dict(intent)
         run = await self.store.get_run(identifier)
         if not run.get("resume_existing"):
@@ -1902,8 +1921,7 @@ class Engine:
                 await self.journal._receipt(identifier, key, evidence, checkpoint=checkpoint, terminal=terminal)
             else:
                 await self.journal.receipt(identifier, key, evidence, checkpoint=checkpoint)
-            if self.stage_activity is not None:
-                await self.stage_activity.end(identifier, key)
+            await self._observe_stage("end", identifier, key)
 
     @staticmethod
     def component_directory(run: dict[str, Any], workspace: Path, *, create: bool = False) -> Path:
