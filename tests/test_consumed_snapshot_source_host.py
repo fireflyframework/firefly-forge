@@ -101,6 +101,7 @@ async def snapshot_case(tmp_path):
     execution.service = SimpleNamespace(store=store, engine=engine)
     execution.workspace, execution.run_id = root, root.name
     execution._snapshot_started, execution._snapshot = False, None
+    execution.reconciliation = None
     execution.guard = execution.qualified = current
     initial = await workspace_cut(store, root)
     execution.binding = SimpleNamespace(workspace=initial)

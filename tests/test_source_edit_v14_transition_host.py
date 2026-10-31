@@ -187,12 +187,88 @@ NEW_ADMISSION_NAMES = (
 )
 
 
-def declared_names(path, function, minimum):
-    tree = ast.parse(path.read_text())
-    body = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == function)
-    return next(
-        ast.literal_eval(node) for node in ast.walk(body) if isinstance(node, ast.Tuple) and len(node.elts) >= minimum
+def _function(tree, name):
+    matches = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == name]
+    if len(matches) != 1:
+        raise ValueError("One exact local function required")
+    return matches[0]
+
+
+def _no_arguments(node):
+    args = node.args
+    return not (
+        args.posonlyargs
+        or args.args
+        or args.kwonlyargs
+        or args.vararg
+        or args.kwarg
+        or args.defaults
+        or args.kw_defaults
+        or node.decorator_list
     )
+
+
+def _call(node, name):
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == name
+        and not node.args
+        and not node.keywords
+    )
+
+
+def _dictionaries(owner, key):
+    return [
+        value
+        for node in ast.walk(owner)
+        if isinstance(node, ast.Dict)
+        for item, value in zip(node.keys, node.values, strict=True)
+        if isinstance(item, ast.Constant) and item.value == key
+    ]
+
+
+def _module_names(path, function, dictionary_key=None):
+    tree = ast.parse(path.read_text())
+    owner = _function(tree, function)
+    if function == "runtime_contract" and dictionary_key == "adapter" and not _dictionaries(owner, dictionary_key):
+        if (
+            not _no_arguments(owner)
+            or len(owner.body) != 2
+            or not isinstance(owner.body[0], ast.Expr)
+            or not _call(owner.body[0].value, "_outside_unit")
+            or not isinstance(owner.body[1], ast.Return)
+            or not _call(owner.body[1].value, "_runtime_material_digest")
+        ):
+            raise ValueError("Only the exact reviewed guarded runtime delegation is supported")
+        owner = _function(tree, "_runtime_material_digest")
+        if not _no_arguments(owner):
+            raise ValueError("The reviewed private runtime helper must remain local and argument-free")
+    if dictionary_key is not None:
+        owners = _dictionaries(owner, dictionary_key)
+        if len(owners) != 1:
+            raise ValueError("One exact runtime adapter dictionary required")
+        owner = owners[0]
+    values = [
+        ast.literal_eval(node)
+        for node in ast.walk(owner)
+        if isinstance(node, ast.Tuple)
+        and node.elts
+        and all(
+            isinstance(item, ast.Constant) and isinstance(item.value, str) and item.value.endswith(".py")
+            for item in node.elts
+        )
+    ]
+    if len(values) != 1:
+        raise ValueError("One exact literal module closure required")
+    return list(values[0])
+
+
+def declared_names(path, function, minimum):
+    values = _module_names(path, function, "adapter" if function == "runtime_contract" else None)
+    if len(values) < minimum or len(values) != len(set(values)):
+        raise ValueError("The exact module closure must retain its minimum and unique members")
+    return tuple(values)
 
 
 def test_v14_has_distinct_markers_and_nine_exact_historical_profiles_without_authority():
@@ -269,3 +345,51 @@ def test_each_new_authorizing_module_mutation_revokes_its_material_contract(monk
     if name not in CAPACITY_ADMISSION_NAMES:
         assert runtime_contract() != before_runtime
     assert qualification.loader_hashes() == before_loader
+
+
+GUARDED_CLOSURE = (
+    "def runtime_contract() -> str:\n    _outside_unit()\n    return _runtime_material_digest()\n\n"
+    'def _runtime_material_digest() -> str:\n    return {"adapter": ("one.py", "two.py")}\n'
+)
+
+
+@pytest.mark.parametrize(
+    "source", [GUARDED_CLOSURE, 'def runtime_contract():\n    return {"adapter": ("one.py", "two.py")}\n']
+)
+def test_declared_names_preserves_exact_legacy_and_guarded_module_order(tmp_path, source):
+    path = tmp_path / "source.py"
+    path.write_text(source)
+    assert declared_names(path, "runtime_contract", 2) == ("one.py", "two.py")
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        GUARDED_CLOSURE.replace("    _outside_unit()\n", ""),
+        GUARDED_CLOSURE.replace("    _outside_unit()\n", "    different_guard()\n"),
+        GUARDED_CLOSURE.replace("_outside_unit()", "_outside_unit(1)"),
+        GUARDED_CLOSURE.replace("return _runtime_material_digest()", "return different_helper()"),
+        GUARDED_CLOSURE.replace("return _runtime_material_digest()", "return _runtime_material_digest(1)"),
+        GUARDED_CLOSURE.replace("return _runtime_material_digest()", "return _runtime_material_digest(flag=True)"),
+        GUARDED_CLOSURE.replace("    _outside_unit()\n", "    _outside_unit()\n    mutate()\n"),
+        GUARDED_CLOSURE.replace("def runtime_contract()", "def runtime_contract(flag=None)"),
+        GUARDED_CLOSURE.replace("def _runtime_material_digest()", "def _runtime_material_digest(flag=None)"),
+        GUARDED_CLOSURE + '\ndef _runtime_material_digest():\n    return {"adapter": ("foreign.py",)}\n',
+        GUARDED_CLOSURE + '\ndef runtime_contract():\n    return {"adapter": ("foreign.py",)}\n',
+        GUARDED_CLOSURE.replace('("one.py", "two.py")', 'tuple(["one.py", "two.py"])'),
+        GUARDED_CLOSURE.replace('("one.py", "two.py")', '("one.py", "one.py")'),
+        GUARDED_CLOSURE.replace('return {"adapter":', 'other = {"adapter": ("foreign.py",)}\n    return {"adapter":'),
+    ],
+)
+def test_declared_names_refuses_unreviewed_or_ambiguous_runtime_delegation(tmp_path, source):
+    path = tmp_path / "source.py"
+    path.write_text(source)
+    with pytest.raises(ValueError):
+        declared_names(path, "runtime_contract", 2)
+
+
+def test_declared_names_retains_the_selected_minimum(tmp_path):
+    path = tmp_path / "source.py"
+    path.write_text(GUARDED_CLOSURE)
+    with pytest.raises(ValueError, match="minimum"):
+        declared_names(path, "runtime_contract", 3)
