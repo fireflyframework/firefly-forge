@@ -193,7 +193,6 @@ async function frame(page: Page, info: TestInfo, name: string) {
           }
         : null,
       horizontalOverflow: document.documentElement.scrollWidth > innerWidth + 1,
-      hint: !!document.querySelector(".form-scroll-status:not([hidden])"),
       mode: wizard?.dataset.layout ?? "bounded",
       variant: wizard?.classList.contains("wizard-rail") ? "rail" : "steps",
     };
