@@ -8,6 +8,7 @@ import type {
   MeshStandardMaterial,
 } from "three";
 import "./FactoryScene.css";
+import { factoryViewportHeight, overviewCameraOffset } from "./FactoryViewport";
 import {
   FactoryMotion,
   syncStationClips,
@@ -87,30 +88,9 @@ export function FactoryScene(props: FactorySceneProps) {
     if (!node || !main || !node.closest(".production-floor")) return;
     let pending = 0;
     const measure = () => {
-      const rail =
-        node.parentElement?.querySelector("figcaption")?.getBoundingClientRect()
-          .height ?? 0;
-      const dock =
-        node
-          .closest(".production-floor")
-          ?.querySelector(".production-context-dock")
-          ?.getBoundingClientRect().height ?? 0;
-      const inspector =
-        node
-          .closest(".production-floor")
-          ?.querySelector(".factory-inspection")
-          ?.getBoundingClientRect().height ?? 0;
-      const available =
-        main.getBoundingClientRect().bottom -
-        node.getBoundingClientRect().top -
-        main.scrollTop -
-        rail -
-        dock -
-        inspector -
-        16;
       node.style.setProperty(
         "--factory-available-height",
-        `${Math.max(180, available)}px`,
+        `${factoryViewportHeight(main.clientHeight, main.clientWidth)}px`,
       );
     };
     const schedule = () => {
@@ -123,13 +103,9 @@ export function FactoryScene(props: FactorySceneProps) {
     measure();
     const resize = new ResizeObserver(schedule);
     resize.observe(main);
-    resize.observe(node.closest(".production-floor")!);
-    const changes = new MutationObserver(schedule);
-    changes.observe(main, { childList: true, subtree: true });
     window.addEventListener("resize", schedule);
     return () => {
       resize.disconnect();
-      changes.disconnect();
       window.removeEventListener("resize", schedule);
       if (pending) cancelAnimationFrame(pending);
     };
@@ -350,6 +326,27 @@ export function FactoryScene(props: FactorySceneProps) {
               );
         }
       });
+      const geometryCorners = new Map<Object3D, import("three").Vector3[]>();
+      function corners(root: Object3D) {
+        const retained = geometryCorners.get(root);
+        if (retained) return retained;
+        root.updateWorldMatrix(true, true);
+        const points: import("three").Vector3[] = [];
+        root.traverse((node) => {
+          if (!(node instanceof THREE.Mesh)) return;
+          node.geometry.computeBoundingBox();
+          const box = node.geometry.boundingBox;
+          if (!box) return;
+          for (const x of [box.min.x, box.max.x])
+            for (const y of [box.min.y, box.max.y])
+              for (const z of [box.min.z, box.max.z])
+                points.push(
+                  new THREE.Vector3(x, y, z).applyMatrix4(node.matrixWorld),
+                );
+        });
+        geometryCorners.set(root, points);
+        return points;
+      }
       function fit() {
         if (!renderer || !isVisible()) return;
         const width = container!.clientWidth,
@@ -361,32 +358,30 @@ export function FactoryScene(props: FactorySceneProps) {
           current.current.focusSelected && current.current.selectedId
             ? groups.get(current.current.selectedId)
             : null;
-        const bounds = new THREE.Box3().setFromObject(focused ?? world),
+        const points = corners(focused ?? world);
+        const bounds = new THREE.Box3().setFromPoints(points),
           center = bounds.getCenter(new THREE.Vector3());
-        camera.position.copy(center).add(new THREE.Vector3(12, 20, 30));
+        camera.position
+          .copy(center)
+          .add(
+            focused
+              ? new THREE.Vector3(12, 20, 30)
+              : new THREE.Vector3(
+                  ...overviewCameraOffset(points, width / height),
+                ),
+          );
         camera.lookAt(center);
         camera.updateMatrixWorld(true);
         // Fit the visible geometry rather than empty corners of the long factory's world box.
         const projected = new THREE.Box3();
-        world.updateWorldMatrix(true, true);
-        (focused ?? world).traverse((node) => {
-          if (!(node instanceof THREE.Mesh)) return;
-          node.geometry.computeBoundingBox();
-          const box = node.geometry.boundingBox;
-          if (!box) return;
-          for (const x of [box.min.x, box.max.x])
-            for (const y of [box.min.y, box.max.y])
-              for (const z of [box.min.z, box.max.z])
-                projected.expandByPoint(
-                  new THREE.Vector3(x, y, z)
-                    .applyMatrix4(node.matrixWorld)
-                    .applyMatrix4(camera.matrixWorldInverse),
-                );
-        });
+        for (const point of points)
+          projected.expandByPoint(
+            point.clone().applyMatrix4(camera.matrixWorldInverse),
+          );
         const horizontal = projected.max.x - projected.min.x;
         const vertical = projected.max.y - projected.min.y;
         const target = projected.getCenter(new THREE.Vector3());
-        const span = Math.max(vertical, horizontal / (width / height)) * 1.08;
+        const span = Math.max(vertical, horizontal / (width / height)) * 1.1;
         camera.left = target.x - (span * width) / height / 2;
         camera.right = target.x + (span * width) / height / 2;
         camera.top = target.y + span / 2;
