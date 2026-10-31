@@ -1,6 +1,7 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { expect, test } from "@playwright/test";
 import { mockIdentity } from "./auth-fixture";
+import { mockFactoryDashboard } from "./factory-dashboard-fixture";
 import { navigate, expectAuthenticated } from "./navigation";
 
 const healthyApi = {
@@ -60,6 +61,11 @@ for (const [name, health, alert] of [
   }, testInfo) => {
     await page.route("**/api/v1/**", async (route) => {
       if (await mockIdentity(route)) return;
+      if (
+        route.request().method() === "GET" &&
+        (await mockFactoryDashboard(route, { projects: [], runs: [] }))
+      )
+        return;
       const path = new URL(route.request().url()).pathname;
       await route.fulfill({
         json: path.endsWith("/health")

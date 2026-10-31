@@ -1,6 +1,10 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { expect, test } from "@playwright/test";
 import { mockIdentity } from "./auth-fixture";
+import {
+  mockFactoryDashboard,
+  openFactoryRun,
+} from "./factory-dashboard-fixture";
 import { navigate, expectAuthenticated } from "./navigation";
 
 // Controlled API responses verify presentation, not a live Bridge execution.
@@ -27,6 +31,11 @@ for (const width of [1440, 390]) {
         };
         await page.route("**/api/v1/**", async (route) => {
           if (await mockIdentity(route)) return;
+          if (
+            route.request().method() === "GET" &&
+            (await mockFactoryDashboard(route, { projects: [], runs: [run] }))
+          )
+            return;
           const req = route.request();
           const path = new URL(req.url()).pathname;
           if (req.method() !== "GET") {
@@ -65,7 +74,7 @@ for (const width of [1440, 390]) {
         await page.getByRole("button", { name: "Save connection" }).click();
         await expectAuthenticated(page);
         await navigate(page, "Factory");
-        await page.getByRole("button", { name: "Inspect run" }).click();
+        await openFactoryRun(page, run.brief);
         const panel = page.getByRole("region", {
           name: "Review the original Bridge execution",
         });
