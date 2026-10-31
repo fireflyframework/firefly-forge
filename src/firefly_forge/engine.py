@@ -508,9 +508,12 @@ class Engine:
                     and not (await self.sandbox.probe(run["sandbox_snapshot"]))["available"]
                 ):
                     raise ValueError("The frozen Docker runner is unavailable on the execution worker")
-                await self.store.event(
-                    identifier, "runner_attestation", "Execution worker attested frozen runner and tool grants"
-                )
+                if consumed_execution is not None:
+                    await consumed_execution.attest_runner()
+                else:
+                    await self.store.event(
+                        identifier, "runner_attestation", "Execution worker attested frozen runner and tool grants"
+                    )
             if run.get("component_snapshot"):
                 self.component_roots[workspace.resolve()] = run["component_snapshot"]["path"]
             if run.get("checkpoint_mode_adoption"):

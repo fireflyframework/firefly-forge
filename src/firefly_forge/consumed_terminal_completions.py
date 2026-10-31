@@ -103,7 +103,7 @@ def _runtime(recorded: str, checkpoint: BoundaryCheckpoint, current: str) -> Non
         "pydantic-ai-slim": "2.55.0",
     }
     current_dependencies = {
-        "pyfly": "26.10.21",
+        "pyfly": "26.10.22",
         "fireflyframework-agentic": "26.10.1",
         "pydantic-ai-slim": "2.55.0",
         "openai": "3.29.0",
@@ -595,6 +595,8 @@ class ConsumedTerminalExecution(FinalOutcomeExecution):
         self._catalog: PreparedVerificationSource | None = None
         self._snapshot: CapturedConsumedSnapshot | None = None
         self._snapshot_started = False
+        self._activity = {k: copy.deepcopy(v) for k, v in witness["payload"]["run"].items() if k == "events"}
+        self._runner_attestation: Data | None = None
 
     async def operator(self) -> Any:
         from firefly_forge.identity import Principal
@@ -658,7 +660,10 @@ class ConsumedTerminalExecution(FinalOutcomeExecution):
             "worker_feedback",
             "bridge_completion_hold",
             "bridge_completion_settlement",
+            "events",
         }
+        if {k: v for k, v in run.items() if k == "events"} != self._activity:
+            raise ValueError("Consumed terminal recorded activity changed")
         if {k: v for k, v in run.items() if k not in mutable} != {
             k: v for k, v in p["run"].items() if k not in mutable
         }:
@@ -718,6 +723,29 @@ class ConsumedTerminalExecution(FinalOutcomeExecution):
                 raise ValueError("Consumed terminal settlement projection changed")
         elif run.get("bridge_completion_hold") != p["run"].get("bridge_completion_hold"):
             raise ValueError("Consumed terminal pending hold changed")
+
+    async def attest_runner(self) -> None:
+        await self.guard()
+        events = self._activity.get("events")
+        if self._runner_attestation is not None or type(events) is not list:
+            raise ValueError("Consumed terminal requires its single native runner attestation")
+        async with self.service.store._unit():
+            event = await self.service.store.event(
+                self.run_id, "runner_attestation", "Execution worker attested frozen runner and tool grants"
+            )
+            if (
+                type(event) is not dict
+                or set(event) != {"id", "stage", "message", "created_at"}
+                or type(event["id"]) is not str
+                or re.fullmatch(r"[a-f0-9]{32}", event["id"]) is None
+                or event["stage"] != "runner_attestation"
+                or event["message"] != "Execution worker attested frozen runner and tool grants"
+                or type(event["created_at"]) is not str
+            ):
+                raise ValueError("Consumed terminal lost its native runner activity receipt")
+            self._runner_attestation = copy.deepcopy(event)
+            self._activity = {"events": [*events, copy.deepcopy(event)]}
+            await self.guard()
 
     async def qualified(self) -> None:
         _outside_unit()

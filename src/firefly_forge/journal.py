@@ -1534,6 +1534,8 @@ class Journal:
 
         async with self.store._unit():
             run = await self._run(run_id)
+            if "consumed_terminal_recovery" in run.data:
+                raise ValueError("Automatic verification cannot replace consumed terminal postprocessing")
             request = run.data.get("worker_request", {})
             task = await self._task(run_id, "implement")
             retained = run.data.get("verification_handoff", {})
@@ -1667,6 +1669,8 @@ class Journal:
 
         async with self.store._unit():
             run = await self._run(run_id)
+            if "consumed_terminal_recovery" in run.data:
+                raise ValueError("Automatic verification cannot replace consumed terminal postprocessing")
             state = run.data.get("verification_handoff", {})
             if state.get("id") != intent["id"] or state.get("status") != "running":
                 raise ValueError("Automatic verification is not active")
@@ -1730,6 +1734,8 @@ class Journal:
 
         async with self.store._unit():
             run = await self._run(run_id)
+            if "consumed_terminal_recovery" in run.data:
+                raise ValueError("Automatic verification cannot replace consumed terminal postprocessing")
             if assert_inputs is not None:
                 await assert_inputs()
             state = run.data.get("verification_handoff", {})
@@ -1936,6 +1942,8 @@ class Journal:
     async def verification_hold(self, run_id: str, handoff_id: str) -> None:
         async with self.store._unit():
             run = await self._run(run_id)
+            if "consumed_terminal_recovery" in run.data:
+                return
             state = run.data.get("verification_handoff", {})
             if run.status in TERMINAL or state.get("id") != handoff_id or state.get("status") == "held":
                 return
@@ -1962,6 +1970,8 @@ class Journal:
     async def verification_refuse(self, run_id: str, request_digest: str) -> None:
         async with self.store._unit():
             run = await self._run(run_id)
+            if "consumed_terminal_recovery" in run.data:
+                return
             request = run.data.get("worker_request", {})
             handoff = run.data.get("verification_handoff", {})
             completed = (

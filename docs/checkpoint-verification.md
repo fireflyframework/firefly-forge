@@ -227,6 +227,14 @@ passed verification or was released. Current authorization and the reviewed
 source, journal and custody bindings still apply. The request grants no new
 model calls, tools, verification, publication or execution authority.
 
+This local phase owns its dispatch. A completed automatic verification handoff
+remains evidence and cannot dispatch again while the consumed-terminal marker
+owns the run. The worker admits only its exact native runner-attestation event;
+foreign, reordered or replaced activity still holds the phase. After a completed
+receipt, an ordinary explicit native resume can review the remaining stages.
+An already-claimed action that stopped requires separate authenticated
+reconciliation; installing a fix does not authorize retrying that action.
+
 ### Python SDK
 
 `ForgeClient.consumed_terminal_candidate(run_id)` reads the candidate.

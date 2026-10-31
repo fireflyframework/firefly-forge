@@ -40,6 +40,8 @@ Data = dict[str, Any]
 
 
 def automatic_candidate(run: Data) -> bool:
+    if "consumed_terminal_recovery" in run:
+        return False
     request = run.get("worker_request", {})
     state = run.get("verification_handoff", {})
     if state.get("request_id") != request.get("id"):
@@ -297,6 +299,8 @@ class VerificationHandoffs:
         # The active repository slot owns implementation; this existing lock excludes checkpoint writes.
         async with self.engine.publication_lock:
             run = await self.store.get_run(run_id)
+            if "consumed_terminal_recovery" in run:
+                return
             admitted = False
             try:
                 await self.engine.assert_ownership()
@@ -493,6 +497,8 @@ class VerificationHandoffs:
         async def current() -> None:
             await self.engine.assert_ownership()
             run = await self.store.get_run(run_id)
+            if "consumed_terminal_recovery" in run:
+                raise ValueError("Automatic verification cannot replace consumed terminal postprocessing")
             await ProjectAccess(self.store).authorize_execution(run)
             await self.store.assert_campaign_current(run)
             check_verification_authority(self.store, run, intent)

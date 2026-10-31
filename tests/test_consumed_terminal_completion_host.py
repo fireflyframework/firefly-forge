@@ -3,7 +3,7 @@
 
 import copy
 import json
-from types import MethodType
+from types import MethodType, SimpleNamespace
 from uuid import uuid4
 
 import httpx2
@@ -130,10 +130,25 @@ def consent(candidate):
     )
 
 
-async def test_local_terminal_acceptance_charges_once_and_pauses_without_provider_or_verification(
-    consumed_terminal, monkeypatch
-):
+async def _local_terminal_acceptance(consumed_terminal, monkeypatch, *, native_activity=False):
     env = consumed_terminal
+    if native_activity:
+        from test_bridge_inflight_cancel import Rows
+
+        from firefly_forge.agent_roles import stage_allowed_tools
+
+        env.store.run.data.setdefault("id", env.run_id)
+        env.store.event_records = Rows()
+        env.store.get_run = MethodType(Store.get_run, env.store)
+        env.store.event = MethodType(Store.event, env.store)
+        await env.store.event(env.run_id, "retained_activity", "Retained native activity prefix")
+        env.store.runtime_roles = SimpleNamespace(role="combined", executes_jobs=True, require_execution=lambda: None)
+
+        async def capabilities(run, agent):
+            names = stage_allowed_tools(run.get("role_snapshot", {}), "implement", agent) or set()
+            return [{"id": name, "availability": "available"} for name in names]
+
+        env.store.runners = SimpleNamespace(capabilities=capabilities)
     api = KnownWorkerCompletions(env.store, env.journal, env.engine)
     candidate = await api.candidate(env.run_id)
     request, request_id = consent(candidate), uuid4().hex
@@ -176,6 +191,57 @@ async def test_local_terminal_acceptance_charges_once_and_pauses_without_provide
     assert accepted["state"] == "accepted"
     assert await api.request(env.run_id, request_id, request) == accepted
     assert (await env.store.get_run(env.run_id))["usage"] == current["usage"]
+    if native_activity:
+        events = current["events"]
+        assert len(events) == 3 and events[0] == before["events"][0]
+        assert events[1]["stage"] == "runner_attestation"
+        assert events[1]["message"] == "Execution worker attested frozen runner and tool grants"
+        assert events[2]["stage"] == "paused"
+        assert events[2]["message"] == "The consumed worker result was accepted without another provider dispatch"
+        from firefly_forge.verification_handoffs import VerificationHandoffs
+
+        async def rows():
+            return [env.store.run]
+
+        async def no_queue():
+            return []
+
+        async def forbidden_handoff(*args, **kwargs):
+            raise AssertionError("Accepted local postprocessing cannot replay its old automatic handoff")
+
+        monkeypatch.setattr(env.store.run_records, "find_verification_handoffs", rows, raising=False)
+        monkeypatch.setattr(env.store, "queued", no_queue, raising=False)
+        env.engine.verification_handoffs = VerificationHandoffs(env.store, env.journal, env.engine)
+        monkeypatch.setattr(env.engine.verification_handoffs, "execute", forbidden_handoff)
+        await env.engine.dispatch_queued()
+        assert env.run_id not in env.engine.active
+        assert await env.journal.entries(env.run_id) == entries
+        assert (await env.store.get_run(env.run_id))["usage"] == current["usage"]
+
+
+async def test_local_terminal_acceptance_charges_once_and_pauses_without_provider_or_verification(
+    consumed_terminal, monkeypatch
+):
+    await _local_terminal_acceptance(consumed_terminal, monkeypatch)
+
+
+async def test_native_store_activity_attestation_accepts_and_excludes_old_automatic_verification(
+    consumed_terminal, monkeypatch
+):
+    await _local_terminal_acceptance(consumed_terminal, monkeypatch, native_activity=True)
+
+
+@pytest.mark.parametrize("phase", ["queued", "claimed", "accepted"])
+def test_consumed_terminal_phase_owns_old_automatic_verification(phase):
+    from firefly_forge.verification_handoffs import automatic_candidate
+
+    run = {
+        "status": "paused",
+        "worker_request": {"id": "retained-checks", "response_source": "factory_verification"},
+        "verification_handoff": {"request_id": "retained-checks", "status": "completed"},
+        "consumed_terminal_recovery": {"version": 2, "state": phase},
+    }
+    assert not automatic_candidate(run)
 
 
 async def test_witness_rejects_rehashed_usage_and_report_substitution(consumed_terminal):
@@ -464,7 +530,7 @@ async def test_named_historical_runtime_requires_the_exact_measured_profile_and_
         "pydantic-ai-slim": "2.55.0",
     }
     dependencies = {
-        "pyfly": "26.10.21",
+        "pyfly": "26.10.22",
         "fireflyframework-agentic": "26.10.1",
         "pydantic-ai-slim": "2.55.0",
         "openai": "3.29.0",
@@ -473,7 +539,7 @@ async def test_named_historical_runtime_requires_the_exact_measured_profile_and_
     _runtime(RECORDED_V30_RUNTIME, checkpoint, "f" * 64)
     with pytest.raises(ValueError, match="compatibility"):
         _runtime("a" * 64, checkpoint, "f" * 64)
-    for unreviewed_pyfly in ("26.10.7", "26.10.20", "26.10.22"):
+    for unreviewed_pyfly in ("26.10.7", "26.10.20", "26.10.21", "26.10.23"):
         with monkeypatch.context() as patch:
             patch.setattr(
                 recovery,
@@ -734,3 +800,141 @@ async def test_terminal_recovery_refuses_unverified_browser_qa_claims(consumed_t
         await KnownWorkerCompletions(env.store, env.journal).candidate(env.run_id)
     assert (await env.store.get_run(env.run_id), await env.journal.entries(env.run_id)) == before
     assert len(env.posts) == env.initial_posts + 2
+
+
+@pytest.mark.parametrize("action", ["hold", "refuse"])
+async def test_old_verification_outcome_cannot_mutate_consumed_phase(tmp_path, monkeypatch, action):
+    from test_bridge_inflight_cancel import RUN, MemoryStore, Rows
+
+    from firefly_forge.journal import Journal, digest
+
+    store = MemoryStore(tmp_path / "memory")
+    store.run.status = "paused"
+    request = {"id": "retained-checks", "status": "answered", "response_source": "factory_verification"}
+    store.run.data.update(
+        id=RUN,
+        status="paused",
+        worker_request=request,
+        verification_handoff={"id": "retained-handoff", "request_id": request["id"], "status": "completed"},
+        consumed_terminal_recovery={"version": 2, "state": "claimed"},
+    )
+    journal = Journal(store, plans=Rows(), tasks=Rows(), records=Rows())
+    before = copy.deepcopy(store.run.data)
+
+    async def forbidden(*args, **kwargs):
+        raise AssertionError("An old verification outcome cannot write through a consumed-phase owner")
+
+    monkeypatch.setattr(journal, "_append", forbidden)
+    if action == "hold":
+        await journal.verification_hold(RUN, "retained-handoff")
+    else:
+        await journal.verification_refuse(RUN, digest(request))
+    assert store.run.data == before
+
+
+async def test_verification_authority_rechecks_current_consumed_phase(tmp_path, monkeypatch):
+    from test_bridge_inflight_cancel import MemoryStore
+
+    import firefly_forge.verification_models as verification
+    from firefly_forge.journal import digest
+    from firefly_forge.tool_broker import tool_policy_snapshot
+
+    store = MemoryStore(tmp_path / "memory")
+    run = copy.deepcopy(store.run.data)
+    run["id"] = store.run.id.hex
+    run["worker_request"] = {"id": "retained-checks", "status": "pending"}
+    intent = {
+        "scope_digest": verification.verification_scope(run),
+        "commands_digest": digest({"commands": []}),
+        "policy_digest": tool_policy_snapshot(store.configuration)["digest"],
+        "request_id": "retained-checks",
+        "request_digest": digest(run["worker_request"]),
+    }
+    monkeypatch.setattr(verification, "verification_provider_current", lambda *args: True)
+    verification.check_verification_authority(store, run, intent)
+    import firefly_forge.native_location_projection as location
+    import firefly_forge.verification_handoffs as handoffs
+
+    async def current(*args, **kwargs):
+        pass
+
+    monkeypatch.setattr(handoffs.ProjectAccess, "authorize_execution", current)
+    monkeypatch.setattr(handoffs, "current_verification_source", lambda *args: None)
+    monkeypatch.setattr(handoffs, "check_verification_cut", lambda *args: None)
+    monkeypatch.setattr(location, "assert_handoff_location", current)
+    store.assert_campaign_current = current
+    store.run.data = run
+    intent["workspace"] = str(tmp_path)
+    service = handoffs.VerificationHandoffs(store, None, SimpleNamespace(assert_ownership=store.assert_ownership))
+    await service._authorize(store.run.id.hex, intent)
+    run["consumed_terminal_recovery"] = {"version": 2, "state": "claimed"}
+    # Completed lineage remains readable; only a new verification effect loses admission.
+    verification.check_verification_authority(store, run, intent)
+    with pytest.raises(ValueError, match="consumed terminal"):
+        await service._authorize(store.run.id.hex, intent)
+
+
+async def test_consumed_activity_fence_rejects_foreign_changes_and_duplicate_attestation(
+    consumed_terminal, monkeypatch
+):
+    from test_bridge_inflight_cancel import Rows
+
+    from firefly_forge.consumed_terminal_completions import claimed_execution
+
+    env = consumed_terminal
+    env.store.run.data.setdefault("id", env.run_id)
+    env.store.event_records = Rows()
+    env.store.get_run = MethodType(Store.get_run, env.store)
+    env.store.event = MethodType(Store.event, env.store)
+    await env.store.event(env.run_id, "retained_activity", "Retained native activity prefix")
+    api = KnownWorkerCompletions(env.store, env.journal, env.engine)
+    candidate = await api.candidate(env.run_id)
+    request_id = uuid4().hex
+    await api.request(env.run_id, request_id, consent(candidate))
+    posts = len(env.posts)
+    token = CURRENT_PRINCIPAL.set(None)
+    try:
+        assert await env.store.claim(env.run_id)
+        execution = await claimed_execution(env.engine, env.run_id)
+        assert execution is not None
+        await execution.attest_runner()
+        await execution.guard()
+        rows = copy.deepcopy(env.store.event_records.rows)
+        run = copy.deepcopy(env.store.run.data)
+        owner = env.store.execution_ownership_token
+        source = (env.workspace / "existing.py").read_bytes()
+        with pytest.raises(ValueError, match="single native runner"):
+            await execution.attest_runner()
+        assert len(env.store.event_records.rows) == len(rows)
+        for change in ("prefix", "foreign", "identity", "order", "handoff", "owner", "source"):
+            try:
+                if change == "prefix":
+                    env.store.event_records.rows[0].data["message"] = "Changed retained activity"
+                elif change == "foreign":
+                    await env.store.event(env.run_id, "unrelated", "Foreign phase activity")
+                elif change == "identity":
+                    env.store.event_records.rows[-1].data["id"] = uuid4().hex
+                elif change == "order":
+                    env.store.event_records.rows.reverse()
+                elif change == "handoff":
+                    env.store.run.data["verification_handoff"]["policy_digest"] = "f" * 64
+                elif change == "owner":
+                    env.store.execution_ownership_token = object()
+                else:
+                    (env.workspace / "existing.py").write_text("VALUE = 999\n")
+                with pytest.raises((ValueError, AccessDenied)):
+                    await (execution.guard_source() if change == "source" else execution.guard())
+            finally:
+                env.store.event_records.rows = copy.deepcopy(rows)
+                env.store.run.data = copy.deepcopy(run)
+                env.store.execution_ownership_token = owner
+                if change == "source":
+                    (env.workspace / "existing.py").write_bytes(source)
+        await execution.guard()
+        entries = await env.journal.entries(env.run_id)
+        assert entries[-1]["kind"] == "consumed_terminal_claim"
+        assert not any(e["kind"] == "consumed_terminal_result" for e in entries)
+        assert (await env.store.get_run(env.run_id))["usage"] == env.failed["usage"]
+        assert len(env.posts) == posts
+    finally:
+        CURRENT_PRINCIPAL.reset(token)

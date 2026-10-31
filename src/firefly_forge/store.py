@@ -1197,7 +1197,7 @@ class Store:
                 "The project campaign is stopped or requires reconciliation; resume it through the campaign"
             )
 
-    async def event(self, value: str, stage: str, message: str) -> None:
+    async def event(self, value: str, stage: str, message: str) -> Data:
         data: Data = {"id": uuid.uuid4().hex, "stage": stage, "message": message[:8000], "created_at": now()}
         provider_output = stage in {"stdout", "stderr"}
         if provider_output:
@@ -1237,6 +1237,7 @@ class Store:
                         raw_bytes=payload,
                     )
                 )
+        return copy.deepcopy(data)
 
     async def finish(self, value: str, status: str, *, error: str | None = None) -> None:
         if status not in TERMINAL:
