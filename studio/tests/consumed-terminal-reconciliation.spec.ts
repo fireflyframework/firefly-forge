@@ -2,7 +2,11 @@
 // Synthetic API responses exercise Studio only; no native or Original actions.
 import { expect, test, type Page } from "@playwright/test";
 import { mockIdentity } from "./auth-fixture";
-import { navigate } from "./navigation";
+import { navigate, expectAuthenticated } from "./navigation";
+import {
+  mockFactoryDashboard,
+  openFactoryRun,
+} from "./factory-dashboard-fixture";
 
 const h = "a".repeat(64),
   requestId = "5".repeat(32);
@@ -86,6 +90,9 @@ const terminalCandidate = {
         "digest",
       ].map((key) => [key, h]),
     ),
+    recorded_runtime_contract: "4".repeat(64),
+    current_runtime_contract: "5".repeat(64),
+    current_profile_digest: "6".repeat(64),
   },
 };
 const terminalInput = {
@@ -100,9 +107,7 @@ const terminalInput = {
   acknowledge_local_postprocessing: true,
 };
 async function open(page: Page) {
-  await page
-    .getByRole("button", { name: /Saved implementation fixture/ })
-    .click();
+  await openFactoryRun(page, run.brief);
   await page.getByRole("tab", { name: "Plan", exact: true }).click();
 }
 async function setup(page: Page, theme?: "light" | "dark") {
@@ -148,6 +153,8 @@ async function setup(page: Page, theme?: "light" | "dark") {
   });
   await page.route("**/api/v1/**", async (route) => {
     if (await mockIdentity(route)) return;
+    if (await mockFactoryDashboard(route, { projects: [], runs: [run] }))
+      return;
     const req = route.request(),
       path = new URL(req.url()).pathname;
     if (path.endsWith("/reconciliation-candidate"))
@@ -224,9 +231,7 @@ async function setup(page: Page, theme?: "light" | "dark") {
   await page
     .getByRole("button", { name: "Save connection", exact: true })
     .click();
-  await expect(
-    page.getByRole("button", { name: "API connected", exact: true }),
-  ).toBeVisible();
+  await expectAuthenticated(page);
   await navigate(page, "Factory");
   await open(page);
   return state;

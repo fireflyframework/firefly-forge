@@ -15,7 +15,7 @@ Historical recovery validates the checkpoint's native compatibility fields separ
 
 Source-control comments keep their delivery identity separate from their conversation identity. Signed repository webhooks can use the configured repository connection without an invented application installation. The dispatcher checks for ready work every second while retaining each provider's retry and backoff settings.
 
-This backend release retains Studio 0.2.49 and its matching documentation captures. Runtime qualification and source-control checks do not establish that a generated product has passed acceptance or reached a pull request.
+The 0.2.50 candidate includes Studio 0.2.50 and its same-result recovery panel. Local postprocessing grants no new AI or tool execution. Runtime qualification and source-control checks do not establish that a generated product has passed acceptance or reached a pull request.
 
 ## 0.2.49
 

@@ -281,3 +281,81 @@ it("rejects a foreign operator receipt, a changed original action and any execut
       ),
     ).toThrow();
 });
+it("accepts current22 reconciliation authority while preserving the original21 proof runtime and profile", () => {
+  const current22 = {
+    ...candidate,
+    runtime_contract: "2".repeat(64),
+    profile_digest: "3".repeat(64),
+  };
+  const original21 = {
+    ...terminalCandidate,
+    proof: {
+      ...terminalCandidate.proof,
+      recorded_runtime_contract: "4".repeat(64),
+      current_runtime_contract: "5".repeat(64),
+      current_profile_digest: "6".repeat(64),
+    },
+  };
+  const receipt = {
+    version: 1,
+    candidate: current22,
+    request: {
+      version: 1,
+      candidate_digest: h,
+      acknowledge_same_claimed_action: true,
+      acknowledge_no_execution_grant: true,
+      acknowledge_local_postprocessing: true,
+    },
+    record_digest: h,
+    settlement: {
+      version: 2,
+      kind: "consumed_terminal_recovery",
+      run_id: context.run,
+      request_id: context.request,
+      record_digest: h,
+      candidate: original21,
+      request: terminalInput,
+      state: "accepted",
+      run_status: "paused",
+      same_task_attempt: 3,
+      no_execution_grant: true,
+    },
+  };
+  const result = parseReconciliationReceipt(receipt, context);
+  expect(result.candidate.runtime_contract).not.toBe(
+    result.settlement.candidate.proof.current_runtime_contract,
+  );
+  expect(result.candidate.profile_digest).not.toBe(
+    result.settlement.candidate.proof.current_profile_digest,
+  );
+  expect(result.settlement.state).toBe("accepted");
+  for (const altered of [
+    { run_id: "9".repeat(32) },
+    { task_attempt: 4 },
+    { source_digest: "9".repeat(64) },
+  ])
+    expect(() =>
+      parseReconciliationReceipt(
+        {
+          ...receipt,
+          settlement: {
+            ...receipt.settlement,
+            candidate: {
+              ...original21,
+              proof: { ...original21.proof, ...altered },
+            },
+          },
+        },
+        context,
+      ),
+    ).toThrow();
+  expect(() =>
+    parseReconciliationReceipt(
+      {
+        ...receipt,
+        settlement: { ...receipt.settlement, request_id: "9".repeat(32) },
+      },
+      context,
+    ),
+  ).toThrow();
+});
