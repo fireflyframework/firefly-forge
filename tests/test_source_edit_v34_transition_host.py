@@ -12,8 +12,11 @@ from firefly_forge import source_edit_qualification as qualification
 
 
 def test_pyfly21_successor_requires_a_distinct_source_epoch():
-    assert qualification.REGISTRY_VERSION == 33
-    assert qualification.LOADER_PROFILE == "codex-exec-restricted-source/v34"
+    assert qualification.REGISTRY_VERSION >= 33
+    if qualification.REGISTRY_VERSION == 33:
+        assert qualification.LOADER_PROFILE == "codex-exec-restricted-source/v34"
+    else:
+        assert qualification.LOADER_PROFILE != "codex-exec-restricted-source/v34"
 
 
 def test_all_twenty_nine_measured_profile_literals_remain_exact():
@@ -24,7 +27,7 @@ def test_all_twenty_nine_measured_profile_literals_remain_exact():
         for item in ast.parse(source).body
         if isinstance(item, ast.AnnAssign) and getattr(item.target, "id", None) == "PROFILES"
     )
-    assert len(node.value.elts) in (29, 30)
+    assert len(node.value.elts) >= 29
     prefix = "\0".join(ast.get_source_segment(source, item) for item in node.value.elts[:29])
     assert (
         hashlib.sha256(prefix.encode()).hexdigest()

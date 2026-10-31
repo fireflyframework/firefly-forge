@@ -226,7 +226,7 @@ def test_all_nine_historical_literal_source_segments_remain_byte_exact():
 def test_final_material_dependencies_are_explicit_without_losing_historical_prefixes():
     root = Path(qualification.__file__).parent
     admission = declared_names(root / "source_budget_allowances.py", "admission_contract_digest", 35)
-    runtime = declared_names(root / "agentic_checkpoint_invocation.py", "runtime_contract", 21)
+    runtime = declared_names(root / "agentic_checkpoint_invocation.py", "_runtime_material_digest", 21)
     mode_admission = (
         "checkpoint_mode_adoptions.py",
         "checkpoint_mode_controllers.py",
