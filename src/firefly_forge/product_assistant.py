@@ -80,7 +80,7 @@ class AssistantSessionInput(BaseModel):
     project_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{32}$")
     analysis_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{32}$")
     analysis_digest: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
-    analysis_component_ids: list[str] = Field(default_factory=list, max_length=50)
+    analysis_component_ids: list[str] = Field(default_factory=list)
     work_duration: WorkDurationPolicyV2 = Field(default_factory=WorkDurationPolicyV2)
 
     @model_validator(mode="after")
