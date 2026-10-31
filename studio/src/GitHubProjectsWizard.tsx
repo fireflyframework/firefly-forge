@@ -107,7 +107,6 @@ export function GitHubProjectsWizard({
               }{" "}
               of 8 statuses chosen
             </strong>
-            <span>Scroll for all choices and final confirmation.</span>
           </div>
         ) : undefined
       }

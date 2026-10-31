@@ -60,7 +60,9 @@ it("names board statuses plainly and keeps all eight choices and consent explici
   expect(initial).toContain("Board statuses");
   expect(initial).toContain("Match factory progress to your board");
   expect(initial).toContain("0 of 8 statuses chosen");
-  expect(initial).toContain("Scroll for all choices and final confirmation.");
+  expect(initial).not.toContain(
+    "Scroll for all choices and final confirmation.",
+  );
   expect(initial).toMatch(/disabled="">Save board settings/);
   const complete = renderToStaticMarkup(
     <GitHubProjectsWizard

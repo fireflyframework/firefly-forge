@@ -292,6 +292,29 @@ test("verified account and private discovery precede explicit state mapping", as
       [320, 568],
     ]) {
       await page.setViewportSize({ width, height });
+      const dialog = page.getByRole("dialog", {
+        name: "GitHub Projects setup",
+        exact: true,
+      });
+      const settle = () =>
+        dialog.evaluate(async (node) => {
+          let prior = "",
+            stable = 0;
+          for (let frame = 0; frame < 180; frame++) {
+            await new Promise(requestAnimationFrame);
+            const region = node.querySelector(".wizard-field-scroll")!;
+            const next = JSON.stringify([
+              node.getBoundingClientRect().toJSON(),
+              region.getBoundingClientRect().toJSON(),
+              region.scrollTop,
+            ]);
+            stable = next === prior ? stable + 1 : 0;
+            if (stable >= 6) return;
+            prior = next;
+          }
+          throw new Error("Board dialog geometry did not settle");
+        });
+      await settle();
       const geometry = await page
         .getByRole("dialog", { name: "GitHub Projects setup", exact: true })
         .evaluate((dialog) => {
@@ -300,11 +323,15 @@ test("verified account and private discovery precede explicit state mapping", as
               .querySelector(".wizard-actions")!
               .getBoundingClientRect(),
             field = dialog.querySelector(".wizard-field-scroll")!;
+          const close = dialog
+            .querySelector(".source-dialog-close")!
+            .getBoundingClientRect();
           return {
             width: r.width <= innerWidth,
             height: r.height <= innerHeight,
             actions: actions.bottom <= r.bottom,
             overflow: field.scrollWidth > field.clientWidth,
+            close: close.top >= r.top && close.bottom <= r.bottom,
           };
         });
       expect(geometry).toEqual({
@@ -312,12 +339,50 @@ test("verified account and private discovery precede explicit state mapping", as
         height: true,
         actions: true,
         overflow: false,
+        close: true,
       });
+      const fields = dialog.locator(".wizard-field-scroll");
+      if (width === 320) {
+        await fields.focus();
+        await page.keyboard.press("End");
+        await expect
+          .poll(() => fields.evaluate((node) => node.scrollTop))
+          .toBeGreaterThan(0);
+        const consent = page.getByLabel(
+          "I authorize Forge to manage this field on verified issue and pull request cards.",
+        );
+        await consent.focus();
+        await expect(consent).toBeFocused();
+        await settle();
+        const finalBox = await consent.boundingBox(),
+          fieldBox = await fields.boundingBox();
+        expect(finalBox!.y).toBeGreaterThanOrEqual(fieldBox!.y);
+        expect(finalBox!.y + finalBox!.height).toBeLessThanOrEqual(
+          fieldBox!.y + fieldBox!.height + 1,
+        );
+        await page.screenshot({
+          path: info.outputPath(`board-mapping-${width}-end-${theme}.png`),
+        });
+        const end = await fields.evaluate((node) => node.scrollTop);
+        await fields.hover();
+        await page.mouse.wheel(0, -150);
+        await expect
+          .poll(() => fields.evaluate((node) => node.scrollTop))
+          .toBeLessThan(end);
+      }
       await page
         .locator(".github-projects-dialog .wizard-field-scroll")
         .evaluate((element) => {
           element.scrollTop = 0;
         });
+      await settle();
+      const firstBox = await page
+          .getByLabel("Managed field", { exact: true })
+          .boundingBox(),
+        fieldBox = await fields.boundingBox();
+      expect(firstBox!.y + firstBox!.height).toBeLessThanOrEqual(
+        fieldBox!.y + fieldBox!.height + 1,
+      );
       await page.screenshot({
         path: info.outputPath(`board-mapping-${width}-${theme}.png`),
       });
