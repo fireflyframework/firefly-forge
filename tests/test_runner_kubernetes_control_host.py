@@ -398,3 +398,114 @@ async def test_control_refuses_changed_private_scratch_or_disabled_tls_before_ht
         with pytest.raises(ValueError, match="TLS"):
             await control.verify_namespace(guard)
     assert calls == []
+
+
+def test_transfer_job_has_a_distinct_uid_scope_and_no_project_launcher(tmp_path):
+    module = importlib.import_module("firefly_forge.runner_kubernetes")
+    profile = configured()
+    invocation = request(profile)
+    authority = module.KubernetesAuthority(
+        profile=profile,
+        api_origin="https://kubernetes.fixture",
+        tls=ssl.create_default_context(),
+        token=SecretStr("public-control-fixture"),
+        state_directory=tmp_path,
+    )
+    job = module.transfer_job(authority, invocation)
+    assert job["metadata"]["name"] == "forge-" + invocation.execution_id + "-transfer"
+    pod = job["spec"]["template"]["spec"]
+    container = pod["containers"][0]
+    assert container["name"] == "transfer" and container["image"] == profile.transfer_image
+    assert job["metadata"]["labels"]["forge.fireflyframework.org/phase"] == "transfer"
+    assert container["volumeMounts"] == [
+        {"name": "input", "mountPath": "/forge-input", "readOnly": False},
+        {"name": "temporary", "mountPath": "/tmp"},
+    ]
+    assert not any(v.get("name") == "workspace" for v in pod["volumes"])
+    assert "OwnerLiveness" not in container["command"][-1] and list(invocation.argv) != container["command"]
+    assert pod["securityContext"]["fsGroup"] == profile.kubernetes.gid
+    assert container["imagePullPolicy"] == "Never"
+
+
+async def test_transfer_create_receipt_is_separate_and_cannot_be_used_as_a_command_receipt(tmp_path):
+    module = importlib.import_module("firefly_forge.runner_kubernetes")
+    profile = configured()
+    invocation = request(profile)
+    authority = module.KubernetesAuthority(
+        profile=profile,
+        api_origin="https://kubernetes.fixture",
+        tls=ssl.create_default_context(),
+        token=SecretStr("public-control-fixture"),
+        state_directory=tmp_path,
+    )
+    saved = []
+
+    async def guard():
+        return None
+
+    def handle(incoming):
+        if incoming.url.path.endswith("/namespaces/project-workers"):
+            return httpx.Response(
+                200,
+                json={"metadata": {"name": profile.kubernetes.namespace, "uid": str(profile.kubernetes.namespace_uid)}},
+            )
+        if incoming.method == "POST":
+            job = json.loads(incoming.content)
+            job["metadata"]["uid"] = str(uuid4())
+            saved.append(job)
+            return httpx.Response(201, json=job)
+        return httpx.Response(200, json=saved[0])
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
+        control = module.KubernetesControlClient(authority, client=client)
+        receipt = await control.create_transfer_job(invocation, guard)
+        assert receipt.phase == "transfer" and receipt.name.endswith("-transfer")
+        assert await control.observe_job(invocation, receipt, guard) == saved[0]
+        with pytest.raises(module.KubernetesIdentityChanged):
+            await control.observe_job(invocation, receipt.model_copy(update={"phase": "command"}), guard)
+
+
+@pytest.mark.parametrize("unsafe", [False, True])
+async def test_server_omitted_false_defaults_keep_isolation_but_true_host_network_is_refused(tmp_path, unsafe):
+    module = importlib.import_module("firefly_forge.runner_kubernetes")
+    profile = configured()
+    invocation = request(profile)
+    authority = module.KubernetesAuthority(
+        profile=profile,
+        api_origin="https://kubernetes.fixture",
+        tls=ssl.create_default_context(),
+        token=SecretStr("public-control-fixture"),
+        state_directory=tmp_path,
+    )
+
+    async def guard():
+        return None
+
+    def handle(incoming):
+        if incoming.method == "GET":
+            return httpx.Response(
+                200,
+                json={"metadata": {"name": profile.kubernetes.namespace, "uid": str(profile.kubernetes.namespace_uid)}},
+            )
+        job = json.loads(incoming.content)
+        job["metadata"]["uid"] = str(uuid4())
+        spec = job["spec"]["template"]["spec"]
+        for key in ("hostNetwork", "hostPID", "hostIPC"):
+            spec.pop(key)
+        for volume in spec["volumes"]:
+            if volume.get("persistentVolumeClaim", {}).get("readOnly") is False:
+                volume["persistentVolumeClaim"].pop("readOnly")
+        for mount in spec["containers"][0]["volumeMounts"]:
+            if mount.get("readOnly") is False:
+                mount.pop("readOnly")
+        if unsafe:
+            spec["hostNetwork"] = True
+        return httpx.Response(201, json=job)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
+        control = module.KubernetesControlClient(authority, client=client)
+        if unsafe:
+            with pytest.raises(module.KubernetesEffectUnknown):
+                await control.create_transfer_job(invocation, guard)
+        else:
+            assert (await control.create_transfer_job(invocation, guard)).phase == "transfer"

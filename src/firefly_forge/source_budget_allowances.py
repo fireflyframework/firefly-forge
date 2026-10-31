@@ -392,6 +392,7 @@ def admission_contract_digest() -> str:
                 "runner_object_artifacts.py",
                 "runner_kubernetes_models.py",
                 "runner_kubernetes.py",
+                "runner_kubernetes_exec.py",
             )
         }
     )

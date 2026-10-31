@@ -16,6 +16,7 @@ from firefly_forge.source_budget_allowances import admission_contract_digest
     [
         "runner_kubernetes.py",
         "runner_kubernetes_models.py",
+        "runner_kubernetes_exec.py",
         "object_storage.py",
         "runner_artifact_publications.py",
         "runner_object_artifacts.py",

@@ -3,21 +3,24 @@
 
 from __future__ import annotations
 
+import copy
 import os
 import ssl
 import stat
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, cast
 
 import httpx
 from pydantic import SecretStr
 from pyfly.container import service
 
 from firefly_forge.runner_kubernetes_models import (
+    KubernetesBoundVolumeReceipt,
     KubernetesJobReceipt,
     KubernetesPodReceipt,
+    KubernetesVolumeReceipt,
     cpu_quantity,
     memory_quantity,
 )
@@ -78,7 +81,7 @@ class KubernetesAuthority:
 
 
 def resource_name(invocation: RunnerInvocation, kind: str) -> str:
-    if kind not in {"command", "input", "workspace"}:
+    if kind not in {"command", "input", "workspace", "transfer"}:
         raise ValueError("Unknown owned Kubernetes resource kind")
     return "forge-" + invocation.execution_id + "-" + kind
 
@@ -150,13 +153,15 @@ def command_job(authority: KubernetesAuthority, invocation: RunnerInvocation) ->
                         "runAsNonRoot": True,
                         "runAsUser": policy.uid,
                         "runAsGroup": policy.gid,
+                        "fsGroup": policy.gid,
+                        "fsGroupChangePolicy": "OnRootMismatch",
                         "seccompProfile": {"type": "RuntimeDefault"},
                     },
                     "containers": [
                         {
                             "name": "command",
                             "image": invocation.image,
-                            "imagePullPolicy": "IfNotPresent",
+                            "imagePullPolicy": "Never",
                             "command": [
                                 "/app/.venv/bin/python",
                                 "-I",
@@ -200,6 +205,73 @@ def command_job(authority: KubernetesAuthority, invocation: RunnerInvocation) ->
                     ],
                 },
             },
+        },
+    }
+
+
+def transfer_job(authority: KubernetesAuthority, invocation: RunnerInvocation) -> dict[str, Any]:
+    job = copy.deepcopy(command_job(authority, invocation))
+    job["metadata"]["name"] = resource_name(invocation, "transfer")
+    job["metadata"]["labels"]["forge.fireflyframework.org/phase"] = "transfer"
+    pod = job["spec"]["template"]
+    pod["metadata"]["labels"]["forge.fireflyframework.org/phase"] = "transfer"
+    spec = pod["spec"]
+    container = spec["containers"][0]
+    container.update(
+        name="transfer",
+        image=authority.profile.transfer_image,
+        command=[
+            "/app/.venv/bin/python",
+            "-I",
+            "-S",
+            "-c",
+            "import ctypes,os,signal\nassert os.getpid()==1\n"
+            "assert ctypes.CDLL(None).prctl(4,0,0,0,0)==0\n"
+            "signal.signal(signal.SIGTERM,lambda *args:os._exit(0))\n"
+            "while True: signal.pause()\n",
+        ],
+        volumeMounts=[
+            {"name": "input", "mountPath": "/forge-input", "readOnly": False},
+            {"name": "temporary", "mountPath": "/tmp"},
+        ],
+    )
+    spec["volumes"] = [v for v in spec["volumes"] if v["name"] != "workspace"]
+    next(v for v in spec["volumes"] if v["name"] == "input")["persistentVolumeClaim"]["readOnly"] = False
+    return job
+
+
+def volume_claim(authority: KubernetesAuthority, invocation: RunnerInvocation, purpose: str) -> dict[str, Any]:
+    authority.verify()
+    authority.profile.validate_invocation(invocation)
+    policy = authority.profile.kubernetes
+    assert policy is not None
+    if purpose not in {"input", "workspace"}:
+        raise ValueError("Only separate native input and workspace claims are supported")
+    storage = (
+        max(1, (invocation.source_bytes + invocation.stdin_bytes + 1048575) // 1048576)
+        if purpose == "input"
+        else policy.workspace_storage_mb
+    )
+    return {
+        "apiVersion": "v1",
+        "kind": "PersistentVolumeClaim",
+        "metadata": {
+            "name": resource_name(invocation, purpose),
+            "namespace": policy.namespace,
+            "labels": {
+                "forge.fireflyframework.org/execution": invocation.execution_id,
+                "forge.fireflyframework.org/purpose": purpose,
+            },
+            "annotations": {
+                "forge.fireflyframework.org/invocation": pool_digest(invocation.model_dump(mode="json")),
+                "forge.fireflyframework.org/profile": authority.profile.revision,
+            },
+        },
+        "spec": {
+            "storageClassName": policy.storage_class,
+            "accessModes": ["ReadWriteOncePod"],
+            "volumeMode": "Filesystem",
+            "resources": {"requests": {"storage": memory_quantity(storage)}},
         },
     }
 
@@ -253,13 +325,179 @@ class KubernetesControlClient:
         ):
             raise KubernetesIdentityChanged("The configured Kubernetes namespace identity changed")
 
+    def _volume_path(self, name: str | None = None) -> str:
+        policy = self.authority.profile.kubernetes
+        assert policy is not None
+        return "/api/v1/namespaces/" + policy.namespace + "/persistentvolumeclaims" + ("/" + name if name else "")
+
+    def _validate_volume_plan(self, value: Any, planned: dict[str, Any]) -> None:
+        if (
+            not isinstance(value, dict)
+            or not isinstance(value.get("spec"), dict)
+            or not isinstance(value.get("metadata"), dict)
+            or value["metadata"].get("deletionTimestamp") is not None
+            or not _contains_plan(value, planned)
+            or not _exact_value({k: v for k, v in value["spec"].items() if k != "volumeName"}, planned["spec"])
+        ):
+            raise KubernetesIdentityChanged("The volume claim differs from its exact scoped request")
+        if "volumeName" in value["spec"]:
+            from firefly_forge.runner_kubernetes_models import kubernetes_name
+
+            kubernetes_name(value["spec"]["volumeName"])
+
+    async def create_volume(
+        self, invocation: RunnerInvocation, purpose: Literal["input", "workspace"], guard: Guard
+    ) -> KubernetesVolumeReceipt:
+        planned = volume_claim(self.authority, invocation, purpose)
+        await self.verify_namespace(guard)
+        response = await self._request("POST", self._volume_path(), guard, body=planned)
+        if response.status_code != 201:
+            raise KubernetesEffectUnknown("Volume creation is unconfirmed; never recreate blindly")
+        try:
+            value = response.json()
+            self._validate_volume_plan(value, planned)
+            return KubernetesVolumeReceipt(
+                purpose=purpose,
+                name=planned["metadata"]["name"],
+                namespace=planned["metadata"]["namespace"],
+                uid=value["metadata"]["uid"],
+                execution_id=invocation.execution_id,
+                invocation_digest=pool_digest(invocation.model_dump(mode="json")),
+                profile_revision=self.authority.profile.revision,
+                spec_digest=pool_digest(value["spec"]),
+            )
+        except (ValueError, KeyError, TypeError, KubernetesIdentityChanged):
+            raise KubernetesEffectUnknown(
+                "Created volume identity is unconfirmed; preserve its native intent"
+            ) from None
+
+    async def observe_volume(
+        self, invocation: RunnerInvocation, receipt: KubernetesVolumeReceipt, guard: Guard
+    ) -> dict[str, Any] | None:
+        value = await self._current_volume(invocation, receipt, guard)
+        if value is not None and pool_digest(value["spec"]) != receipt.spec_digest:
+            raise KubernetesIdentityChanged("The owned volume specification changed")
+        return value
+
+    async def _current_volume(
+        self, invocation: RunnerInvocation, receipt: KubernetesVolumeReceipt, guard: Guard
+    ) -> dict[str, Any] | None:
+        planned = volume_claim(self.authority, invocation, receipt.purpose)
+        if (
+            receipt.name != planned["metadata"]["name"]
+            or receipt.namespace != planned["metadata"]["namespace"]
+            or receipt.profile_revision != self.authority.profile.revision
+            or receipt.execution_id != invocation.execution_id
+            or receipt.invocation_digest != pool_digest(invocation.model_dump(mode="json"))
+        ):
+            raise KubernetesIdentityChanged("The volume receipt belongs to another native invocation")
+        await self.verify_namespace(guard)
+        response = await self._request("GET", self._volume_path(receipt.name), guard)
+        if response.status_code == 404:
+            return None
+        if response.status_code != 200:
+            raise KubernetesIdentityChanged("The owned volume identity cannot be observed")
+        value = response.json()
+        self._validate_volume_plan(value, planned)
+        if value["metadata"].get("uid") != receipt.uid:
+            raise KubernetesIdentityChanged("The owned volume UID changed")
+        return cast(dict[str, Any], value)
+
+    async def bind_volume(
+        self,
+        invocation: RunnerInvocation,
+        receipt: KubernetesVolumeReceipt,
+        guard: Guard,
+        *,
+        bound: KubernetesBoundVolumeReceipt | None = None,
+    ) -> KubernetesBoundVolumeReceipt | None:
+        value = await self._current_volume(invocation, receipt, guard)
+        if value is None:
+            raise KubernetesIdentityChanged("The created claim disappeared before its volume was confirmed")
+        phase = value.get("status", {}).get("phase", "Pending")
+        if phase == "Pending" and bound is None:
+            return None
+        if phase != "Bound" or not value["spec"].get("volumeName"):
+            raise KubernetesIdentityChanged("The created claim has no confirmed volume binding")
+        planned = volume_claim(self.authority, invocation, receipt.purpose)
+        if receipt.spec_digest not in {pool_digest(planned["spec"]), pool_digest(value["spec"])}:
+            raise KubernetesIdentityChanged("The claim changed beyond its native volume assignment")
+        name = value["spec"]["volumeName"]
+        response = await self._request("GET", "/api/v1/persistentvolumes/" + name, guard)
+        if response.status_code != 200:
+            raise KubernetesIdentityChanged("The assigned volume identity cannot be confirmed")
+        volume = response.json()
+        if not isinstance(volume, dict) or not isinstance(volume.get("spec"), dict):
+            raise KubernetesIdentityChanged("The assigned volume has no native specification")
+        spec = volume["spec"]
+        permitted = {
+            "storageClassName",
+            "capacity",
+            "accessModes",
+            "volumeMode",
+            "claimRef",
+            "csi",
+            "nodeAffinity",
+            "persistentVolumeReclaimPolicy",
+            "mountOptions",
+            "volumeAttributesClassName",
+        }
+        if (
+            volume.get("apiVersion") != "v1"
+            or volume.get("kind") != "PersistentVolume"
+            or not isinstance(volume.get("metadata"), dict)
+            or volume["metadata"].get("name") != name
+            or volume["metadata"].get("deletionTimestamp") is not None
+            or volume.get("status", {}).get("phase") != "Bound"
+            or not isinstance(spec.get("csi"), dict)
+            or not spec["csi"].get("driver")
+            or spec.keys() - permitted
+            or spec.get("storageClassName") != planned["spec"]["storageClassName"]
+            or spec.get("accessModes") != ["ReadWriteOncePod"]
+            or spec.get("volumeMode") != "Filesystem"
+            or not isinstance(spec.get("claimRef"), dict)
+            or any(
+                spec["claimRef"].get(k) != v
+                for k, v in {"uid": receipt.uid, "name": receipt.name, "namespace": receipt.namespace}.items()
+            )
+        ):
+            raise KubernetesIdentityChanged("The CSI volume does not belong to this exact native claim")
+        current = KubernetesBoundVolumeReceipt(
+            claim=receipt,
+            claim_spec_digest=pool_digest(value["spec"]),
+            volume_name=name,
+            volume_uid=volume["metadata"]["uid"],
+            volume_spec_digest=pool_digest(spec),
+        )
+        if bound is not None and current != bound:
+            raise KubernetesIdentityChanged("The admitted claim or CSI volume binding changed")
+        after = await self._current_volume(invocation, receipt, guard)
+        if (
+            after is None
+            or pool_digest(after["spec"]) != current.claim_spec_digest
+            or after.get("status", {}).get("phase") != "Bound"
+        ):
+            raise KubernetesIdentityChanged("The claim changed during native volume inspection")
+        return current
+
     def _job_path(self, name: str | None = None) -> str:
         policy = self.authority.profile.kubernetes
         assert policy is not None
         return "/apis/batch/v1/namespaces/" + policy.namespace + "/jobs" + ("/" + name if name else "")
 
     async def create_parked_job(self, invocation: RunnerInvocation, guard: Guard) -> KubernetesJobReceipt:
-        planned = command_job(self.authority, invocation)
+        return await self._create_job(invocation, command_job(self.authority, invocation), "command", guard)
+
+    async def create_transfer_job(self, invocation: RunnerInvocation, guard: Guard) -> KubernetesJobReceipt:
+        return await self._create_job(invocation, transfer_job(self.authority, invocation), "transfer", guard)
+
+    async def _create_job(
+        self,
+        invocation: RunnerInvocation,
+        planned: dict[str, Any],
+        phase: Literal["command", "transfer"],
+        guard: Guard,
+    ) -> KubernetesJobReceipt:
         await self.verify_namespace(guard)
         response = await self._request("POST", self._job_path(), guard, body=planned)
         if response.status_code != 201:
@@ -269,6 +507,7 @@ class KubernetesControlClient:
             if not _contains_plan(value, planned):
                 raise ValueError("The admitted Job changed its requested plan")
             return KubernetesJobReceipt(
+                phase=phase,
                 name=planned["metadata"]["name"],
                 namespace=planned["metadata"]["namespace"],
                 uid=value["metadata"]["uid"],
@@ -291,7 +530,7 @@ class KubernetesControlClient:
             or receipt.namespace != policy.namespace
             or receipt.execution_id != invocation.execution_id
             or receipt.invocation_digest != pool_digest(invocation.model_dump(mode="json"))
-            or receipt.name != resource_name(invocation, "command")
+            or receipt.name != resource_name(invocation, receipt.phase)
         ):
             raise KubernetesIdentityChanged("The owned Job belongs to a different profile or namespace")
         await self.verify_namespace(guard)
@@ -309,6 +548,7 @@ class KubernetesControlClient:
             or value["metadata"].get("namespace") != receipt.namespace
             or (value["metadata"].get("labels") or {}).get("forge.fireflyframework.org/execution")
             != receipt.execution_id
+            or (value["metadata"].get("labels") or {}).get("forge.fireflyframework.org/phase") != receipt.phase
             or (value["metadata"].get("annotations") or {}).get("forge.fireflyframework.org/invocation")
             != receipt.invocation_digest
             or pool_digest(value.get("spec")) != receipt.spec_digest
@@ -341,6 +581,7 @@ class KubernetesControlClient:
             or owners[0].get("controller") is not True
             or spec.get("nodeName") not in policy.node_names
             or (metadata.get("labels") or {}).get("forge.fireflyframework.org/execution") != receipt.execution_id
+            or (metadata.get("labels") or {}).get("forge.fireflyframework.org/phase") != receipt.phase
             or not _contains_plan(spec, job["spec"]["template"]["spec"])
         ):
             raise KubernetesIdentityChanged("The Pod is not the exact admitted Job on a qualified node")
@@ -452,9 +693,10 @@ def _contains_plan(current: Any, planned: Any) -> bool:
             key in current and key not in planned for key in ("initContainers", "ephemeralContainers", "hostAliases")
         ):
             return False
-        return isinstance(current, dict) and all(
-            key in current
-            and (
+        return all(
+            _omitted_false(planned, key)
+            if key not in current
+            else (
                 _exact_value(current[key], value)
                 if key in {"securityContext", "env", "volumeMounts", "volumes"}
                 else _contains_plan(current[key], value)
@@ -474,11 +716,20 @@ def _exact_value(current: Any, planned: Any) -> bool:
     if type(current) is not type(planned):
         return False
     if isinstance(planned, dict):
-        return current.keys() == planned.keys() and all(
-            _exact_value(current[key], value) for key, value in planned.items()
+        return not current.keys() - planned.keys() and all(
+            _omitted_false(planned, key) if key not in current else _exact_value(current[key], value)
+            for key, value in planned.items()
         )
     if isinstance(planned, list):
         return len(current) == len(planned) and all(
             _exact_value(left, right) for left, right in zip(current, planned, strict=True)
         )
     return bool(current == planned)
+
+
+def _omitted_false(planned: dict[str, Any], key: str) -> bool:
+    if planned[key] is not False:
+        return False
+    if "containers" in planned:
+        return key in {"hostNetwork", "hostPID", "hostIPC", "shareProcessNamespace"}
+    return key == "readOnly" and ("mountPath" in planned or "claimName" in planned)

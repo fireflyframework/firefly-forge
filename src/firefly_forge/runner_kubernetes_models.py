@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import re
 from decimal import Decimal
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -81,6 +82,8 @@ class KubernetesPoolPolicy(BaseModel):
 class KubernetesJobReceipt(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
+    phase: Literal["command", "transfer"] = "command"
+
     name: str
     namespace: str
     uid: str = Field(pattern=r"^[A-Za-z0-9_.:-]{1,256}$")
@@ -90,6 +93,33 @@ class KubernetesJobReceipt(BaseModel):
     spec_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
 
     _names = field_validator("name", "namespace")(kubernetes_name)
+
+
+class KubernetesVolumeReceipt(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    purpose: Literal["input", "workspace"]
+    name: str
+    namespace: str
+    uid: str = Field(pattern=r"^[A-Za-z0-9_.:-]{1,256}$")
+    execution_id: str = Field(pattern=r"^[a-f0-9]{32}$")
+    invocation_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+    profile_revision: str = Field(pattern=r"^[a-f0-9]{64}$")
+    spec_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+    _names = field_validator("name", "namespace")(kubernetes_name)
+
+
+class KubernetesBoundVolumeReceipt(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    claim: KubernetesVolumeReceipt
+    claim_spec_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+    volume_name: str
+    volume_uid: str = Field(pattern=r"^[A-Za-z0-9_.:-]{1,256}$")
+    volume_spec_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+    _name = field_validator("volume_name")(kubernetes_name)
 
 
 class KubernetesPodReceipt(BaseModel):

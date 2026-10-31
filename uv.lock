@@ -1049,6 +1049,9 @@ dependencies = [
 analytics = [
     { name = "flyquery-sdk" },
 ]
+kubernetes = [
+    { name = "websockets" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -1084,8 +1087,9 @@ requires-dist = [
     { name = "pypdf", specifier = ">=6.20.1,<7" },
     { name = "pyyaml", specifier = ">=6.0.3,<7" },
     { name = "uvicorn", specifier = ">=0.41,<1" },
+    { name = "websockets", marker = "extra == 'kubernetes'", specifier = ">=16,<17" },
 ]
-provides-extras = ["analytics"]
+provides-extras = ["analytics", "kubernetes"]
 
 [package.metadata.requires-dev]
 dev = [

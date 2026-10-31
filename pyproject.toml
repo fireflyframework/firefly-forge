@@ -37,6 +37,7 @@ forge = "firefly_forge.cli:main"
 
 [project.optional-dependencies]
 analytics = ["flyquery-sdk @ https://github.com/fireflyframework/flyquery/releases/download/v26.10.4/flyquery_sdk-26.10.4-py3-none-any.whl"]
+kubernetes = ["websockets>=16,<17"]
 
 [project.urls]
 Repository = "https://github.com/fireflyframework/firefly-forge"
