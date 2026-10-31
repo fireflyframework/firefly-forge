@@ -21,16 +21,16 @@ def full_card(paragraphs, *, title="Execution update", title_facts=None, decisio
 
 
 async def test_ai_writes_the_title_and_entire_card_without_a_second_native_template(tmp_path, monkeypatch):
-    import fireflyframework_agentic.agents as agents
+    import pyfly.agentic.agents as agents
 
-    original = agents.FireflyAgent
+    original = agents.Agent
     calls = []
 
     def agent(**kwargs):
         calls.append(kwargs)
         return original(**kwargs)
 
-    monkeypatch.setattr(agents, "FireflyAgent", agent)
+    monkeypatch.setattr(agents, "Agent", agent)
     output = full_card(
         [
             {

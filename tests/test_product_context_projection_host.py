@@ -6,9 +6,9 @@ import hashlib
 import json
 
 import pytest
-from fireflyframework_agentic.model_utils import serialize_model_messages
 from pydantic_ai.messages import ModelResponse, ToolCallPart, ToolReturnPart
 from pydantic_ai.models.function import FunctionModel
+from pyfly.agentic.model_utils import serialize_model_messages
 from test_agentic_checkpoint_activation_host import RUN, activated, lost_completion
 
 from firefly_forge.agentic_runtime import execute_agentic

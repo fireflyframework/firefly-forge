@@ -57,7 +57,6 @@ def runtime_contract() -> str:
             "versions": {
                 name: version(name)
                 for name in (
-                    "fireflyframework-agentic",
                     "pydantic-ai-slim",
                     "openai",
                     "pyfly",

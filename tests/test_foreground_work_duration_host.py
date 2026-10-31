@@ -24,10 +24,10 @@ from firefly_forge.workspace_tools import ToolRuntimeContext, WorkspaceTools
 async def test_frozen_policy_selects_command_schema_and_actual_executor_timeout(
     tmp_path, monkeypatch, policy, arguments, expected, outer
 ):
-    from fireflyframework_agentic.agents import FireflyAgent
+    from pyfly.agentic.agents import Agent
 
     executed, deadlines, schemas = [], [], []
-    original = FireflyAgent.run
+    original = Agent.run
 
     async def run(agent, *args, **kwargs):
         deadlines.append(kwargs["timeout"])
@@ -50,7 +50,7 @@ async def test_frozen_policy_selects_command_schema_and_actual_executor_timeout(
     async def emit(*args):
         pass
 
-    monkeypatch.setattr(FireflyAgent, "run", run)
+    monkeypatch.setattr(Agent, "run", run)
     monkeypatch.setattr(WorkspaceTools, "source_manifest", manifest)
     context = ToolRuntimeContext(
         tmp_path,
@@ -111,12 +111,12 @@ def test_provider_work_policy_can_be_selected_without_granting_workspace_tools()
 
 
 async def test_api_role_without_a_native_runtime_context_has_no_hidden_outer_cap(tmp_path, monkeypatch):
-    from fireflyframework_agentic.agents import FireflyAgent
+    from pyfly.agentic.agents import Agent
 
     from firefly_forge.providers import APIProvider
 
     deadlines = []
-    original = FireflyAgent.run
+    original = Agent.run
 
     async def run(agent, *args, **kwargs):
         deadlines.append(kwargs["timeout"])
@@ -133,6 +133,6 @@ async def test_api_role_without_a_native_runtime_context_has_no_hidden_outer_cap
     provider = APIProvider({"FORGE_PROVIDER_TIMEOUT": "1"})
     provider.configure_work_duration(WorkDurationPolicyV2())
     monkeypatch.setattr(provider, "model", lambda: FunctionModel(model))
-    monkeypatch.setattr(FireflyAgent, "run", run)
+    monkeypatch.setattr(Agent, "run", run)
     assert (await provider.execute(tmp_path, "Inspect", "pyfly", "none", emit)).summary == "done"
     assert deadlines == [None]

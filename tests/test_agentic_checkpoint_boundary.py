@@ -8,14 +8,14 @@ from dataclasses import replace
 
 import httpx2
 import pytest
-from fireflyframework_agentic.agents import FireflyAgent
-from fireflyframework_agentic.config import FireflyAgenticConfig
-from fireflyframework_agentic.tools import firefly_tool
 from pydantic_ai import models
 from pydantic_ai.capabilities import ProcessHistory
 from pydantic_ai.messages import BinaryContent, InstructionPart, ModelResponse, TextPart
 from pydantic_ai.models.function import FunctionModel
 from pydantic_ai.usage import UsageLimits
+from pyfly.agentic.agents import Agent
+from pyfly.agentic.config import AgenticConfig
+from pyfly.agentic.tools import agent_tool
 from test_bridge_completion_native import mock_model_requests
 
 from firefly_forge.prompts import prompt_text
@@ -57,16 +57,16 @@ async def test_original_response_restores_public_agent_without_repeating_tool_or
         (tmp_path / path).write_text(content)
         return path
 
-    tool = firefly_tool("write_file", description=prompt_text("tools/write_file"), auto_register=False)(write_file)
+    tool = agent_tool("write_file", description=prompt_text("tools/write_file"), auto_register=False)(write_file)
 
     def agent(model, boundary):
-        return FireflyAgent(
+        return Agent(
             name="checkpoint-proof",
             model=model,
             instructions=prompt_text("implementation/tool-rules"),
             tools=[tool],
             auto_register=False,
-            config=FireflyAgenticConfig(default_temperature=None, rate_limit_max_retries=0),
+            config=AgenticConfig(default_temperature=None, rate_limit_max_retries=0),
             capabilities=[ProcessHistory(lambda messages: messages), boundary],
         )
 
@@ -234,11 +234,11 @@ async def test_ineligible_public_history_refuses_before_the_function_model(reaso
         return ModelResponse(parts=[TextPart("Must not be reached")])
 
     boundary = api.AgenticBoundary(lambda: {"files_written": []})
-    agent = FireflyAgent(
+    agent = Agent(
         name="ineligible-checkpoint",
         model=FunctionModel(model),
         auto_register=False,
-        config=FireflyAgenticConfig(default_temperature=None, rate_limit_max_retries=0),
+        config=AgenticConfig(default_temperature=None, rate_limit_max_retries=0),
         capabilities=[Unsupported(), boundary],
     )
     prompt = [BinaryContent(data=b"fictional", media_type="image/png")] if reason == "vision" else "Fictional input"
@@ -256,12 +256,12 @@ async def test_actual_output_retry_is_ineligible_before_another_model_request():
         return ModelResponse(parts=[TextPart("Not a valid integer")])
 
     boundary = api.AgenticBoundary(lambda: {"files_written": []})
-    agent = FireflyAgent(
+    agent = Agent(
         name="retry-checkpoint",
         model=FunctionModel(model),
         output_type=int,
         auto_register=False,
-        config=FireflyAgenticConfig(default_temperature=None, rate_limit_max_retries=0),
+        config=AgenticConfig(default_temperature=None, rate_limit_max_retries=0),
         capabilities=[boundary],
     )
     with boundary.invocation(), pytest.raises(ValueError, match="retry"):
@@ -280,7 +280,7 @@ async def test_consumption_failure_never_exposes_response_or_rearms_the_same_gat
         captures.append(boundary.capture(b"fictional-wire"))
         return ModelResponse(parts=[TextPart("Original")])
 
-    agent = FireflyAgent(name="gate-fixture", model=FunctionModel(model), auto_register=False, capabilities=[boundary])
+    agent = Agent(name="gate-fixture", model=FunctionModel(model), auto_register=False, capabilities=[boundary])
     with boundary.invocation():
         await agent.run("Fictional gate fixture")
     for failure in (ValueError("Commit was refused"), asyncio.CancelledError()):
@@ -307,9 +307,7 @@ async def test_checkpoint_copy_is_detached_and_wire_mismatch_refuses_before_cons
         captures.append(boundary.capture(b"original-wire"))
         return ModelResponse(parts=[TextPart("Original")])
 
-    agent = FireflyAgent(
-        name="detached-fixture", model=FunctionModel(model), auto_register=False, capabilities=[boundary]
-    )
+    agent = Agent(name="detached-fixture", model=FunctionModel(model), auto_register=False, capabilities=[boundary])
     with boundary.invocation():
         await agent.run("Fictional detached fixture")
     checkpoint = captures[0]
@@ -343,7 +341,7 @@ async def test_restore_rejects_lost_local_state_even_when_model_wire_is_unchange
         return ModelResponse(parts=[TextPart("Original")])
 
     with original.invocation():
-        await FireflyAgent(
+        await Agent(
             name="original-state", model=FunctionModel(capture), auto_register=False, capabilities=[original]
         ).run("Fictional state fixture", usage_limits=UsageLimits(request_limit=3))
     checkpoint = captured[0]
@@ -361,7 +359,7 @@ async def test_restore_rejects_lost_local_state_even_when_model_wire_is_unchange
     if change == "budget":
         arguments["usage_limits"] = UsageLimits(request_limit=100)
     with restored.invocation(), pytest.raises(ValueError, match="state"):
-        await FireflyAgent(
+        await Agent(
             name="restored-state", model=FunctionModel(restore), auto_register=False, capabilities=[restored]
         ).run(**arguments)
     assert not exposed
@@ -377,7 +375,7 @@ async def test_checkpoint_rejects_boolean_usage_instead_of_treating_it_as_one_re
         return ModelResponse(parts=[TextPart("Original")])
 
     with boundary.invocation():
-        await FireflyAgent(
+        await Agent(
             name="usage-schema", model=FunctionModel(capture), auto_register=False, capabilities=[boundary]
         ).run("Fictional schema fixture")
     data = json.loads(captured[0].payload)
@@ -408,7 +406,7 @@ async def test_shared_capability_keeps_concurrent_invocations_and_request_contex
 
         try:
             with boundary.invocation():
-                result = await FireflyAgent(
+                result = await Agent(
                     name=label, model=FunctionModel(model), auto_register=False, capabilities=[boundary]
                 ).run(label)
                 assert result.output == label
@@ -439,7 +437,7 @@ async def test_capture_refuses_unfinished_tool_history_before_a_new_request():
         ModelRequest(parts=[UserPromptPart("No retained tool result")]),
     ]
     with boundary.invocation(), pytest.raises(ValueError, match="unfinished"):
-        await FireflyAgent(
+        await Agent(
             name="unfinished-checkpoint", model=FunctionModel(model), auto_register=False, capabilities=[boundary]
         ).run(None, message_history=history)
     assert not checkpointed
@@ -469,7 +467,7 @@ async def test_changed_tool_catalog_between_requests_is_not_a_static_checkpoint_
             return ModelResponse(parts=[ToolCallPart("write_file", {"path": "once.py"}, "once")])
         return ModelResponse(parts=[TextPart("Must be refused")])
 
-    agent = FireflyAgent(
+    agent = Agent(
         name="changing-tools",
         model=FunctionModel(model),
         tools=[write_file],

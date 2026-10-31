@@ -13,12 +13,12 @@ from contextvars import ContextVar
 from pathlib import Path
 from typing import Any, cast
 
-from fireflyframework_agentic.model_utils import serialize_model_messages
 from pydantic import TypeAdapter
 from pydantic_ai.capabilities import AbstractCapability
 from pydantic_ai.messages import ToolCallPart
 from pydantic_ai.models import ModelRequestContext
 from pydantic_ai.tools import RunContext, ToolDefinition
+from pyfly.agentic.model_utils import serialize_model_messages
 
 from firefly_forge.agentic_checkpoint_invocation import current_checkpoint_invocation, invocation_cut, workspace_cut
 from firefly_forge.agentic_tool_results import load as load_result

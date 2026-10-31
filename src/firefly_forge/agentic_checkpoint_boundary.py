@@ -18,7 +18,6 @@ from importlib.metadata import version
 from pathlib import PurePosixPath
 from typing import Any, Literal, cast
 
-from fireflyframework_agentic.model_utils import deserialize_model_messages, serialize_model_messages
 from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError, field_validator
 from pydantic_ai.capabilities import AbstractCapability
 from pydantic_ai.messages import (
@@ -34,6 +33,7 @@ from pydantic_ai.messages import (
 from pydantic_ai.models import ModelRequestContext, ModelRequestParameters
 from pydantic_ai.tools import RunContext, ToolDefinition
 from pydantic_ai.usage import RunUsage, UsageLimits
+from pyfly.agentic.model_utils import deserialize_model_messages, serialize_model_messages
 
 MAX_PAYLOAD = 192 * 1024
 MAX_RAW_PAYLOAD = 8 * 1024 * 1024
@@ -48,7 +48,7 @@ def _encoded(value: Any) -> bytes:
 
 
 def _compatibility() -> dict[str, str]:
-    return {name: version(name) for name in ("fireflyframework-agentic", "pydantic-ai-slim")}
+    return {name: version(name) for name in ("pyfly", "pydantic-ai-slim")}
 
 
 def _native_round_trip(adapter: TypeAdapter[Any], value: dict[str, Any]) -> None:
@@ -79,8 +79,13 @@ def _cost(value: Any, label: str) -> None:
 
 
 def _budgets(usage: dict[str, Any], limits: dict[str, Any]) -> None:
-    required = {field.name for field in dataclasses.fields(RunUsage)}
-    if not required <= set(usage) <= required | {"output_reasoning_tokens", "cache_write_1h_tokens"}:
+    # SDK 2.59 omits this counter at zero; nonzero missing-usage provenance must survive restoration.
+    required = {field.name for field in dataclasses.fields(RunUsage)} - {"unmeasured_requests"}
+    if (
+        not required
+        <= set(usage)
+        <= required | {"output_reasoning_tokens", "cache_write_1h_tokens", "unmeasured_requests"}
+    ):
         raise ValueError("Checkpoint usage has missing or unknown counters")
     for name, value in usage.items():
         if name == "cost":
@@ -327,10 +332,14 @@ class BoundaryCheckpoint:
             return cls.decode(payload, digest).canonical_payload.decode("utf-8")
         if (
             historical_custody is not True
-            or record.compatibility != {"fireflyframework-agentic": "26.10.1", "pydantic-ai-slim": "2.58.0"}
+            or record.compatibility
+            not in (
+                {"fireflyframework-agentic": "26.10.1", "pydantic-ai-slim": "2.55.0"},
+                {"fireflyframework-agentic": "26.10.1", "pydantic-ai-slim": "2.58.0"},
+            )
             or _encoded(record.model_dump(mode="json")) != raw
             or set(record.usage)
-            != {field.name for field in dataclasses.fields(RunUsage)}
+            != ({field.name for field in dataclasses.fields(RunUsage)} - {"unmeasured_requests"})
             | {"output_reasoning_tokens", "cache_write_1h_tokens"}
         ):
             raise ValueError("Historical checkpoint credential inspection requires exact known native custody")
@@ -341,14 +350,16 @@ class BoundaryCheckpoint:
 
     @classmethod
     def migrate_public_compatibility(cls, payload: bytes, digest: str) -> BoundaryCheckpoint:
-        """Derive the registered 2.58-to-2.55 frontier; ordinary restore remains exact-version only."""
+        """Derive a registered SDK frontier; ordinary restore remains exact-version only."""
         source = {"fireflyframework-agentic": "26.10.1", "pydantic-ai-slim": "2.58.0"}
-        target = {"fireflyframework-agentic": "26.10.1", "pydantic-ai-slim": "2.55.0"}
+        legacy_target = {"fireflyframework-agentic": "26.10.1", "pydantic-ai-slim": "2.55.0"}
+        native_target = {"pyfly": "26.10.16", "pydantic-ai-slim": "2.59.0"}
+        target = _compatibility()
         if (
             type(payload) is not bytes
             or not 1 <= len(payload) <= MAX_PAYLOAD
             or hashlib.sha256(payload).hexdigest() != digest
-            or _compatibility() != target
+            or target not in (legacy_target, native_target)
         ):
             raise ValueError("No registered checkpoint compatibility migration exists")
         raw = _checkpoint_record(payload)
@@ -357,7 +368,7 @@ class BoundaryCheckpoint:
             record.compatibility != source
             or _encoded(record.model_dump(mode="json")) != raw
             or set(record.usage)
-            != {field.name for field in dataclasses.fields(RunUsage)}
+            != ({field.name for field in dataclasses.fields(RunUsage)} - {"unmeasured_requests"})
             | {"output_reasoning_tokens", "cache_write_1h_tokens"}
         ):
             raise ValueError("Historical checkpoint runtime or canonical encoding differs")
@@ -391,7 +402,10 @@ class BoundaryCheckpoint:
                 (type(value) is list and not value) or (expected is None and value is None)
             ):
                 raise ValueError("Historical SDK telemetry provenance is not a registered empty variant")
-            parameters.pop(name)
+            if target == native_target and value is None:
+                raise ValueError("Native PyFly migration requires known empty telemetry provenance")
+            if target == legacy_target:
+                parameters.pop(name)
         definitions = parameters["function_tools"]
         if type(definitions) is not list or any(
             type(definition) is not dict or type(definition.get("name")) is not str for definition in definitions

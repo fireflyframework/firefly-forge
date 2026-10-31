@@ -919,10 +919,10 @@ class CommunicationWriter:
             ]
             self.store.reject_credentials([prompt, instructions])
             evidence["prompt_sha256"] = hashlib.sha256((instructions + "\n" + prompt).encode()).hexdigest()
-            from fireflyframework_agentic.agents import FireflyAgent
-            from fireflyframework_agentic.config import FireflyAgenticConfig
             from pydantic_ai import PromptedOutput
             from pydantic_ai.usage import UsageLimits
+            from pyfly.agentic.agents import Agent
+            from pyfly.agentic.config import AgenticConfig
 
             from firefly_forge.providers import APIProvider, BridgeProvider
 
@@ -934,7 +934,7 @@ class CommunicationWriter:
                     else APIProvider(settings).model(single_request=True)
                 )
             output: Any = PromptedOutput(CommunicationCard) if selection["provider"] == "bridge" else CommunicationCard
-            agent: FireflyAgent[None, CommunicationCard] = FireflyAgent(
+            agent: Agent[None, CommunicationCard] = Agent(
                 name="forge-project-communication",
                 model=model,
                 instructions=instructions,
@@ -943,7 +943,7 @@ class CommunicationWriter:
                 tools=[],
                 auto_register=False,
                 model_settings={"max_tokens": 1200},
-                config=FireflyAgenticConfig(default_temperature=None, rate_limit_max_retries=0),
+                config=AgenticConfig(default_temperature=None, rate_limit_max_retries=0),
             )
             async with asyncio.timeout(timeout) as deadline:
                 generated = await agent.run(
@@ -981,7 +981,7 @@ class CommunicationWriter:
                 review_output: Any = (
                     PromptedOutput(CommunicationReview) if selection["provider"] == "bridge" else CommunicationReview
                 )
-                reviewer: FireflyAgent[None, CommunicationReview] = FireflyAgent(
+                reviewer: Agent[None, CommunicationReview] = Agent(
                     name="forge-project-communication-review",
                     model=model,
                     instructions=review_instructions,
@@ -990,7 +990,7 @@ class CommunicationWriter:
                     tools=[],
                     auto_register=False,
                     model_settings={"max_tokens": 600},
-                    config=FireflyAgenticConfig(default_temperature=None, rate_limit_max_retries=0),
+                    config=AgenticConfig(default_temperature=None, rate_limit_max_retries=0),
                 )
                 when = deadline.when()
                 assert when is not None

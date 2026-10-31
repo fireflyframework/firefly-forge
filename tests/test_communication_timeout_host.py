@@ -13,7 +13,7 @@ from firefly_forge.model_profiles import ModelProfileInput
 
 @pytest.mark.parametrize("configured,expected", [("20", 20), ("60", 60), ("7200", 120)])
 async def test_profile_deadline_reaches_both_agent_and_outer_cancellation(tmp_path, monkeypatch, configured, expected):
-    import fireflyframework_agentic.agents as agents
+    import pyfly.agentic.agents as agents
 
     store = await configured_store(tmp_path, "bridge")
     store.task_router.profiles.save(
@@ -31,7 +31,7 @@ async def test_profile_deadline_reaches_both_agent_and_outer_cancellation(tmp_pa
     outer = []
     agent_deadlines = []
     original_timeout = asyncio.timeout
-    original_run = agents.FireflyAgent.run
+    original_run = agents.Agent.run
 
     def observe_timeout(delay):
         outer.append(delay)
@@ -42,7 +42,7 @@ async def test_profile_deadline_reaches_both_agent_and_outer_cancellation(tmp_pa
         return await original_run(self, *args, **kwargs)
 
     monkeypatch.setattr(asyncio, "timeout", observe_timeout)
-    monkeypatch.setattr(agents.FireflyAgent, "run", observe_run)
+    monkeypatch.setattr(agents.Agent, "run", observe_run)
     output = {
         "title": {"text": "Request queued", "fact_ids": ["state"]},
         "paragraphs": [{"text": "The request is queued.", "fact_ids": ["state"]}],

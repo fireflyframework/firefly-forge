@@ -41,10 +41,10 @@ def test_large_component_graph_is_not_rejected_by_a_node_count(authenticated_his
 
 
 async def test_actual_native_checkpoint_canonical_history_above_one_megabyte_is_admitted(authenticated_history):
-    from fireflyframework_agentic.agents import FireflyAgent
     from pydantic_ai import models
     from pydantic_ai.messages import ModelResponse, TextPart
     from pydantic_ai.models.function import FunctionModel
+    from pyfly.agentic.agents import Agent
 
     from firefly_forge.agentic_checkpoint_boundary import AgenticBoundary, BoundaryCheckpoint
 
@@ -57,7 +57,7 @@ async def test_actual_native_checkpoint_canonical_history_above_one_megabyte_is_
         return ModelResponse(parts=[TextPart("Fictional retained answer")])
 
     with models.override_allow_model_requests(False), boundary.invocation():
-        await FireflyAgent(
+        await Agent(
             name="credential-history-fixture",
             model=FunctionModel(controlled),
             auto_register=False,

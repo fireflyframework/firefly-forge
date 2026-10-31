@@ -107,16 +107,16 @@ async def test_new_policy_reaches_real_agent_and_owned_sdk_without_hidden_read_c
         "FORGE_AGENTIC_API_KEY": "fictional-fixture",
     }
     if provider_name == "agentic":
-        import fireflyframework_agentic.agents as agents
+        import pyfly.agentic.agents as agents
         from pydantic_ai import PromptedOutput
 
-        original_agent = agents.FireflyAgent
+        original_agent = agents.Agent
 
         def prompted_agent(**kwargs):
             kwargs["output_type"] = PromptedOutput(kwargs["output_type"])
             return original_agent(**kwargs)
 
-        monkeypatch.setattr(agents, "FireflyAgent", prompted_agent)
+        monkeypatch.setattr(agents, "Agent", prompted_agent)
     with models.override_allow_model_requests(True):
         reply = await runtime.design_reply("Design the fictional fixture", settings)
     assert reply.message == "Controlled structured response"

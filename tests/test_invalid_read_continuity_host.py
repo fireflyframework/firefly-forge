@@ -10,16 +10,16 @@ from typing import Any
 
 import httpx2
 import pytest
-from fireflyframework_agentic.agents import FireflyAgent
-from fireflyframework_agentic.config import FireflyAgenticConfig
-from fireflyframework_agentic.exceptions import ToolError
-from fireflyframework_agentic.tools import firefly_tool
 from openai import AsyncOpenAI
 from pydantic_ai import PromptedOutput
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.profiles.openai import OpenAIModelProfile
 from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.usage import UsageLimits
+from pyfly.agentic.agents import Agent
+from pyfly.agentic.config import AgenticConfig
+from pyfly.agentic.exceptions import ToolError
+from pyfly.agentic.tools import agent_tool
 
 from firefly_forge.agentic_checkpoint_boundary import AgenticBoundary
 from firefly_forge.agentic_checkpoint_invocation import invocation_cut
@@ -136,7 +136,7 @@ async def consumed_read(request):
     from firefly_forge.profiles import build_instruction
     from firefly_forge.prompts import prompt_text
 
-    tool = firefly_tool(
+    tool = agent_tool(
         "read_run_evidence", description=prompt_text("tools/read_run_evidence", version="1.0.0"), auto_register=False
     )(old_reader)
 
@@ -154,14 +154,14 @@ async def consumed_read(request):
             provider=OpenAIProvider(openai_client=client),
             profile=OpenAIModelProfile(openai_unsupported_model_settings=["max_tokens"]),
         )
-        agent = FireflyAgent(
+        agent = Agent(
             name="continuity-fixture",
             model=model,
             output_type=PromptedOutput(RuntimeReport),
             instructions=build_instruction("", "pyfly", "none") + prompt_text("implementation/tool-rules"),
             tools=[tool],
             auto_register=False,
-            config=FireflyAgenticConfig(default_temperature=None, rate_limit_max_retries=0),
+            config=AgenticConfig(default_temperature=None, rate_limit_max_retries=0),
             capabilities=[boundary],
         )
         with boundary.invocation(), pytest.raises(ToolError):
@@ -550,7 +550,7 @@ async def test_retained_sdk_epoch_derives_new_checkpoint_without_widening_restor
     saved = entries[1]["payload"]
     original = BoundaryCheckpoint.decode(saved["snapshot"].encode(), saved["checkpoint_digest"])
     record = json.loads(original.canonical_payload)
-    record["compatibility"]["pydantic-ai-slim"] = "2.58.0"
+    record["compatibility"] = {"fireflyframework-agentic": "26.10.1", "pydantic-ai-slim": "2.58.0"}
     record["contract"]["parameters"].update(
         _telemetry_mcp_url_ids=url_ids, _telemetry_mcp_url_toolset_ids=[], _telemetry_mcp_url_tool_names=tool_names
     )
@@ -573,14 +573,17 @@ async def test_retained_sdk_epoch_derives_new_checkpoint_without_widening_restor
     before = copy.deepcopy((run, task, entries))
     with pytest.raises(ValueError, match="runtime"):
         BoundaryCheckpoint.decode(historical, saved["checkpoint_digest"])
+    if url_ids is None or tool_names is None:
+        with pytest.raises(ValueError, match="Native PyFly migration requires known empty telemetry provenance"):
+            api().prepare_invalid_read(run, task, entries)
+        assert (run, task, entries) == before
+        return
     prepared = api().prepare_invalid_read(run, task, entries)
     assert prepared.proof["checkpoint_digest"] == saved["checkpoint_digest"]
     assert prepared.checkpoint.digest != saved["checkpoint_digest"]
     derived_record = json.loads(prepared.checkpoint.canonical_payload)
     expected = copy.deepcopy(record)
     expected["compatibility"] = original.record.compatibility
-    for key in ("_telemetry_mcp_url_ids", "_telemetry_mcp_url_toolset_ids", "_telemetry_mcp_url_tool_names"):
-        expected["contract"]["parameters"].pop(key)
     for definition in expected["contract"]["parameters"]["function_tools"]:
         definition["tool_kind"] = None
     assert derived_record == expected
@@ -600,13 +603,13 @@ async def test_retained_sdk_epoch_derives_new_checkpoint_without_widening_restor
         {"name": tool["name"], "source_present": tool_kind_present, "source_value": None, "target_value": None}
         for tool in record["contract"]["parameters"]["function_tools"]
     ]
-    assert witness["version"] == 3
+    assert witness["version"] == 4
     assert witness["source_function_tool_kinds"] == source_tools
     assert witness["source_function_tool_kinds_sha256"] == digest({"tools": source_tools})
     assert witness["contract_projection"]["function_tool_kinds"] == source_tools
     assert witness["source_telemetry"] == provenance
     assert witness["source_telemetry_sha256"] == digest(provenance)
-    assert witness["contract_projection"]["remove_exact_provenance"] == provenance
+    assert witness["contract_projection"]["preserve_exact_provenance"] == provenance
     assert result.derived.record.usage["output_reasoning_tokens"] == 17
     assert result.derived.record.usage["cache_write_1h_tokens"] == 5
     assert result.derived.usage.requests == original.usage.requests + 1
@@ -646,7 +649,10 @@ async def test_historical_sdk_migration_refuses_unregistered_or_changed_frontier
     saved = entries[1]["payload"]
     original = codec.BoundaryCheckpoint.decode(saved["snapshot"].encode(), saved["checkpoint_digest"])
     record = json.loads(original.canonical_payload)
-    record["compatibility"]["pydantic-ai-slim"] = "2.59.0" if change == "unknown_source" else "2.58.0"
+    record["compatibility"] = {
+        "fireflyframework-agentic": "26.10.1",
+        "pydantic-ai-slim": "2.59.0" if change == "unknown_source" else "2.58.0",
+    }
     record["usage"].update(output_reasoning_tokens=0, cache_write_1h_tokens=0)
     record["contract"]["parameters"].update(
         _telemetry_mcp_url_ids=None, _telemetry_mcp_url_toolset_ids=[], _telemetry_mcp_url_tool_names=None
@@ -748,7 +754,7 @@ def test_public_usage_preserves_and_increments_known_reasoning_counter_without_d
     _budgets(actual, limits)
 
 
-@pytest.mark.parametrize("counter", ["output_reasoning_tokens", "cache_write_1h_tokens"])
+@pytest.mark.parametrize("counter", ["output_reasoning_tokens", "cache_write_1h_tokens", "unmeasured_requests"])
 @pytest.mark.parametrize("change", [True, -1, 2**53, 1.5, "17", "unknown", "missing"])
 def test_known_optional_reasoning_counter_keeps_strict_counter_and_field_validation(change, counter):
     from pydantic_ai.usage import RunUsage, UsageLimits
@@ -769,7 +775,8 @@ def test_known_optional_reasoning_counter_keeps_strict_counter_and_field_validat
 
 
 @pytest.mark.parametrize("change", [None, "unknown_version", "digest", "canonical_schema", "custody", "counter"])
-async def test_historical_credential_text_is_lossless_scanned_and_never_resumable(consumed_read, change):
+@pytest.mark.parametrize("legacy_sdk", ["2.55.0", "2.58.0"])
+async def test_historical_credential_text_is_lossless_scanned_and_never_resumable(consumed_read, change, legacy_sdk):
     from types import SimpleNamespace
 
     from firefly_forge.agentic_checkpoint_boundary import BoundaryCheckpoint, _checkpoint_payload
@@ -780,7 +787,10 @@ async def test_historical_credential_text_is_lossless_scanned_and_never_resumabl
     saved = entries[1]["payload"]
     current = BoundaryCheckpoint.decode(saved["snapshot"].encode(), saved["checkpoint_digest"])
     record = json.loads(current.canonical_payload)
-    record["compatibility"]["pydantic-ai-slim"] = "2.59.0" if change == "unknown_version" else "2.58.0"
+    record["compatibility"] = {
+        "fireflyframework-agentic": "26.10.1",
+        "pydantic-ai-slim": "2.59.0" if change == "unknown_version" else legacy_sdk,
+    }
     record["usage"].update(output_reasoning_tokens=17, cache_write_1h_tokens=5)
     marker = "fictional-retained-credential-for-current-scanner-only"
     record["contract"]["parameters"]["_telemetry_mcp_url_ids"] = [marker]
@@ -817,7 +827,7 @@ async def test_migration_history_schema_failure_hides_retained_input(consumed_re
     payload = entries[1]["payload"]
     checkpoint = BoundaryCheckpoint.decode(payload["snapshot"].encode(), payload["checkpoint_digest"])
     record = json.loads(checkpoint.canonical_payload)
-    record["compatibility"]["pydantic-ai-slim"] = "2.58.0"
+    record["compatibility"] = {"fireflyframework-agentic": "26.10.1", "pydantic-ai-slim": "2.58.0"}
     record["usage"].update(output_reasoning_tokens=0, cache_write_1h_tokens=0)
     marker = "fictional-retained-input-must-not-appear-in-errors"
     record["history"] = record["request_history"] = [{"kind": marker}]
@@ -825,3 +835,29 @@ async def test_migration_history_schema_failure_hides_retained_input(consumed_re
     with pytest.raises(ValueError, match="^Checkpoint native history schema differs$") as raised:
         BoundaryCheckpoint.migrate_public_compatibility(raw, hashlib.sha256(raw).hexdigest())
     assert marker not in str(raised.value)
+
+
+async def test_registered_legacy_sdk_projection_remains_exact(consumed_read, monkeypatch):
+    from firefly_forge import agentic_checkpoint_boundary as codec
+
+    _, _, entries = consumed_read
+    saved = entries[1]["payload"]
+    checkpoint = codec.BoundaryCheckpoint.decode(saved["snapshot"].encode(), saved["checkpoint_digest"])
+    record = json.loads(checkpoint.canonical_payload)
+    record["compatibility"] = {"fireflyframework-agentic": "26.10.1", "pydantic-ai-slim": "2.58.0"}
+    telemetry = {
+        "_telemetry_mcp_url_ids": None,
+        "_telemetry_mcp_url_toolset_ids": [],
+        "_telemetry_mcp_url_tool_names": None,
+    }
+    record["contract"]["parameters"].update(telemetry)
+    raw = codec._checkpoint_payload(json.dumps(record, sort_keys=True, separators=(",", ":")).encode())
+    target = {"fireflyframework-agentic": "26.10.1", "pydantic-ai-slim": "2.55.0"}
+    monkeypatch.setattr(codec, "_compatibility", lambda: target)
+    migrated = codec.BoundaryCheckpoint.migrate_public_compatibility(raw, hashlib.sha256(raw).hexdigest())
+    expected = copy.deepcopy(record)
+    expected["compatibility"] = target
+    for key in telemetry:
+        expected["contract"]["parameters"].pop(key)
+    assert json.loads(migrated.canonical_payload) == expected
+    assert raw != migrated.payload

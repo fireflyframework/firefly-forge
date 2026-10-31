@@ -1,5 +1,5 @@
 # Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
-"""Native FireflyAgent execution with capability-scoped workspace file tools."""
+"""Native Agent execution with capability-scoped workspace file tools."""
 
 from __future__ import annotations
 
@@ -49,17 +49,17 @@ async def execute_agentic(
     settings: dict[str, str] | None = None,
     runtime_context: ToolRuntimeContext | None = None,
 ) -> tuple[str, dict[str, Any]]:
-    from fireflyframework_agentic.agents import FireflyAgent
-    from fireflyframework_agentic.config import FireflyAgenticConfig
-    from fireflyframework_agentic.exceptions import ToolError
-    from fireflyframework_agentic.models import ModelOptions
-    from fireflyframework_agentic.tools import firefly_tool
-    from pydantic_ai import PromptedOutput
+    from pydantic_ai import PromptedOutput, ToolOutput
     from pydantic_ai.capabilities import AbstractCapability, ProcessHistory
     from pydantic_ai.messages import BinaryContent, ToolCallPart, ToolReturn, UserPromptPart
     from pydantic_ai.tools import RunContext, ToolDefinition
     from pydantic_ai.tools import Tool as PydanticTool
     from pydantic_ai.usage import UsageLimits
+    from pyfly.agentic.agents import Agent
+    from pyfly.agentic.config import AgenticConfig
+    from pyfly.agentic.exceptions import ToolError
+    from pyfly.agentic.models import ModelOptions
+    from pyfly.agentic.tools import agent_tool as native_agent_tool
 
     from firefly_forge.agentic_checkpoint_invocation import current_checkpoint_invocation
     from firefly_forge.configuration import validate_checkpoints
@@ -465,8 +465,8 @@ async def execute_agentic(
         }
     )
     selected_model = model or settings.get("FORGE_AGENTIC_MODEL", "openai-responses:gpt-6-luna")
-    # FireflyAgent's annotation predates the supported Pydantic AI output wrappers.
-    output_spec: Any = RuntimeReport if allow_output_token_cap else PromptedOutput(RuntimeReport)
+    # Explicit modes keep the SDK request contract static across checkpointed turns.
+    output_spec: Any = ToolOutput(RuntimeReport) if allow_output_token_cap else PromptedOutput(RuntimeReport)
     from contextlib import nullcontext
 
     from firefly_forge.agentic_checkpoint_boundary import AgenticBoundary
@@ -489,7 +489,7 @@ async def execute_agentic(
     )
 
     def agent_tool(name: str, handler: Callable[..., Any]) -> Any:
-        tool = firefly_tool(
+        tool = native_agent_tool(
             name,
             description=prompt_text(
                 "tools/" + name,
@@ -540,7 +540,7 @@ async def execute_agentic(
 
     custody = current_agentic_tool_custody()
     captured_tools = frozenset(handlers) & EFFECTS.keys()
-    agent: FireflyAgent[None, RuntimeReport] = FireflyAgent(
+    agent: Agent[None, RuntimeReport] = Agent(
         name="forge-builder",
         model=selected_model,
         instructions=build_instruction("", backend, frontend)
@@ -556,7 +556,7 @@ async def execute_agentic(
         + prompt_text("implementation/tool-rules"),
         output_type=output_spec,
         auto_register=False,
-        config=FireflyAgenticConfig(default_temperature=None, rate_limit_max_retries=0),
+        config=AgenticConfig(default_temperature=None, rate_limit_max_retries=0),
         model_options=(
             ModelOptions(max_tokens=int(settings.get("FORGE_AGENTIC_MAX_TOKENS", "16384")))
             if allow_output_token_cap

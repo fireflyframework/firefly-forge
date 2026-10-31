@@ -87,8 +87,10 @@ def compatibility_migration(payload: CheckpointPayloadV2) -> Data | None:
         {"name": tool["name"], "source_present": "tool_kind" in tool, "source_value": None, "target_value": None}
         for tool in original_contract["parameters"]["function_tools"]
     ]
+    native_target = derived.record.compatibility == {"pyfly": "26.10.16", "pydantic-ai-slim": "2.59.0"}
+    projection_version = 4 if native_target else 3
     return dict(
-        version=3,
+        version=projection_version,
         source_checkpoint=payload.checkpoint_digest,
         derived_checkpoint=derived.digest,
         source_runtime=payload.invocation.contract,
@@ -102,8 +104,8 @@ def compatibility_migration(payload: CheckpointPayloadV2) -> Data | None:
         source_function_tool_kinds=tool_kinds,
         source_function_tool_kinds_sha256=digest({"tools": tool_kinds}),
         contract_projection={
-            "version": 3,
-            "remove_exact_provenance": provenance,
+            "version": projection_version,
+            "preserve_exact_provenance" if native_target else "remove_exact_provenance": provenance,
             "function_tool_kinds": tool_kinds,
         },
         preserved=["history", "request_history", "usage", "limits", "state", "wire_sha256", "wire_bytes"],

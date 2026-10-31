@@ -11,8 +11,6 @@ from functools import cache
 from typing import Any
 
 import httpx2
-from fireflyframework_agentic.agents import FireflyAgent
-from fireflyframework_agentic.config import FireflyAgenticConfig
 from openai import AsyncOpenAI
 from pydantic_ai import PromptedOutput
 from pydantic_ai.capabilities import AbstractCapability
@@ -22,6 +20,8 @@ from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.profiles.openai import OpenAIModelProfile
 from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.tools import RunContext, Tool
+from pyfly.agentic.agents import Agent
+from pyfly.agentic.config import AgenticConfig
 
 from firefly_forge.agentic_checkpoint_boundary import AgenticBoundary, BoundaryCheckpoint, OriginalCompletion
 from firefly_forge.agentic_runtime import RuntimeReport
@@ -247,14 +247,14 @@ def _agent(
             raise ValueError("Continuity cannot reconstruct dynamic instructions")
         instructions.append(part["content"])
     output_spec: Any = PromptedOutput(RuntimeReport)
-    agent: FireflyAgent[None, RuntimeReport] = FireflyAgent(
+    agent: Agent[None, RuntimeReport] = Agent(
         name="invalid-read-offline-inspection",
         model=model,
         output_type=output_spec,
         instructions=instructions,
         tools=tools,
         auto_register=False,
-        config=FireflyAgenticConfig(default_temperature=None, rate_limit_max_retries=0),
+        config=AgenticConfig(default_temperature=None, rate_limit_max_retries=0),
         model_settings=contract["settings"],
         capabilities=capabilities,
     )

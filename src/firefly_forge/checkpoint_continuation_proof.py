@@ -222,8 +222,8 @@ def pending_checkpoint(run: Data, task: Data, entries: list[Data]) -> Data:
     ]
     if {e["payload"].get("tool_call_id") for e in effects} != expected_calls or len(effects) != len(expected_calls):
         raise ValueError("Prior tool calls have missing or duplicate native effects")
-    from fireflyframework_agentic.model_utils import deserialize_model_messages, serialize_model_messages
     from pydantic_ai.messages import TextPart
+    from pyfly.agentic.model_utils import deserialize_model_messages, serialize_model_messages
 
     from firefly_forge.readonly_observation_reconstruction import PreparedObservation, observation_projection
 
