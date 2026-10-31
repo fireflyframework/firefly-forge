@@ -89,6 +89,7 @@ The route base is `/api/v1/projects/{project_id}/repositories/{repository_id}/gi
 | Method | Suffix | Contract |
 | --- | --- | --- |
 | GET | `/connection` | `BoardConnectionViewV1` |
+| POST | `/account` | `BoardAccountInputV1` to read-only current viewer/repository proof |
 | POST | `/creations` | `BoardCreateInputV1` to `BoardCreationReceiptV1` |
 | GET | `/creations/{request_id}` | Retained creation receipt |
 | POST | `/discover` | `BoardDiscoveryInputV1` to `BoardDiscoveryV1` |

@@ -111,6 +111,19 @@ def test_native_api_browser_consent_private_creation_sdk_readback_and_logout(tmp
         manager.remote.inner = httpx2.MockTransport(github_reply)
         body = create_body()
         base = f"/api/v1/projects/{project_id}/repositories/{repo_id}/github-projects"
+        proof = browser.post(base + "/account", json={"version": 1, "connection_name": "github-board"})
+        assert proof.status_code == 200, proof.text
+        assert proof.json()["viewer"] == {"id": "U_123", "login": "octocat"}
+        assert proof.json()["project_id"] == project_id and proof.json()["repository_id"] == repo_id
+        assert proof.json()["repository"]["name_with_owner"] == "team/product"
+        assert proof.headers["cache-control"] == "no-store" and state["creates"] == 0
+        assert (
+            browser.post(
+                base + "/account", json={"version": 1, "connection_name": "github-board", "access_token": "injected"}
+            ).status_code
+            == 422
+        )
+        assert state["creates"] == 0
         created = browser.post(base + "/creations", json=body.model_dump(mode="json"))
         assert created.status_code == 200, created.text
         assert created.json()["status"] == "completed" and created.json()["board"]["private"] is True
@@ -125,9 +138,14 @@ def test_native_api_browser_consent_private_creation_sdk_readback_and_logout(tmp
             assert receipt.model_dump(mode="json") == created.json()
             replay = sdk.create_github_projects(project_id, repo_id, body)
             assert replay == receipt and state["creates"] == 1
+            browser.base_url = origin
             invalid = browser.post(
                 base + "/creations", json={**body.model_dump(mode="json"), "access_token": "injected"}
             )
-            assert invalid.status_code >= 400 and state["creates"] == 1
+            assert invalid.status_code == 422 and state["creates"] == 1
             assert browser.post("/api/v1/auth/logout").status_code == 200
             assert browser.get(base + "/creations/" + body.request_id).status_code == 401
+            assert (
+                browser.post(base + "/account", json={"version": 1, "connection_name": "github-board"}).status_code
+                == 401
+            )

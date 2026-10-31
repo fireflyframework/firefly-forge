@@ -17,6 +17,8 @@ from firefly_forge.github_projects_models import (
     BoardDiscoveryInputV1,
     BoardDiscoveryV1,
     BoardIdentity,
+    BoardRepository,
+    BoardViewer,
 )
 from firefly_forge.journal import digest
 
@@ -118,6 +120,21 @@ class GitHubProjectsGraphQL:
     ) -> None:
         self.resources, self.inner = resources, transport
         self.run_id, self.repository_id = run_id, repository_id
+
+    async def account(self, binding: dict[str, Any], actor: Any, repository: dict[str, Any]) -> dict[str, Any]:
+        owner, name = repository_coordinates(repository)
+        data = await self.execute(binding, actor, CREATION_OWNER, {"repoOwner": owner, "repoName": name})
+        self._repository(data["repository"], repository)
+        if data["repository"]["isPrivate"] and binding.get("provider") != "github-projects-private":
+            raise ValueError("Private repository content requires its separately consented GitHub scope")
+        return {
+            "viewer": BoardViewer.model_validate(data["viewer"]).model_dump(mode="json"),
+            "repository": BoardRepository(
+                id=data["repository"]["id"],
+                name_with_owner=data["repository"]["nameWithOwner"],
+                private=data["repository"]["isPrivate"],
+            ).model_dump(mode="json"),
+        }
 
     async def create_owner(
         self, binding: dict[str, Any], actor: Any, body: BoardCreateInputV1, repository: dict[str, Any]

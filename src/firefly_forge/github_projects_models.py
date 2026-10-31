@@ -27,6 +27,11 @@ OwnerKind = Literal["user", "organization"]
 ConnectionName = Annotated[str, Field(pattern=r"^[a-z][a-z0-9-]{0,63}$")]
 
 
+class BoardAccountInputV1(GitDeliveryContract):
+    version: Literal[1]
+    connection_name: ConnectionName
+
+
 class BoardDiscoveryInputV1(GitDeliveryContract):
     version: Literal[1]
     connection_name: ConnectionName
@@ -138,6 +143,13 @@ class BoardRepository(GitDeliveryContract):
 class BoardViewer(GitDeliveryContract):
     id: NodeID
     login: Owner
+
+
+class BoardAccountV1(BoardAccountInputV1):
+    project_id: NativeID
+    repository_id: NativeID
+    viewer: BoardViewer
+    repository: BoardRepository
 
 
 class BoardDiscoveryV1(GitDeliveryContract):

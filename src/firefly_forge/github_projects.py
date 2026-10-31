@@ -19,6 +19,8 @@ from firefly_forge.execution_request_persistence import (
 )
 from firefly_forge.github_projects_graphql import ENDPOINT, GitHubProjectsGraphQL
 from firefly_forge.github_projects_models import (
+    BoardAccountInputV1,
+    BoardAccountV1,
     BoardBindingV1,
     BoardConnectionInputV1,
     BoardConnectionViewV1,
@@ -106,6 +108,25 @@ class GitHubProjects:
             ):
                 raise ValueError("Current board configuration differs from its retained receipt")
             return packet
+
+    async def account(
+        self, project_id: str, repository_id: str, body: BoardAccountInputV1, actor: Principal
+    ) -> BoardAccountV1:
+        await self.authority(project_id, repository_id, actor, configure=True)
+        resource = await self.resources.bind(body.connection_name, actor, project_id=project_id, resource=ENDPOINT)
+        observed = await self.remote.account(resource, actor, await self.store.repository(repository_id))
+        await self.authority(project_id, repository_id, actor, configure=True)
+        await self.resources._admission(resource, actor=actor)
+        result = BoardAccountV1(
+            version=1,
+            project_id=project_id,
+            repository_id=repository_id,
+            connection_name=body.connection_name,
+            **observed,
+        )
+        await self.store.admit_credentials(result.model_dump(mode="json"))
+        await self.authority(project_id, repository_id, actor, configure=True)
+        return result
 
     async def discover(
         self, project_id: str, repository_id: str, body: BoardDiscoveryInputV1, actor: Principal

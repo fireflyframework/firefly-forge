@@ -6,6 +6,8 @@ from pyfly.web import Body, PathVar, get_mapping, post_mapping, put_mapping, req
 
 from firefly_forge.github_projects import GitHubProjects
 from firefly_forge.github_projects_models import (
+    BoardAccountInputV1,
+    BoardAccountV1,
     BoardConnectionInputV1,
     BoardConnectionViewV1,
     BoardCreateInputV1,
@@ -38,6 +40,12 @@ class GitHubProjectsController:
     @get_mapping("/connection")
     async def connection(self, project_id: PathVar[str], repository_id: PathVar[str]) -> BoardConnectionViewV1:
         return await self.manager.view(project_id, repository_id, self.actor())
+
+    @post_mapping("/account")
+    async def account(
+        self, project_id: PathVar[str], repository_id: PathVar[str], body: Body[BoardAccountInputV1]
+    ) -> BoardAccountV1:
+        return await self.manager.account(project_id, repository_id, body, self.actor())
 
     @post_mapping("/creations")
     async def create(
