@@ -3,6 +3,7 @@ import { repositoryLabels } from "./RepositoryLabels";
 import {
   useEffect,
   useId,
+  useRef,
   useState,
   type FormEvent,
   type ReactNode,
@@ -30,6 +31,7 @@ import {
   type ComponentRunContext,
 } from "./api";
 import { SourceAnalysis } from "./SourceAnalysis";
+import type { ReviewedSourceContext } from "./SourceAnalysisContext";
 import { Wizard } from "./Wizard";
 import { safeExternalLink } from "./FeatureLinks";
 import "./StudioFeatures.css";
@@ -179,7 +181,11 @@ export function Projects({
   repositories: Repository[];
   onStart: (context: ComponentRunContext) => void;
   onOpen: (run: ForgeRun) => void;
-  onProduct: (repositoryId: string, project: ProjectSnapshot) => void;
+  onProduct: (
+    repositoryId: string,
+    project: ProjectSnapshot,
+    source?: ReviewedSourceContext,
+  ) => void;
 }) {
   const [items, setItems] = useState<ProjectSnapshot[]>([]),
     [selected, setSelected] = useState(""),
@@ -188,6 +194,11 @@ export function Projects({
     [error, setError] = useState(""),
     [revision, setRevision] = useState(0),
     [loading, setLoading] = useState(false);
+  const [sourceView, setSourceView] = useState<{
+    projectId: string;
+    step: number;
+  } | null>(null);
+  const pageHeading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     if (!connected) return;
     const controller = new AbortController();
@@ -243,11 +254,36 @@ export function Projects({
     }
   }
   const current = overview?.id === id ? overview : null;
+  if (connected && !editing && current && sourceView?.projectId === current.id)
+    return (
+      <SourceAnalysis
+        key={`${current.id}/source`}
+        connection={connection}
+        project={current}
+        repositories={repositories}
+        initialStep={sourceView.step}
+        onRefresh={() => setRevision((value) => value + 1)}
+        onContinueProduct={(source) =>
+          onProduct(
+            current.definition.product_repository_id ||
+              current.definition.components[0].repository_id,
+            current,
+            source,
+          )
+        }
+        onClose={() => {
+          setSourceView(null);
+          requestAnimationFrame(() => pageHeading.current?.focus());
+        }}
+      />
+    );
   return (
     <section className="projects-page">
       <div className="page-heading">
         <div>
-          <h1>Product projects</h1>
+          <h1 ref={pageHeading} tabIndex={-1}>
+            Product projects
+          </h1>
           <p>
             Group source components into one logical product with explicit
             ownership, dependencies and a shared definition.
@@ -443,6 +479,10 @@ export function Projects({
                 key={current.id}
                 connection={connection}
                 project={current}
+                repositories={repositories}
+                onOpen={(step) =>
+                  setSourceView({ projectId: current.id, step })
+                }
               />
               <div className="project-components">
                 <ComponentCollection

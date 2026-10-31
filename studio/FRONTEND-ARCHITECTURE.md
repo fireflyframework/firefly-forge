@@ -34,6 +34,16 @@ Compact layouts return the product document to the main page flow and use the ex
 
 Step instructions and required inputs remain visible. Redundant explanations are consolidated in source for each step rather than hidden through generic CSS.
 
+## Source inspection
+
+`Projects` controls the source workspace through a project-scoped view state. Its overview keeps a short AS-IS summary; opening inspection renders a dedicated page with project context, Back to project and the shared rail Wizard. The complete page uses the main scrollbar. Scope, Report, Source findings and Review describe visited navigation rather than claiming completed validation.
+
+`SourceComponentSelector` owns the search/filter presentation and a visual page of 25 rows. `SourceAnalysis` retains its filter and selection draft between steps. Select matching and Clear matching apply to every filtered result across pages; other selections remain intact and there is no selection-count cap. Repository names use the existing safe label map. Filtering, paging and bulk selection issue no inspection request.
+
+The controller sends explicit nonempty component IDs with the displayed project revision and digest. Added components stay unselected and removed IDs leave the payload. A changed selected root or source contract holds inspection for explicit review; obsolete type/repository filters clear without resetting the query or valid selections. Failed inspections retain the draft and action error independently of report polling. Server admission independently checks both snapshot guards before effects.
+
+Only an actual reviewed report from the current project snapshot can continue to product definition. Its report ID, digest and recorded component IDs become context for a new draft; that navigation creates no conversation, sends no message and starts no model. Historical conversation snapshots remain separate from new draft context.
+
 ## Dialog layout contracts
 
 A bounded native dialog reserves heading and action space and scrolls its named field region. The region stays keyboard focusable without measuring its contents. It occupies a single grid track: no scroll-status band, reserved notice row or scroll-state observers. Short-height rules preserve this contract; they cannot turn its fields into unbounded page content. This is distinct from scrolling a whole product document or a Connections page.

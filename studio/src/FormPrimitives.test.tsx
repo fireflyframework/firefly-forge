@@ -1,7 +1,19 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { renderToStaticMarkup } from "react-dom/server";
 import { expect, it } from "vitest";
-import { FormField, ScrollRegion, StepIndicator } from "./FormPrimitives";
+import {
+  FormField,
+  ProgressHeader,
+  ScrollRegion,
+  StepIndicator,
+} from "./FormPrimitives";
+it("omits an absent optional step description without leaving an empty paragraph", () => {
+  const html = renderToStaticMarkup(
+    <ProgressHeader title="Choose source roots" description="" />,
+  );
+  expect(html).toContain("Choose source roots");
+  expect(html).not.toContain("<p");
+});
 it("preserves the native input and binds its label and combined hint", () => {
   const html = renderToStaticMarkup(
     <FormField id="endpoint" label="Endpoint" hint="Use the configured API.">
