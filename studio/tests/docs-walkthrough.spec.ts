@@ -1363,6 +1363,19 @@ for (const device of ["desktop", "mobile"])
       await expect(
         page.getByLabel("Existing source identifier", { exact: true }),
       ).toHaveValue(source);
+      const sourceDialog = page.getByRole("dialog", {
+        name: "Verify existing source",
+        exact: true,
+      });
+      await expect(sourceDialog.locator(".wizard")).toHaveAttribute(
+        "data-layout",
+        "flow",
+      );
+      await expect(sourceDialog).toHaveCSS("overflow-y", "auto");
+      await expect(sourceDialog.locator(".wizard-field-scroll")).toHaveCSS(
+        "overflow-y",
+        "visible",
+      );
       const assertDialogHeading = async () => {
         await expect
           .poll(() =>
@@ -1382,6 +1395,9 @@ for (const device of ["desktop", "mobile"])
           .toBe(true);
       };
       await capture(page, "learning-observation-source", theme, device);
+      await page.screenshot({
+        path: test.info().outputPath("existing-source-flow.png"),
+      });
       await assertDialogHeading();
       await page
         .getByRole("button", { name: "Review source", exact: true })

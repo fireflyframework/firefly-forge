@@ -26,6 +26,13 @@ it("renders page fields and actions in natural flow", () => {
   expect(html).toContain("Continue");
 });
 
+it("allows a viewport container to reserve a field region before layout effects", () => {
+  const html = renderToStaticMarkup(<Wizard {...props} layout="bounded" />);
+  expect(html).toContain('data-layout="bounded"');
+  expect(html).toContain('aria-label="Configure connection fields"');
+  expect(html).toContain("form-scroll-status");
+});
+
 it("keeps ordinary full-page fields in natural flow without a measured frame height", () => {
   const html = renderToStaticMarkup(<Wizard {...props} />);
   expect(html).toContain('data-layout="flow"');

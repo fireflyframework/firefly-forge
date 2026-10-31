@@ -4,17 +4,17 @@ Studio preserves Firefly's Manrope typography, semantic theme variables and nati
 
 ## Responsibilities
 
-| Layer | Implementation | Responsibility |
-| --- | --- | --- |
-| Tokens | `FormFoundation.css` and existing theme variables | Share spacing, color, typography and state contrast. |
-| Atom | `StepIndicator` | Keep the ordinal in every state. A separate check indicates validated completion; a visited step does not claim validation. |
-| Molecule | `FormField` | Associate native controls, labels and hints while preserving input types, existing descriptions and browser behavior. |
-| Molecule | `ProgressHeader` | Compose a step title, visible description and contextual action. |
-| Molecule | `ScrollRegion` | Leave page fields in natural flow. Only bounded dialogs receive a named, keyboard reachable field viewport and remaining-content cue. |
-| Layout | `.form-stack`, `.form-grid`, `.form-divider` | Compose groups, responsive columns and action separators with shared spacing. |
-| Composite | `Wizard` and `Wizard.css` | Compose progress, heading, fields and actions. Its explicit rail variant provides settings navigation; its ordinary variant serves product documents and existing workflows. |
-| Workspace | `ProductWorkspace` | Allocate the product document and independent chat panel without measuring their height in JavaScript. |
-| Conversation | `ProductAssistant` and `ProductAssistant.css` | Own conversation state, history, transcript, attachments and composer. Product authority and native request contracts remain separate. |
+| Layer        | Implementation                                    | Responsibility                                                                                                                                                               |
+| ------------ | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tokens       | `FormFoundation.css` and existing theme variables | Share spacing, color, typography and state contrast.                                                                                                                         |
+| Atom         | `StepIndicator`                                   | Keep the ordinal in every state. A separate check indicates validated completion; a visited step does not claim validation.                                                  |
+| Molecule     | `FormField`                                       | Associate native controls, labels and hints while preserving input types, existing descriptions and browser behavior.                                                        |
+| Molecule     | `ProgressHeader`                                  | Compose a step title, visible description and contextual action.                                                                                                             |
+| Molecule     | `ScrollRegion`                                    | Leave page fields in natural flow. Only bounded dialogs receive a named, keyboard reachable field viewport and remaining-content cue.                                        |
+| Layout       | `.form-stack`, `.form-grid`, `.form-divider`      | Compose groups, responsive columns and action separators with shared spacing.                                                                                                |
+| Composite    | `Wizard` and `Wizard.css`                         | Compose progress, heading, fields and actions. Its explicit rail variant provides settings navigation; its ordinary variant serves product documents and existing workflows. |
+| Workspace    | `ProductWorkspace`                                | Allocate the product document and independent chat panel without measuring their height in JavaScript.                                                                       |
+| Conversation | `ProductAssistant` and `ProductAssistant.css`     | Own conversation state, history, transcript, attachments and composer. Product authority and native request contracts remain separate.                                       |
 
 ## Connections
 
@@ -34,9 +34,11 @@ Compact layouts return the product document to the main page flow and use the ex
 
 Step instructions and required inputs remain visible. Redundant explanations are consolidated in source for each step rather than hidden through generic CSS.
 
-## Bounded dialogs
+## Dialog layout contracts
 
 A bounded native dialog reserves heading and action space and scrolls its named field region. That region becomes keyboard focusable when it overflows. Short-height rules preserve this contract; they cannot turn its fields into unbounded page content. This is distinct from scrolling a whole product document or a Connections page.
+
+Choose `Wizard layout="flow"` for an auto-height dialog: fields and actions grow naturally, and the dialog owns the complete scroll. Do not combine an intrinsic-height container with a bounded field grid. Viewport-sized dialogs use `layout="bounded"` (also the default inside a dialog), with a defined container height and a content region that fills the available space. Provider allowance and SCM consent retain their existing whole-dialog flow rather than acquiring a second field scrollbar.
 
 ## Verification
 

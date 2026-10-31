@@ -30,6 +30,7 @@ export function Wizard({
   headingAction,
   variant = "steps",
   stepDescriptions,
+  layout,
 }: {
   steps: string[];
   active: number;
@@ -44,13 +45,16 @@ export function Wizard({
   headingAction?: ReactNode;
   variant?: "steps" | "rail";
   stepDescriptions?: string[];
+  layout?: "flow" | "bounded";
 }) {
   const stepSelect = useId();
   const frame = useRef<HTMLElement>(null);
-  const [bounded, setBounded] = useState(false);
+  const [bounded, setBounded] = useState(layout === "bounded");
   useLayoutEffect(() => {
-    setBounded(!!frame.current?.closest("dialog"));
-  }, []);
+    setBounded(
+      layout ? layout === "bounded" : !!frame.current?.closest("dialog"),
+    );
+  }, [layout]);
   const body = (node: ReactNode): ReactNode =>
     Children.map(node, (child) => {
       if (!isValidElement(child)) return child;
@@ -123,12 +127,14 @@ export function Wizard({
         });
       if (!bounded) {
         const element = frame.current;
+        const dialog = element?.closest("dialog");
         const document = element?.closest<HTMLElement>(".product-document");
         const owner =
-          document && /auto|scroll/.test(getComputedStyle(document).overflowY)
+          dialog ??
+          (document && /auto|scroll/.test(getComputedStyle(document).overflowY)
             ? document
-            : element?.closest("main");
-        if (owner && variant === "rail") owner.scrollTop = 0;
+            : element?.closest("main"));
+        if (owner && (dialog || variant === "rail")) owner.scrollTop = 0;
         else if (owner && element)
           owner.scrollTop +=
             element.getBoundingClientRect().top -

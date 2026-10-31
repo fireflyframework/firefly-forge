@@ -403,6 +403,7 @@ export function RunnerContinuation({
             </button>
           </div>
           <Wizard
+            layout="flow"
             steps={["Original command", "Review"]}
             active={step}
             onStep={(value) => {

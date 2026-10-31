@@ -860,6 +860,7 @@ export function ScmDelegation({
             </button>
           </div>
           <Wizard
+            layout="flow"
             steps={["Account", "Scope", "Review"]}
             active={step}
             onStep={(value) => {

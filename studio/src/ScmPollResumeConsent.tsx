@@ -660,6 +660,7 @@ export function ScmPollResumeConsent({
             </button>
           </div>
           <Wizard
+            layout="flow"
             steps={["Mapping", "Scope", "Review"]}
             active={step}
             onStep={(value) => {

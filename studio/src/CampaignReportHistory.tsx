@@ -583,6 +583,7 @@ export function CampaignReportHistory({
             </button>
           </div>
           <Wizard
+            layout="flow"
             steps={["Report", "Review"]}
             active={step}
             onStep={(value) => {

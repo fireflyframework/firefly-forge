@@ -962,9 +962,6 @@
     padding: 8px 10px;
   }
 }
-.wizard-frame .wizard-content {
-  height: 100%;
-}
 @media (max-width: 600px) {
   .product-definition > .page-heading,
   .collaboration-page > .page-heading {

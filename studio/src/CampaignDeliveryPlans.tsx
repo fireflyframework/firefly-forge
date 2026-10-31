@@ -769,6 +769,7 @@ export function CampaignDeliveryPlans({
             </button>
           </div>
           <Wizard
+            layout="flow"
             steps={["Waves", "Milestones", "Review"]}
             active={step}
             onStep={(value) => {
