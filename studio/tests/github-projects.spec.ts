@@ -1,5 +1,6 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { expect, test, type Page } from "@playwright/test";
+import { writeFile } from "node:fs/promises";
 import { mockIdentity } from "./auth-fixture";
 import { navigate } from "./navigation";
 const projectId = "a".repeat(32),
@@ -278,7 +279,7 @@ test("verified account and private discovery precede explicit state mapping", as
     await page.getByLabel(name, { exact: true }).selectOption("REVIEW");
   await page
     .getByLabel(
-      "I authorize Forge to manage this field on verified issue and pull request cards.",
+      "Allow forge to update only this field for linked issues and pull requests.",
     )
     .check();
   for (const theme of ["light", "dark"]) {
@@ -332,14 +333,51 @@ test("verified account and private discovery precede explicit state mapping", as
             actions: actions.bottom <= r.bottom,
             overflow: field.scrollWidth > field.clientWidth,
             close: close.top >= r.top && close.bottom <= r.bottom,
+            fields:
+              innerWidth > 600 || field.clientHeight >= innerHeight * 0.45,
+            compactLayout:
+              innerWidth > 600 ||
+              (r.width >= innerWidth - 1 &&
+                (innerHeight > 600 || r.height >= innerHeight - 1)),
           };
         });
+      await writeFile(
+        info.outputPath(`board-geometry-${width}-${theme}.json`),
+        JSON.stringify(
+          await dialog.evaluate((node) => {
+            const field = node.querySelector(".wizard-field-scroll")!,
+              actions = node
+                .querySelector(".wizard-actions")!
+                .getBoundingClientRect();
+            return {
+              viewport: { width: innerWidth, height: innerHeight },
+              style: {
+                height: getComputedStyle(node).height,
+                maxHeight: getComputedStyle(node).maxHeight,
+                margin: getComputedStyle(node).margin,
+                position: getComputedStyle(node).position,
+                inset: getComputedStyle(node).inset,
+                boxSizing: getComputedStyle(node).boxSizing,
+                flex: getComputedStyle(node).flex,
+                visualHeight: visualViewport?.height,
+              },
+              dialog: node.getBoundingClientRect().toJSON(),
+              fields: { client: field.clientHeight, full: field.scrollHeight },
+              actions: { top: actions.top, bottom: actions.bottom },
+            };
+          }),
+          null,
+          2,
+        ),
+      );
       expect(geometry).toEqual({
         width: true,
         height: true,
         actions: true,
         overflow: false,
         close: true,
+        fields: true,
+        compactLayout: true,
       });
       const fields = dialog.locator(".wizard-field-scroll");
       if (width === 320) {
@@ -349,7 +387,7 @@ test("verified account and private discovery precede explicit state mapping", as
           .poll(() => fields.evaluate((node) => node.scrollTop))
           .toBeGreaterThan(0);
         const consent = page.getByLabel(
-          "I authorize Forge to manage this field on verified issue and pull request cards.",
+          "Allow forge to update only this field for linked issues and pull requests.",
         );
         await consent.focus();
         await expect(consent).toBeFocused();

@@ -62,6 +62,9 @@ export function GitHubProjectsWizard({
   error: string;
 }) {
   const field = discovery?.fields.find((item) => item.id === draft.field);
+  const chosen = boardStates.filter((state) =>
+    field?.options.some((option) => option.id === draft.options[state]),
+  ).length;
   const complete =
     !!field &&
     boardStates.every((state) =>
@@ -76,6 +79,7 @@ export function GitHubProjectsWizard({
     !creationHeld;
   return (
     <Wizard
+      className={step === 2 ? "board-status-wizard" : ""}
       steps={["Account", "Private board", "Board statuses"]}
       active={step}
       onStep={onStep}
@@ -84,30 +88,25 @@ export function GitHubProjectsWizard({
         [
           "Verify your GitHub account",
           "Choose a private board",
-          "Match factory progress to your board",
+          "Map board statuses",
         ][step]
       }
       description={
         [
           "Use a separately consented connection for this project. Repository GitHub App permissions stay separate.",
           "Check a private board you can update, or explicitly create a private personal board.",
-          "Completed work still needs product review.",
+          "",
         ][step]
       }
       headingAction={
         step === 2 ? (
-          <div className="board-status-progress" role="status">
-            <strong>
-              {
-                boardStates.filter((state) =>
-                  field?.options.some(
-                    (option) => option.id === draft.options[state],
-                  ),
-                ).length
-              }{" "}
-              of 8 statuses chosen
-            </strong>
-          </div>
+          <span
+            className="board-status-progress"
+            role="status"
+            aria-label={`${chosen} of 8 statuses chosen`}
+          >
+            {chosen}/8
+          </span>
         ) : undefined
       }
     >
@@ -365,7 +364,7 @@ export function GitHubProjectsWizard({
           )}
           {step === 2 && discovery && account && (
             <>
-              <p>
+              <p className="board-destination">
                 <strong>{discovery.board.title}</strong> ·{" "}
                 {account.repository.name_with_owner} · private
               </p>
@@ -399,6 +398,11 @@ export function GitHubProjectsWizard({
                     </label>
                     <select
                       id={`board-state-${state}`}
+                      aria-describedby={
+                        state === "succeeded"
+                          ? "board-completed-review"
+                          : undefined
+                      }
                       value={draft.options[state] ?? ""}
                       disabled={!field}
                       onChange={(event) =>
@@ -419,13 +423,17 @@ export function GitHubProjectsWizard({
                         </option>
                       ))}
                     </select>
+                    {state === "succeeded" && (
+                      <small id="board-completed-review">
+                        Completed work still needs product review. Choose In
+                        review or your board’s equivalent.
+                      </small>
+                    )}
                   </div>
                 ))}
               </div>
               <p className="subtle">
-                Completed work still needs product review. Choose an option that
-                keeps completed work available for review. Human field changes
-                are held as conflicts.
+                Human field changes are held as conflicts.
               </p>
               <label className="board-check">
                 <input
@@ -463,8 +471,8 @@ export function GitHubProjectsWizard({
                     onDraft({ ...draft, manageAck: event.target.checked })
                   }
                 />
-                I authorize Forge to manage this field on verified issue and
-                pull request cards.
+                Allow forge to update only this field for linked issues and pull
+                requests.
               </label>
             </>
           )}

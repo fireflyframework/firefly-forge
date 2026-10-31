@@ -58,7 +58,10 @@ it("names board statuses plainly and keeps all eight choices and consent explici
     <GitHubProjectsWizard {...props} draft={draft} />,
   );
   expect(initial).toContain("Board statuses");
-  expect(initial).toContain("Match factory progress to your board");
+  expect(initial).toContain("Map board statuses");
+  expect(initial).toContain(
+    "Allow forge to update only this field for linked issues and pull requests.",
+  );
   expect(initial).toContain("0 of 8 statuses chosen");
   expect(initial).not.toContain(
     "Scroll for all choices and final confirmation.",
