@@ -18,7 +18,7 @@ from pyfly.container import service
 from firefly_forge.connection_oauth import ConnectionOAuth, Data
 from firefly_forge.identity import Principal
 from firefly_forge.journal import digest
-from firefly_forge.project_access import ProjectAccess
+from firefly_forge.project_access import AccessDenied, ProjectAccess
 from firefly_forge.project_persistence import ForgeProjectEntity
 
 
@@ -120,6 +120,7 @@ class OAuthResources:
         run_id: str | None = None,
         actor: Principal | None = None,
         repository_id: str | None = None,
+        inspect_only: bool = False,
     ) -> _ResourceCredential:
         binding = self._checked(binding)
         async with self.connections._locked(binding["connection_name"]) as session:
@@ -147,12 +148,15 @@ class OAuthResources:
             ):
                 raise ValueError("OAuth resource requires an authorized grant without unresolved effects")
             grant = await self.connections._grant(session, row)
+            from firefly_forge.github_projects_oauth import nonexpiring_policy
+
             if (
                 grant is None
                 or grant.family != binding["grant_family"]
                 or grant.revision < binding["minimum_grant_revision"]
                 or grant.actor_id != UUID(binding["owner_actor"]["user_id"])
-                or grant.expires_at <= await self.connections._time(session)
+                or (grant.expires_at is None and not nonexpiring_policy(policy))
+                or (grant.expires_at is not None and grant.expires_at <= await self.connections._time(session))
                 or grant.data["issuer"] != binding["issuer"]
                 or grant.data["resource"] != binding["resource"]
                 or set(grant.data["scopes"]) != set(binding["scopes"])
@@ -162,7 +166,7 @@ class OAuthResources:
             if actor is not None:
                 if actor.id != grant.actor_id:
                     raise ValueError("The current grant owner must authorize resource discovery")
-            else:
+            elif not inspect_only:
                 if not run_id or not re.fullmatch(r"[a-f0-9]{32}", run_id):
                     raise ValueError("OAuth resource dispatch requires an exact recorded run")
                 run = await self.store.get_run(run_id)
@@ -201,6 +205,14 @@ class OAuthResources:
     async def authorize(self, binding: Data, *, run_id: str, repository_id: str) -> None:
         """Recheck current native resource authority without dispatch or a new observation."""
         await self._admission(binding, run_id=run_id, repository_id=repository_id)
+
+    async def ready(self, binding: Data) -> bool:
+        """Observe retained grant readiness without claiming permission to dispatch."""
+        try:
+            await self._admission(binding, inspect_only=True)
+            return True
+        except (ValueError, KeyError, AccessDenied):
+            return False
 
     def transport(
         self,

@@ -943,10 +943,10 @@ missing receipt never authorizes a replacement request or a model call.
 
 ### Remaining GitHub journey boundaries
 
-Internal campaign milestones and progress are not GitHub Projects. The current
-product has no GitHub ProjectsV2 board/card/status-field adapter or remote
-milestone synchronization. Those require a separate scoped adapter and operator
-permission; this feature requests no new GitHub privilege or authentication flow.
+Internal campaign milestones retain their own native history. The separate
+[GitHub Projects adapter](github-projects.md) connects a private board through
+project-scoped user OAuth consent and synchronizes verified issue/PR progress.
+It does not synchronize remote milestones or expand the repository App grant.
 Intermediate code pushes are also separate from verified final publication.
 
 The typed polling `resume` command remains ordinary same-run continuation. It

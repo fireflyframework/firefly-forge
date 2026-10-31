@@ -1,0 +1,9 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/discover_github_projects
+version: 1.0.0
+description: Authenticated factory MCP tool description.
+system_template: ''
+user_template: "Discover one explicitly authorized personal or organization GitHub ProjectsV2 board, exact original repository identity and bounded single-select option IDs. Uses saved OAuth custody; never supply a provider token."
+required_variables: []
+metadata:
+  defaults: {}

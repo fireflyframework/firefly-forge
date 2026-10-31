@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 import { navigate, expectAuthenticated } from "./navigation";
 import { mockIdentity } from "./auth-fixture";
 import { expectProgressFits } from "./wizard-progress";
+import { mockFactoryDashboard } from "./factory-dashboard-fixture";
 
 const repository = {
   id: "project-1",
@@ -212,6 +213,21 @@ test("paused production stops and explicit handoff retains the run identifier an
   };
   let handoff: unknown;
   await page.route("**/api/v1/**", async (route) => {
+    if (
+      await mockFactoryDashboard(route, {
+        projects: [],
+        runs: [run],
+        plans: {
+          [run.id]: {
+            tasks: [
+              { id: "prepare", status: "done" },
+              { id: "implement", status: "paused" },
+            ],
+          },
+        },
+      })
+    )
+      return;
     if (await mockIdentity(route)) return;
     const path = new URL(route.request().url()).pathname;
     let body: unknown = run;
@@ -250,10 +266,15 @@ test("paused production stops and explicit handoff retains the run identifier an
   });
   await connect(page);
   await page.getByRole("button", { name: "Factory", exact: true }).click();
+  await page
+    .locator(".factory-run-record")
+    .filter({ hasText: run.brief })
+    .getByRole("button", { name: "Focus run", exact: true })
+    .click();
   await expect(
-    page.getByRole("button", { name: "Develop paused" }),
+    page.getByRole("button", { name: /^Develop paused/ }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Inspect run" }).click();
+  await page.getByRole("button", { name: "Open this run" }).click();
   await page.getByRole("tab", { name: "Plan", exact: true }).click();
   await expect(
     page.getByText("Chain verified by server", { exact: true }),

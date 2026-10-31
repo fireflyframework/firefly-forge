@@ -1,0 +1,9 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/observe_github_projects
+version: 1.0.0
+description: Authenticated factory MCP tool description.
+system_template: ''
+user_template: "Read the exact unknown board outcome using current authorized OAuth custody and retain local observation evidence. Never mutates GitHub, attributes an observed match to an unknown effect, clears uncertainty or authorizes replay."
+required_variables: []
+metadata:
+  defaults: {}
