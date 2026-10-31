@@ -180,7 +180,7 @@ test("an attachment action creates only its own session and retains selected fil
   expect(fixture.state.created).toBe(1);
 });
 
-test("unmount during session creation never posts a late turn", async ({
+test("unmount during session creation keeps a hold until explicit readback and never posts a late turn", async ({
   page,
 }) => {
   const fixture = assistantChatFixture(repository, "empty");
@@ -197,6 +197,21 @@ test("unmount during session creation never posts a late turn", async ({
   await navigate(page, "Connections");
   release();
   await navigate(page, "Product definition");
+  await expect(page.locator(".integration-status")).toContainText(
+    "new conversation could not be confirmed",
+  );
+  await expect(
+    page.getByLabel("Product design message", { exact: true }),
+  ).toBeDisabled();
+  await page
+    .getByRole("button", { name: "Conversation history", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Refresh record", exact: true })
+    .click();
+  await page
+    .getByLabel("Recorded conversation", { exact: true })
+    .selectOption(fixture.conversation);
   await expect(page.locator(".assistant-conversation-context")).toContainText(
     "Product definition",
   );
