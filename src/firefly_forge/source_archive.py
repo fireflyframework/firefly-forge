@@ -25,6 +25,7 @@ from firefly_forge.runner_object_artifacts import (
 )
 from firefly_forge.runner_pool_models import FactoryFence, pool_digest
 from firefly_forge.secrets import KnownCredentialScan, credential_values
+from firefly_forge.source_archive_scan_models import SourceCredentialScanReceiptV1
 from firefly_forge.source_catalog import (
     SourceCatalogEntryV1,
     _assert_record,
@@ -195,6 +196,47 @@ class SourceArchiveContent:
             "credential_fingerprint": self.credential_fingerprint(),
         }
 
+    def _descriptor(self, identity: dict[str, Any], descriptor: dict[str, Any]) -> None:
+        if (
+            descriptor
+            != {
+                "identity_sha256": pool_digest(identity),
+                "receipt": identity["receipt"],
+                "credential_fingerprint": descriptor.get("credential_fingerprint"),
+            }
+            or re.fullmatch(r"[a-f0-9]{64}", str(descriptor.get("credential_fingerprint"))) is None
+        ):
+            raise ValueError("Source content differs from its catalog or immutable object binding")
+
+    async def scan(
+        self,
+        binding: dict[str, Any],
+        entry: SourceCatalogEntryV1,
+        descriptor: dict[str, Any],
+        *,
+        authorize: Authorize,
+    ) -> str:
+        identity = self.identity(binding, entry)
+        self._descriptor(identity, descriptor)
+        authorize = self.helper._current(authorize)
+        await authorize()
+        manifest = await self.helper._manifest(identity, await self.helper.ledger.load(identity))
+        scanner = KnownCredentialScan(credential_values(self.helper.credential_registry()))
+        decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+        digest, size = hashlib.sha256(), 0
+        async for data in self.helper._data(identity, manifest, authorize):
+            await authorize()
+            digest.update(data)
+            size += len(data)
+            if scanner.feed(decoder.decode(data)):
+                raise ValueError("Retained source contains configured credentials")
+        if scanner.feed(decoder.decode(b"", final=True)) or scanner.feed(None):
+            raise ValueError("Retained source contains configured credentials")
+        if size != entry.byte_count or digest.hexdigest() != entry.sha256:
+            raise ValueError("Retained source differs from its immutable catalog content")
+        await authorize()
+        return pool_digest(identity)
+
     async def window(
         self,
         binding: dict[str, Any],
@@ -204,18 +246,24 @@ class SourceArchiveContent:
         limit: int,
         *,
         authorize: Authorize,
+        scan: SourceCredentialScanReceiptV1 | None = None,
     ) -> bytes:
         if type(offset) is not int or offset < 0 or type(limit) is not int or not 1 <= limit <= 1048576:
             raise ValueError("Source content requires a bounded nonnegative byte window")
         identity = self.identity(binding, entry)
-        if descriptor.get("credential_fingerprint") != self.credential_fingerprint():
-            raise ValueError("Configured credentials changed; a fresh source publication is required")
-        if descriptor != {
-            "identity_sha256": pool_digest(identity),
-            "receipt": identity["receipt"],
-            "credential_fingerprint": self.credential_fingerprint(),
-        }:
-            raise ValueError("Source content differs from its catalog or immutable object binding")
+        self._descriptor(identity, descriptor)
+        fingerprint = self.credential_fingerprint()
+        if descriptor["credential_fingerprint"] != fingerprint and (
+            scan is None
+            or scan.snapshot_id != binding["snapshot_id"]
+            or scan.project_id != binding["project_id"]
+            or scan.tenant_id != self.helper.tenant_id.hex
+            or scan.source_digest != binding["source_digest"]
+            or scan.storage_binding != identity["storage_binding"]
+            or scan.credential_fingerprint != fingerprint
+        ):
+            raise ValueError("Configured credentials changed; an explicit retained-byte credential scan is required")
+
         if offset > entry.byte_count:
             raise ValueError("Source window is outside the recorded file")
         authorize = self.helper._current(authorize)

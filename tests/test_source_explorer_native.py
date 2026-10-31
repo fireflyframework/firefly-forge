@@ -156,3 +156,90 @@ async def test_native_lost_source_write_is_retained_unavailable_after_restart_wi
         with pytest.raises(RuntimeError, match="reconciliation"):
             await reopened.publish(run, workspace, "a" * 40, "b" * 40, assert_current=current)
         assert writes == 1
+
+
+async def test_native_retained_credential_scan_owner_cold_readback_and_no_workspace_replay(
+    store, tmp_path, monkeypatch
+):
+    from test_identity import request as identity_request
+
+    async with nonadministrator(store, tmp_path) as c:
+        identity, issue, credential, actor, access, repositories, projects, _ = c
+        keeper = await identity.authenticate(
+            identity_request(bearer="Bearer " + issue("forge-api", roles=["forge-worker"], sub="source-scan-keeper"))
+        )
+        assert keeper is not None and keeper.id != actor.id
+        await access.set_membership(projects[0]["id"], keeper, "owner")
+        manager, workspace, run = await native(store, tmp_path, monkeypatch, actor, repositories[0], projects[0])
+        await store.release_ownership()
+        for key, value in {
+            "FORGE_AUTH_MODE": "oidc",
+            "FORGE_API_TOKEN": "",
+            "FORGE_OIDC_ISSUER": identity.config.issuer,
+            "FORGE_OIDC_CLIENT_ID": identity.config.client_id,
+            "FORGE_OIDC_CLIENT_SECRET": identity.config.client_secret.get_secret_value(),
+            "FORGE_OIDC_API_AUDIENCE": identity.config.api_audience,
+            "FORGE_OIDC_REDIRECT_URI": identity.config.redirect_uri,
+            "FORGE_IDENTITY_ENCRYPTION_KEY": identity.config.encryption_key.get_secret_value(),
+        }.items():
+            monkeypatch.setenv(key, value)
+
+        async def current():
+            await store.assert_ownership()
+
+        boot = create_application(store.path.parent, role="api")
+        async with boot.router.lifespan_context(boot):
+            store.credential_registry = boot.state.store.credential_registry
+            await store.acquire_ownership()
+            ref = await manager.publish(run, workspace, "a" * 40, "b" * 40, assert_current=current)
+            await store.release_ownership()
+        for path in workspace.iterdir():
+            path.unlink()
+        workspace.rmdir()
+        monkeypatch.setenv("FORGE_RESCAN_PRIVATE_TOKEN", "controlled-rotated-source-token-88734917")
+        prefix = f"/api/v1/runs/{run['id']}/source/revisions/{ref.snapshot_id}"
+        params = {"expected_manifest": ref.catalog.manifest_sha256}
+        request_id, receipt = uuid4().hex, None
+        for cold in (False, True):
+            app = create_application(store.path.parent, role="api")
+            async with app.router.lifespan_context(app):
+                native_identity = app.state.runtime.context.get_bean(IdentityService)
+                await native_identity.client.aclose()
+                native_identity.client = identity.client
+                async with httpx.AsyncClient(
+                    transport=httpx.ASGITransport(app),
+                    base_url="https://testserver",
+                    headers={"Authorization": "Bearer " + credential},
+                ) as client:
+                    if not cold:
+                        assert (await client.get(prefix + "/files/0", params=params)).status_code == 409
+                        assert (
+                            await client.get(prefix + "/credential-scan-candidate", params=params)
+                        ).status_code == 403
+                        await access.set_membership(projects[0]["id"], actor, "owner")
+                        candidate = await client.get(prefix + "/credential-scan-candidate", params=params)
+                        assert candidate.status_code == 200
+                        body = {
+                            "version": 1,
+                            "expected_manifest": ref.catalog.manifest_sha256,
+                            "expected_credential_fingerprint": candidate.json()["expected_credential_fingerprint"],
+                            "acknowledge_retained_bytes_only": True,
+                            "acknowledge_no_source_change": True,
+                        }
+                        response = await client.post(prefix + "/credential-scans/" + request_id, json=body)
+                        assert response.status_code == 200, response.text
+                        receipt = response.json()
+                        assert receipt["no_execution_grant"] and receipt["source_digest"] == ref.catalog.source_digest
+                    observed = await client.get(prefix + "/credential-scans/" + request_id, params=params)
+                    assert observed.status_code == 200 and observed.json()["receipt"] == receipt
+                    result = await client.get(prefix + "/files/0", params=params)
+                    assert result.status_code == 200 and result.json()["text"] == 'print("native archived source")\n'
+                    if cold:
+                        assert result.json()["reference"] == ref.model_dump(mode="json")
+                        await access.set_membership(projects[0]["id"], actor, None)
+                        assert (await client.get(prefix + "/files/0", params=params)).status_code == 403
+                        assert (
+                            await client.get(prefix + "/credential-scans/" + request_id, params=params)
+                        ).status_code == 403
+        async with store._unit() as session:
+            assert await session.scalar(text("SELECT count(*) FROM forge_execution_requests")) == 0

@@ -62,6 +62,11 @@ if TYPE_CHECKING:
     from firefly_forge.scm_product_intake_models import SCMProductIntakeConsentInputV1
     from firefly_forge.scm_resume_models import SCMResumeGrantInputV2
     from firefly_forge.scm_source_edit_models import SCMSourceEditGrantInputV1
+    from firefly_forge.source_archive_scan_models import (
+        SourceCredentialScanInputV1,
+        SourceCredentialScanReceiptV1,
+        SourceCredentialScanViewV1,
+    )
     from firefly_forge.source_budget_allowances import (
         SourceBudgetAllowanceInput,
         SourceBudgetPolicy,
@@ -1418,6 +1423,79 @@ class ForgeClient:
         ):
             raise ValueError("The returned diff content differs from the requested verified window")
         return result
+
+    def run_source_scan_candidate(self, run_id: str, snapshot_id: str, expected_manifest: str) -> dict[str, Any]:
+        path = self._source_path(run_id, snapshot_id, expected_manifest)
+        value = self.request(
+            "GET", path + "/credential-scan-candidate", params={"expected_manifest": expected_manifest}
+        )
+        if (
+            not isinstance(value, dict)
+            or set(value)
+            != {"version", "run_id", "snapshot_id", "expected_manifest", "expected_credential_fingerprint"}
+            or type(value["version"]) is not int
+            or value["version"] != 1
+            or value["run_id"] != run_id
+            or value["snapshot_id"] != snapshot_id
+            or value["expected_manifest"] != expected_manifest
+            or not isinstance(value["expected_credential_fingerprint"], str)
+            or re.fullmatch(r"[a-f0-9]{64}", value["expected_credential_fingerprint"]) is None
+        ):
+            raise ValueError("Credential scan candidate differs from its authorized snapshot")
+        return dict(value)
+
+    def run_source_rescan(
+        self,
+        run_id: str,
+        snapshot_id: str,
+        request_id: str,
+        body: SourceCredentialScanInputV1,
+    ) -> SourceCredentialScanReceiptV1:
+        from firefly_forge.runner_pool_models import pool_digest
+        from firefly_forge.source_archive_scan_models import SourceCredentialScanInputV1, SourceCredentialScanReceiptV1
+
+        body = SourceCredentialScanInputV1.model_validate(body)
+        request_id = self._id(request_id)
+        path = self._source_path(run_id, snapshot_id, body.expected_manifest)
+        value = self.request("POST", path + "/credential-scans/" + request_id, json=body.model_dump(mode="json"))
+        receipt = SourceCredentialScanReceiptV1.model_validate(value)
+        if (
+            receipt.request_id != request_id
+            or receipt.snapshot_id != snapshot_id
+            or receipt.run_id != run_id
+            or receipt.request_sha256 != pool_digest(body.model_dump(mode="json"))
+            or receipt.credential_fingerprint != body.expected_credential_fingerprint
+        ):
+            raise ValueError("Credential scan response differs from the exact retained submission")
+        return receipt
+
+    def run_source_scan_receipt(
+        self,
+        run_id: str,
+        snapshot_id: str,
+        request_id: str,
+        expected_manifest: str,
+        *,
+        expected_request_sha256: str,
+    ) -> SourceCredentialScanViewV1:
+        from firefly_forge.source_archive_scan_models import SourceCredentialScanViewV1
+
+        if re.fullmatch(r"[a-f0-9]{64}", expected_request_sha256) is None:
+            raise ValueError("Keep the exact credential scan request digest before submission")
+        request_id = self._id(request_id)
+        path = self._source_path(run_id, snapshot_id, expected_manifest)
+        value = self.request(
+            "GET", path + "/credential-scans/" + request_id, params={"expected_manifest": expected_manifest}
+        )
+        view = SourceCredentialScanViewV1.model_validate(value)
+        if (
+            view.request_id != request_id
+            or view.snapshot_id != snapshot_id
+            or view.run_id != run_id
+            or view.request_sha256 != expected_request_sha256
+        ):
+            raise ValueError("Credential scan readback differs from the exact retained request")
+        return view
 
     def run_source_revisions(self, run_id: str, *, after: str | None = None) -> dict[str, Any]:
         from firefly_forge.source_archive_index import SourceArchiveRefV1

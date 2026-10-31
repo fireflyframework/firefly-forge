@@ -32,6 +32,7 @@ from firefly_forge.source_archive_index import (
     ForgeSourceArchivePageEntity,
     ForgeSourceArchivePageRepository,
     ForgeSourceArchiveRepository,
+    ForgeSourceArchiveScanEntity,
     SourceArchiveIndex,
     SourceArchiveRefV1,
 )
@@ -162,7 +163,7 @@ class SourceArchiveManager:
             connection = await session.connection()
             tables = [
                 ForgeSourceArchiveEntity.metadata.tables[entity.__tablename__]
-                for entity in (ForgeSourceArchiveEntity, ForgeSourceArchivePageEntity)
+                for entity in (ForgeSourceArchiveEntity, ForgeSourceArchivePageEntity, ForgeSourceArchiveScanEntity)
             ]
             await connection.run_sync(lambda sync: ForgeSourceArchiveEntity.metadata.create_all(sync, tables=tables))
         ledger = RunnerArtifactPublications(pools, ForgeRunnerArtifactRepository())
