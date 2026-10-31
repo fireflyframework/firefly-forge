@@ -402,6 +402,7 @@ def admission_contract_digest() -> str:
                 "product_provenance.py",
                 "engine_activity.py",
                 "engine_activity_persistence.py",
+                "consumed_terminal_reconciliations.py",
             )
         }
     )

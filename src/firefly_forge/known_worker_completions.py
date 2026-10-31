@@ -15,6 +15,7 @@ from firefly_forge.bridge_completions import BridgeCompletions, _outside_unit
 from firefly_forge.journal import Journal, digest
 from firefly_forge.known_worker_completion_models import (
     ConsumedTerminalInputV2,
+    ConsumedTerminalReconciliationInputV1,
     WorkerCompletionCandidateV1,
     WorkerCompletionInputV1,
 )
@@ -40,6 +41,7 @@ def policy_digest() -> str:
                 "known_worker_completion_models.py",
                 "known_worker_completion_proof.py",
                 "consumed_terminal_completions.py",
+                "consumed_terminal_reconciliations.py",
             )
         }
     )
@@ -341,3 +343,18 @@ class KnownWorkerCompletions:
                     raise AccessDenied("Known worker receipt or reader changed during admission")
                 self.store.reject_credentials(record)
             return copy.deepcopy(record)
+
+    async def reconciliation_candidate(self, run_id: str, request_id: str) -> Data:
+        from firefly_forge.consumed_terminal_reconciliations import candidate
+
+        return await candidate(self, run_id, request_id)
+
+    async def reconcile(self, run_id: str, request_id: str, request: ConsumedTerminalReconciliationInputV1) -> Data:
+        from firefly_forge.consumed_terminal_reconciliations import reconcile
+
+        return await reconcile(self, run_id, request_id, request)
+
+    async def reconciliation_status(self, run_id: str, request_id: str) -> Data:
+        from firefly_forge.consumed_terminal_reconciliations import readback
+
+        return await readback(self, run_id, request_id)

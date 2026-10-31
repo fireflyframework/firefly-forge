@@ -3057,6 +3057,30 @@
       "sha256": "7aeadc77bbc44835d7ad5d64abeb94a117c5d504afa461ba25a3c8a533525b46",
       "field": "user",
       "variables": {}
+    },
+    {
+      "id": "mcp/get_consumed_terminal_reconciliation_candidate",
+      "version": "1.0.0",
+      "path": "mcp/get_consumed_terminal_reconciliation_candidate.yaml",
+      "sha256": "0c9e284038bf0cfe48cfb46cfcf100231b5a9247424c5e4f9d1d309895de3dc4",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/reconcile_consumed_terminal",
+      "version": "1.0.0",
+      "path": "mcp/reconcile_consumed_terminal.yaml",
+      "sha256": "5cd6d8754cdb6c5d91683b76973e2c49a16d15e4e569c8dc4e3f842cf0729464",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_consumed_terminal_reconciliation_status",
+      "version": "1.0.0",
+      "path": "mcp/get_consumed_terminal_reconciliation_status.yaml",
+      "sha256": "ea8eee77dbbc6f9e246314aaae909382e69d507409da8b7ce4b597983043340c",
+      "field": "user",
+      "variables": {}
     }
   ]
 }

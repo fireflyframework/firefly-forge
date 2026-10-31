@@ -113,6 +113,48 @@ def consumed_terminal_status(run_id: str, request_id: str) -> None:
         display(connection.consumed_terminal_status(run_id, request_id))
 
 
+@consumed_terminal_completions.command("reconciliation-candidate")
+@click.argument("run_id")
+@click.argument("request_id")
+def consumed_terminal_reconciliation_candidate(run_id: str, request_id: str) -> None:
+    with client() as connection:
+        display(connection.consumed_terminal_reconciliation_candidate(run_id, request_id))
+
+
+@consumed_terminal_completions.command("reconciliation-status")
+@click.argument("run_id")
+@click.argument("request_id")
+def consumed_terminal_reconciliation_status(run_id: str, request_id: str) -> None:
+    with client() as connection:
+        display(connection.consumed_terminal_reconciliation_status(run_id, request_id))
+
+
+@consumed_terminal_completions.command("reconcile")
+@click.argument("run_id")
+@click.argument("request_id")
+@click.option("--candidate-digest", required=True)
+@click.option("--acknowledge-same-claimed-action", is_flag=True, required=True)
+@click.option("--acknowledge-no-execution-grant", is_flag=True, required=True)
+@click.option("--acknowledge-local-postprocessing", is_flag=True, required=True)
+def reconcile_consumed_terminal(
+    run_id: str,
+    request_id: str,
+    candidate_digest: str,
+    acknowledge_same_claimed_action: bool,
+    acknowledge_no_execution_grant: bool,
+    acknowledge_local_postprocessing: bool,
+) -> None:
+    request = dict(
+        version=1,
+        candidate_digest=candidate_digest,
+        acknowledge_same_claimed_action=acknowledge_same_claimed_action,
+        acknowledge_no_execution_grant=acknowledge_no_execution_grant,
+        acknowledge_local_postprocessing=acknowledge_local_postprocessing,
+    )
+    with client() as connection:
+        display(connection.reconcile_consumed_terminal(run_id, request_id, request))
+
+
 @main.group("final-outcome-continuations")
 def final_outcome_continuations() -> None:
     """Review a final result that was already consumed and keep its original request."""

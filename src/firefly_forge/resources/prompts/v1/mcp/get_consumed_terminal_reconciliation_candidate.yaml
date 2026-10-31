@@ -1,0 +1,11 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/get_consumed_terminal_reconciliation_candidate
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Read the hash-only current candidate for the same uncharged consumed-terminal
+  claim. It binds the current operator, qualified runtime, source, index, native task
+  and journal; it grants no execution.
+required_variables: []
+metadata:
+  defaults: {}
