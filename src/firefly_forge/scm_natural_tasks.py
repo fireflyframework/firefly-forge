@@ -34,6 +34,15 @@ def natural_policy_digest() -> str:
     hashes = {}
     for name in (
         "scm_natural_models.py",
+        "scm_linked_verification.py",
+        "scm_linked_verification_models.py",
+        "linked_verification_models.py",
+        "communication.py",
+        "communication_diagnostics.py",
+        "scm_linked_verification_records.py",
+        "resources/prompts/scm-natural-v1/system-1.0.4.yaml",
+        "resources/prompts/scm-natural-v1/verification-review.yaml",
+        "resources/prompts/scm-natural-v1/verification-communication.yaml",
         "scm_natural_product.py",
         "scm_poll_functional.py",
         "scm_poll_functional_models.py",
@@ -342,7 +351,10 @@ class SCMNaturalTasks:
             "candidate_ids": sorted(reference["run_id"] for reference in eligible),
             "selected_run_id": eligible[0]["run_id"] if len(eligible) == 1 else None,
         }
+        verification = getattr(self.collaboration, "linked_verification_authority", None)
+        linked = await verification.context(delivery, scopes) if verification is not None else []
         return {
+            "linked_verifications": linked,
             "scope": scope,
             "candidates": candidates,
             "history": history,
@@ -637,7 +649,17 @@ class SCMNaturalTasks:
                         previous=context["previous"],
                     )
                     status_context = context["status_context"]
-                    if decision.intent in {"status", "checkpoint"}:
+                    if decision.intent == "verify" and decision.verification_consent == "request":
+                        resolution = resolution.model_copy(
+                            update={
+                                "state": "verification_request" if status_context["selection"] == "run" else "waiting",
+                                "reason": "authenticated_ticket_verification_reference"
+                                if status_context["selection"] == "run"
+                                else "clarification_required",
+                                "run_id": status_context["selected_run_id"],
+                            }
+                        )
+                    elif decision.intent in {"status", "checkpoint"}:
                         resolution = resolution.model_copy(
                             update={
                                 "state": decision.intent if status_context["selection"] == "run" else "waiting",

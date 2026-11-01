@@ -71,6 +71,8 @@ async def test_natural_intent_uses_one_configured_tool_free_model_response(provi
             "questions",
             "proposal",
             "selection_evidence",
+            "verification_consent",
+            "verification_affirmative_span",
         }
         assert "product" in schema["properties"]["intent"]["enum"]
         assert "run_id" not in schema["properties"] and "conversation_id" not in schema["properties"]

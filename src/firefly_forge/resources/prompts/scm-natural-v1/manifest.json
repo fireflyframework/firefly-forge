@@ -62,6 +62,35 @@
       "sha256": "3025e0d3f6074fe016fad83a13c8062ba9b2ff075cf291fb1ed585c341d66fdd",
       "field": "user",
       "variables": {}
+    },
+    {
+      "id": "scm-natural/system",
+      "version": "1.0.4",
+      "path": "system-1.0.4.yaml",
+      "sha256": "e0cbcfa987a619e775f71de345a9f5c6eb67682c701a9341ca56607b84c37c33",
+      "field": "system",
+      "variables": {}
+    },
+    {
+      "id": "scm-natural/verification-review",
+      "version": "1.0.0",
+      "path": "verification-review.yaml",
+      "sha256": "edfeeb3bff82ce44e45fbb32b1df6a53bc3c31c88316e042621a353102602c50",
+      "field": "user",
+      "variables": {
+        "count": "string",
+        "source": "string",
+        "original_count": "string",
+        "original_budget": "string"
+      }
+    },
+    {
+      "id": "scm-natural/verification-communication",
+      "version": "1.0.0",
+      "path": "verification-communication.yaml",
+      "sha256": "7c27bfd24cd38a920cceb245178fd5ff7f36d834bed95258b32e74d9a87d55d7",
+      "field": "user",
+      "variables": {}
     }
   ]
 }

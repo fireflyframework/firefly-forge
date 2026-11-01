@@ -20,6 +20,7 @@ from firefly_forge.product_provenance import content_digest
 from firefly_forge.prompts import prompt_text
 from firefly_forge.scm_authority_models import StrictContract
 from firefly_forge.scm_conversation_models import SCM_SOURCE_QUESTION_LIMIT
+from firefly_forge.scm_linked_verification_records import SCMVerificationCommunicationV1
 from firefly_forge.skills import inject_skills
 
 Data = dict[str, Any]
@@ -377,6 +378,82 @@ def _reused_verification(check: Data) -> bool | None:
     return True
 
 
+def _linked_verification_facts(
+    value: SCMVerificationCommunicationV1, conversation: CommunicationConversationV1
+) -> Data:
+    import shlex
+
+    from firefly_forge.communication_diagnostics import _public_excerpt
+
+    candidate, receipt = value.candidate, value.receipt
+    if value.phase == "held":
+        return {
+            "state": {"status": "held"},
+            "conversation": conversation.model_dump(exclude={"version", "question"}, exclude_none=True),
+            "linked_verification": {
+                "phase": "held",
+                "reason": value.hold_reason,
+                "execution_outcome": "not_asserted",
+                "request_not_retried": True,
+                "next_action": "ask_which_linked_verification_operation"
+                if value.hold_reason == "operation_selection_ambiguous"
+                else "inspect_same_native_request_and_current_authority",
+            },
+        }
+    assert candidate is not None
+    facts: Data = {
+        "state": {"status": receipt.status if receipt else "review" if value.phase == "review" else "unknown"},
+        "conversation": conversation.model_dump(exclude={"version", "question"}, exclude_none=True),
+        "linked_verification": {
+            "phase": value.phase,
+            "parent_run_id": candidate.run_id,
+            "source_tree": candidate.source_tree,
+            "all_fresh_checks": candidate.effect_budget,
+            "no_coding_or_repair": True,
+            "original_history_preserved": True,
+            "original_effect_budget": candidate.original_effect_budget,
+            "original_effect_count": candidate.original_effect_count,
+            "request_id": receipt.request_id if receipt else None,
+            "unknown_admission_action": "read_same_request_without_post_retry" if value.phase == "unknown" else None,
+        },
+    }
+    if value.question:
+        facts["linked_verification"]["review_to_publish"] = value.question
+    if receipt:
+        facts["linked_verification"]["progress"] = receipt.progress.model_dump()
+        facts["linked_verification"]["detail"] = receipt.detail
+        if receipt.last_failure:
+            failure = receipt.last_failure
+            facts["linked_failure"] = failure.model_dump(exclude={"output_preview"})
+            diagnostics = {}
+            output = _public_excerpt(failure.output_preview, tail=True)
+            if output:
+                diagnostics[f"check-{failure.ordinal}-output"] = dict(
+                    source="linked_verification_command_result",
+                    kind="output",
+                    check_index=failure.ordinal,
+                    exit_code=failure.exit_code,
+                    provenance="current",
+                    text=output[0],
+                    truncated=output[1] or failure.output_truncated,
+                )
+            if value.failure_command:
+                command = _public_excerpt(shlex.join(value.failure_command.argv), tail=False)
+                if command:
+                    diagnostics[f"check-{failure.ordinal}-command"] = dict(
+                        source="linked_verification_command_result",
+                        kind="command",
+                        check_index=failure.ordinal,
+                        exit_code=failure.exit_code,
+                        provenance="current",
+                        text=command[0],
+                        truncated=command[1],
+                    )
+            if diagnostics:
+                facts["check_diagnostics"] = diagnostics
+    return facts
+
+
 def communication_facts(
     run: Data | None,
     *,
@@ -385,7 +462,12 @@ def communication_facts(
     assistant: CommunicationAssistantV1 | None = None,
     git_delivery: CommunicationGitDeliveryV1 | None = None,
     audience: CommunicationAudienceV1 | None = None,
+    linked_verification: SCMVerificationCommunicationV1 | None = None,
 ) -> Data:
+    if linked_verification is not None:
+        if assistant or publication or git_delivery or audience or conversation is None:
+            raise ValueError("Linked verification facts need their own current conversation")
+        return _linked_verification_facts(linked_verification, conversation)
     if assistant is not None:
         if run or conversation or publication or git_delivery or audience:
             raise ValueError("Assistant feedback is separate from execution and publication facts")
@@ -733,6 +815,8 @@ def _validate_draft(draft: CommunicationDraft, facts: Data) -> str:
         "audience",
         "check_status",
         "consumed_terminal_recovery",
+        "linked_verification",
+        "linked_failure",
     } & facts.keys()
     if facts.get("conversation", {}).get("question_sha256"):
         required -= {"work", "requested_work", "product", "audience"}
@@ -895,6 +979,7 @@ class CommunicationWriter:
         git_delivery: CommunicationGitDeliveryV1 | None = None,
         audience: CommunicationAudienceV1 | None = None,
         status_draft: str | None = None,
+        linked_verification: SCMVerificationCommunicationV1 | None = None,
     ) -> Data:
         facts = communication_facts(
             run,
@@ -903,6 +988,7 @@ class CommunicationWriter:
             assistant=assistant,
             git_delivery=git_delivery,
             audience=audience,
+            linked_verification=linked_verification,
         )
         context: Data = {"fact_packet_sha256": content_digest(facts)}
         if status_draft is not None:
@@ -1014,6 +1100,10 @@ class CommunicationWriter:
                 if conversation or audience
                 else {}
             )
+            if linked_verification is not None:
+                from firefly_forge.scm_natural_runtime import catalog
+
+                instructions += "\n" + catalog().text("scm-natural/verification-communication")
             if language_instructions:
                 instructions += "\n" + language_instructions["draft"]
             skill = next(item for item in community_catalog() if item["id"] == "humanizer")

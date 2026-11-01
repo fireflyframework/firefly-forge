@@ -2091,6 +2091,8 @@ class Collaboration:
                     if isinstance(current_question, str) and current_question.strip()
                     else None,
                 )
+            verification = getattr(self, "linked_verification_authority", None)
+            linked_input = await verification.communication(data) if verification is not None else None
             assistant_input = assistant_communication(data, repository=repo, host=host)
             drafted: Data
             if retained is not None:
@@ -2105,6 +2107,15 @@ class Collaboration:
                 except ValueError:
                     raise DeferredFeedbackChanged("The deferred feedback communication route changed") from None
                 drafted = {"body": retained["body"], "communication": retained["communication"]}
+            elif linked_input is not None:
+                drafted = await self.communication_writer.write(
+                    run or None,
+                    "",
+                    public_text,
+                    conversation=conversation_input,
+                    status_draft=data["natural_turn"].get("reply") or None,
+                    linked_verification=linked_input,
+                )
             elif natural_status:
                 drafted = await self.communication_writer.write(
                     run,
@@ -2153,6 +2164,9 @@ class Collaboration:
                 drafted = await self.communication_writer.write(run, message, public_text, audience=audience_input)
             else:
                 drafted = await self.communication_writer.write(run, message, public_text)
+            if linked_input is not None and drafted["communication"]["mode"] != "ai":
+                drafted["body"] = ""
+                drafted["communication"].update(mode="held", reason="linked_verification_requires_configured_authoring")
             current_run = await self.store.get_run(data["run_id"]) if data.get("run_id") else run
             current_context = await self._feedback_context(data, current_run)
             current_assistant = (
@@ -2160,15 +2174,25 @@ class Collaboration:
                 if assistant_input
                 else None
             )
+            current_linked = (
+                await verification.communication(await self.receipt(receipt_id))
+                if linked_input is not None and verification is not None
+                else None
+            )
             facts = (
-                communication_facts(current_run or None, assistant=current_assistant)
+                communication_facts(
+                    current_run or None, conversation=conversation_input, linked_verification=current_linked
+                )
+                if current_linked is not None
+                else communication_facts(current_run or None, assistant=current_assistant)
                 if assistant_input
                 else communication_facts(current_run or None, conversation=conversation_input, audience=audience_input)
                 if conversation_input
                 else communication_facts(current_run, audience=audience_input)
             )
             state_changed = (
-                milestone_key(current_run) != milestone_key(run)
+                linked_input is None
+                and milestone_key(current_run) != milestone_key(run)
                 or content_digest(facts) != drafted["communication"]["facts_sha256"]
             )
             channel_changed = any(data.get(key) != value for key, value in current_context.items())
@@ -2186,7 +2210,7 @@ class Collaboration:
                         "discarded_generation": drafted["communication"],
                     },
                 }
-            if natural_status and retained is None:
+            if natural_status and retained is None and linked_input is None:
                 drafted["communication"]["natural_reply_source"] = "current_execution_facts"
             message = "" if drafted["communication"]["mode"] == "held" else drafted["body"]
             if retained is None and (
@@ -2200,6 +2224,9 @@ class Collaboration:
                 from firefly_forge.collaboration_feedback import communication_controls
 
                 controls = communication_controls(data, run, repo, host, public_text)
+                if linked_input is not None and linked_input.phase == "review":
+                    assert linked_input.question is not None
+                    controls = "\n\n".join(filter(None, [public_text(linked_input.question), controls]))
                 if controls:
                     message = message.rstrip() + "\n\n" + controls
             if len(message) > 6000:
