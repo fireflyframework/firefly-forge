@@ -56,6 +56,7 @@ class RunnerPools:
         pools: ForgeRunnerPoolRepository | None = None,
         invocations: ForgeRunnerInvocationRepository | None = None,
         events: ForgeRunnerEventRepository | None = None,
+        object_artifacts: bool = False,
     ) -> None:
         for value in (schema, factory_schema or schema):
             if not re.fullmatch(r"[a-z][a-z0-9_]{0,62}", value):
@@ -65,6 +66,7 @@ class RunnerPools:
         self.pools = pools or ForgeRunnerPoolRepository()
         self.invocations = invocations or ForgeRunnerInvocationRepository()
         self.events = events or ForgeRunnerEventRepository()
+        self.object_artifacts = object_artifacts
 
     @asynccontextmanager
     async def _unit(self) -> AsyncIterator[AsyncSession]:
@@ -87,8 +89,10 @@ class RunnerPools:
                 )
             )
             revision = await session.scalar(text("SELECT max(revision) FROM forge_runner_schema_migrations"))
-            if revision is not None and revision != 1:
+            if revision is not None and revision not in {1, 2}:
                 raise RuntimeError("Runner schema requires a different controller release")
+            if revision == 2 and not self.object_artifacts:
+                raise RuntimeError("This runner schema requires its retained object storage configuration")
             if revision is None:
                 connection = await session.connection()
                 tables = [
@@ -102,6 +106,21 @@ class RunnerPools:
                 ]
                 await connection.run_sync(lambda sync: ForgeRunnerPoolEntity.metadata.create_all(sync, tables=tables))
                 await session.execute(text("INSERT INTO forge_runner_schema_migrations(revision) VALUES(1)"))
+            if self.object_artifacts and revision != 2:
+                from firefly_forge.runner_artifact_publications import (
+                    ForgeRunnerArtifactChunkEntity,
+                    ForgeRunnerArtifactEntity,
+                )
+
+                connection = await session.connection()
+                tables = [
+                    ForgeRunnerArtifactEntity.metadata.tables[entity.__tablename__]
+                    for entity in (ForgeRunnerArtifactEntity, ForgeRunnerArtifactChunkEntity)
+                ]
+                await connection.run_sync(
+                    lambda sync: ForgeRunnerArtifactEntity.metadata.create_all(sync, tables=tables)
+                )
+                await session.execute(text("INSERT INTO forge_runner_schema_migrations(revision) VALUES(2)"))
 
     async def _daemon(self, profile: RunnerPoolProfile, *, admission: bool) -> ForgeRunnerDaemonEntity:
         session = self.daemons._require_session()

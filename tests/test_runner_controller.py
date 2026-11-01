@@ -200,12 +200,12 @@ def test_streaming_runner_body_is_bounded_before_json_parsing(
         assert response.status_code == 413
 
 
-async def test_authenticated_upload_has_an_absolute_deadline_before_parsing(tmp_path, postgres_schema, monkeypatch):
+async def test_authenticated_upload_has_an_absolute_deadline_before_parsing(tmp_path, monkeypatch):
     import asyncio
 
     module = controller_module()
     monkeypatch.setattr(module, "UPLOAD_DEADLINE_SECONDS", 0.01, raising=False)
-    cfg = settings(tmp_path, postgres_schema)
+    cfg = settings(tmp_path, "forge_test_deadline")
     reached, messages = [], []
 
     async def app(scope, receive, send):
@@ -220,7 +220,13 @@ async def test_authenticated_upload_has_an_absolute_deadline_before_parsing(tmp_
 
     middleware = module.RunnerRequestLimits(app, cfg)
     await middleware(
-        {"type": "http", "scheme": "https", "headers": [(b"authorization", ("Bearer " + TOKEN).encode())]},
+        {
+            "type": "http",
+            "scheme": "https",
+            "path": "/runner/v1/invocations",
+            "method": "POST",
+            "headers": [(b"authorization", ("Bearer " + TOKEN).encode())],
+        },
         receive,
         send,
     )

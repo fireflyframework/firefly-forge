@@ -64,12 +64,14 @@ def controller(monkeypatch, *, records=None, lease_seconds=30, work_cap=864000):
     def prepare(*args):
         effects.append("prepare")
 
-    def retain(*args):
-        effects.append("retain")
+    async def retain_durable(profile, request, kind, data, selected, *, authorize):
+        assert selected == fence
+        await authorize()
+        effects.append("retain-" + kind)
 
     executor = RunnerPoolExecutions(
         Pools(),
-        SimpleNamespace(prepare=prepare, retain=retain),
+        SimpleNamespace(prepare=prepare, retain_durable=retain_durable),
         SimpleNamespace(
             authority=SimpleNamespace(profile=run["sandbox_snapshot"]["configuration"]["profile"]), verify_daemon=daemon
         ),

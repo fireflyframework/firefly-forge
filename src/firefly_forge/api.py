@@ -261,8 +261,10 @@ from firefly_forge.scm_source_edit import SCMSourceEditAuthority
 from firefly_forge.scm_source_edit_controllers import SCMSourceEditController
 from firefly_forge.search_tools import SearchTools
 from firefly_forge.secrets import redact_environment
+from firefly_forge.source_archive_service import SourceArchiveManager
 from firefly_forge.source_budget_allowances import SourceBudgetPolicies
 from firefly_forge.source_budget_controllers import SourceBudgetPolicyController
+from firefly_forge.source_explorer import SourceExplorer, SourceExplorerController
 from firefly_forge.store import Store
 from firefly_forge.task_routing import TaskRouting
 from firefly_forge.tool_broker import ToolInvocationBroker
@@ -816,6 +818,7 @@ class FactoryConfiguration:
         routing: TaskRouting,
         runtime_roles: RuntimeRoles,
         worker_evidence: WorkerEvidence,
+        source_archives: SourceArchiveManager,
         stage_activity: EngineActivity,
     ) -> Engine:
         engine = Engine(
@@ -828,6 +831,7 @@ class FactoryConfiguration:
         )
         engine.assurance = assurance
         engine.worker_evidence = worker_evidence
+        engine.source_archives = source_archives
         engine.sandbox = sandbox
         engine.browser, engine.search = browser, search
         engine.tool_broker = tool_broker
@@ -1470,6 +1474,9 @@ def create_runtime(
         OriginalSelectionReadmissionController,
         GitDiffArchive,
         GitDiffController,
+        SourceArchiveManager,
+        SourceExplorer,
+        SourceExplorerController,
         JournalController,
         VerificationHandoffController,
         ProviderRecoveryController,

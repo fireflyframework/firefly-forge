@@ -27,7 +27,7 @@ async def test_controller_admits_and_renews_selected_uncapped_work_under_its_ori
     executor, invocation, fence, clock, _, _, effects, _, _, _ = await initialized(monkeypatch, work_cap=None)
     result = await executor.accept(invocation, fence, b"fixture", b"")
     assert invocation.timeout is None and invocation.work_duration == WorkDurationPolicyV2()
-    assert effects == ["daemon", "prepare", "retain", "submit"]
+    assert effects == ["daemon", "retain-source", "prepare", "retain-stdin", "submit"]
     ack = result["run_lease"]
     for _ in range(5):
         clock["now"] += 20
