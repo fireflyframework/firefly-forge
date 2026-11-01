@@ -324,6 +324,8 @@ def linked_verification_frontier(
             or predecessor.progress.failed
             or predecessor.progress.started != predecessor.progress.completed
             or predecessor.candidate.source_tree != value.candidate.source_tree
+            or predecessor.candidate.commands_digest != value.candidate.commands_digest
+            or predecessor.candidate.effect_budget != value.candidate.effect_budget
             or predecessor.candidate.original_effect_budget != value.candidate.original_effect_budget
             or predecessor.candidate.original_effect_count != value.candidate.original_effect_count
             or (parent_attempt is not None and edge.parent_attempt != parent_attempt)

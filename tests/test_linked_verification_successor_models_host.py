@@ -151,3 +151,24 @@ def test_successor_consent_cannot_omit_no_reuse_or_change_reviewed_predecessor()
 def test_unrelated_roots_do_not_become_current_by_timestamp_or_list_order():
     with pytest.raises(ValueError):
         frontier([held(), held("8" * 32)])
+
+
+@pytest.mark.parametrize("change", ["commands", "budget"])
+def test_successor_cannot_change_the_frozen_full_logical_command_scope(change):
+    parent = held()
+    data = successor(parent).model_dump(mode="json")
+    if change == "commands":
+        data["candidate"]["commands_digest"] = "9" * 64
+    else:
+        data["candidate"]["effect_budget"] += 1
+        data["candidate"]["execution_plan"].append(
+            dict(
+                ordinal=4, logical_command_digest="1" * 64, physical_argv=["qualified", "4"], output_policy="unchanged"
+            )
+        )
+    data["candidate"]["digest"] = native_digest({k: v for k, v in data["candidate"].items() if k != "digest"})
+    data["request"]["candidate_digest"] = data["candidate"]["digest"]
+    data["request_digest"] = digest(data["request"])
+    child = models.LinkedVerificationReceiptV1.model_validate(data)
+    with pytest.raises(ValueError):
+        frontier([parent, child])
