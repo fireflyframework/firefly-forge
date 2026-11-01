@@ -80,9 +80,9 @@ class LinkedVerificationCandidateV1(BaseModel):
 
 class VerificationProgress(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
-    started: int
-    completed: int
-    next_ordinal: int | None
+    started: int = Field(ge=0)
+    completed: int = Field(ge=0)
+    next_ordinal: int | None = Field(ge=1)
     unknown: bool
     failed: bool
     ready_to_settle: bool
@@ -134,8 +134,27 @@ class LinkedVerificationReceiptV1(BaseModel):
             or self.request_digest != digest(self.request.model_dump(mode="json"))
             or not 0 <= self.progress.completed <= self.progress.started <= self.candidate.effect_budget
             or (self.settlement is not None) != (self.status == "completed")
+            or self.progress.started - self.progress.completed > 1
+            or self.progress.unknown is not (self.progress.started > self.progress.completed)
+            or self.progress.failed
+            and (self.progress.unknown or self.progress.completed == 0)
         ):
             raise ValueError("Linked verification receipt differs from its exact admission")
+        if self.status == "queued" and self.progress != VerificationProgress(
+            started=0, completed=0, next_ordinal=None, unknown=False, failed=False, ready_to_settle=False
+        ):
+            raise ValueError("Queued verification cannot claim execution progress")
+        if self.status != "executing" and (self.progress.next_ordinal is not None or self.progress.ready_to_settle):
+            raise ValueError("Closed or unclaimed verification cannot offer another dispatch")
+        if self.status == "failed" and not self.progress.failed:
+            raise ValueError("Failed verification requires its actual failed check")
+        if self.status == "executing":
+            eligible = not self.progress.unknown and not self.progress.failed
+            remaining = self.progress.completed < self.candidate.effect_budget
+            if self.progress.next_ordinal != (
+                self.progress.completed + 1 if eligible and remaining else None
+            ) or self.progress.ready_to_settle is not (eligible and not remaining):
+                raise ValueError("Executing verification progress differs from its finite next effect")
         if self.settlement is not None and (
             self.settlement.source_digest != self.candidate.source_digest
             or self.settlement.source_tree != self.candidate.source_tree
