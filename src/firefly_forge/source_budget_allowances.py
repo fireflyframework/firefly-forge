@@ -420,6 +420,9 @@ def admission_contract_digest() -> str:
                 "oauth_provider_policies.py",
                 "oauth_resources.py",
                 "oauth_authority.py",
+                "linked_verification_models.py",
+                "linked_verifications.py",
+                "linked_verification_controllers.py",
             )
         }
     )

@@ -162,6 +162,8 @@ from firefly_forge.learning_persistence import (
     ForgeLearningRepository,
 )
 from firefly_forge.learning_projection import LearningProjection
+from firefly_forge.linked_verification_controllers import LinkedVerificationController
+from firefly_forge.linked_verifications import LinkedVerifications
 from firefly_forge.mcp_controllers import ExternalMCPController
 from firefly_forge.mcp_registry import ExternalMCPRegistry
 from firefly_forge.model_profile_controllers import ModelProfileController
@@ -850,6 +852,15 @@ class FactoryConfiguration:
         return handoffs
 
     @bean
+    def linked_verifications(
+        self, store: Store, journal: Journal, engine: Engine, requests: ExecutionRequests
+    ) -> LinkedVerifications:
+        verifications = LinkedVerifications(store, journal, requests, engine)
+        requests.linked_verifications = verifications
+        engine.linked_verifications = verifications
+        return verifications
+
+    @bean
     def provider_recoveries(self, store: Store, journal: Journal, engine: Engine) -> ProviderRecoveries:
         recoveries = ProviderRecoveries(store, journal, engine)
         engine.provider_recoveries = recoveries
@@ -1465,6 +1476,7 @@ def create_runtime(
         GitDeliveryPolicyController,
         GitDeliveryController,
         KnownWorkerCompletionController,
+        LinkedVerificationController,
         UnknownCommandAcknowledgementController,
         CheckpointModeAdoptionController,
         OriginalSelectionReadmissionController,

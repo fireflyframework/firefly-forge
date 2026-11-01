@@ -103,6 +103,23 @@ class ForgeExecutionRequestRepository(Repository[ForgeExecutionRequestEntity, UU
 
 @repository
 class ForgeExecutionRequestEventRepository(Repository[ForgeExecutionRequestEventEntity, UUID]):
+    async def linked_verification_events(
+        self, request_id: UUID, maximum: int
+    ) -> list[ForgeExecutionRequestEventEntity]:
+        if type(maximum) is not int or maximum < 1:
+            raise ValueError("Verification event budget must derive from the exact declared command list")
+        rows = list(
+            await self._require_session().scalars(
+                select(ForgeExecutionRequestEventEntity)
+                .where(ForgeExecutionRequestEventEntity.request_id == request_id)
+                .order_by(ForgeExecutionRequestEventEntity.sequence)
+                .limit(maximum + 1)
+            )
+        )
+        if len(rows) > maximum:
+            raise ValueError("Linked verification exceeded its exact native event budget")
+        return rows
+
     async def custody_budget(self, request_id: UUID) -> tuple[int, int]:
         count, size = (
             await self._require_session().execute(

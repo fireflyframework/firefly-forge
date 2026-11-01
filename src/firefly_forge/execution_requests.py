@@ -61,6 +61,7 @@ class ExecutionRequests:
         self.invalid_read_continuities: Any = None
         self.git_deliveries: Any = None
         self.github_projects: Any = None
+        self.linked_verifications: Any = None
         self.publish_effect: Callable[[str, Data | None], Awaitable[str]] | None = None
         self.cancel_effect: Callable[[str], Awaitable[Data]] | None = None
         self.poller: asyncio.Task[None] | None = None
@@ -591,6 +592,8 @@ class ExecutionRequests:
             await self.git_deliveries.recover()
         if self.github_projects is not None:
             await self.github_projects.recover()
+        if self.linked_verifications is not None:
+            await self.linked_verifications.recover()
         self.poller = asyncio.create_task(self._poll())
 
     async def stop(self) -> None:
@@ -628,11 +631,17 @@ class ExecutionRequests:
                     queued += [
                         copy.deepcopy(row.data) for row in await self.records.state("queued", kind="github_board")
                     ]
+                if self.linked_verifications is not None:
+                    queued += [
+                        copy.deepcopy(row.data) for row in await self.records.state("queued", kind="linked_verify")
+                    ]
             for row in queued:
                 if row["kind"] == "cancel":
                     await self.execute(row["id"])
                 elif not self.active:
-                    if row["kind"] == "github_board":
+                    if row["kind"] == "linked_verify":
+                        action = self.linked_verifications.execute
+                    elif row["kind"] == "github_board":
                         action = self.github_projects.execute
                     elif row["kind"] == "git_delivery":
                         action = self.git_deliveries.execute
