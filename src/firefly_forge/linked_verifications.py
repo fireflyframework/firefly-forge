@@ -681,6 +681,7 @@ class LinkedVerifications:
             or data["run_id"] != candidate.run_id
             or body.request_id != data["id"]
             or body.candidate_digest != candidate.digest
+            or body.successor != candidate.successor
             or data["request_digest"] != request_digest(body.model_dump(mode="json"))
             or data["effect_budget"] != candidate.effect_budget
             or digest({"commands": data["commands"]}) != candidate.commands_digest
@@ -722,11 +723,17 @@ class LinkedVerifications:
             or _scm_scope(ProjectAccess.actor_snapshot(actor), run).proposal_id != request_id
         ):
             raise AccessDenied("SCM verification status belongs to another proposal")
+        return await self._receipt(row, events)
+
+    async def _receipt(self, row: Any, events: list[Data]) -> Data:
+        """Build screened native evidence after the caller's independent read authorization."""
+        self._operation(row)
+        data = copy.deepcopy(row.data)
         value = dict(
             version=1,
             kind=KIND,
-            run_id=run_id,
-            request_id=request_id,
+            run_id=data["run_id"],
+            request_id=data["id"],
             request_digest=data["request_digest"],
             candidate=data["candidate"],
             request=data["request"],

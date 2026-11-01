@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -14,6 +15,28 @@ Data = dict[str, Any]
 KIND = "linked_verify"
 
 
+class LinkedVerificationSuccessorV1(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True, hide_input_in_errors=True)
+    predecessor_request_id: str = Field(pattern=r"^[a-f0-9]{32}$")
+    predecessor_event_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+    parent_attempt: int = Field(ge=1)
+    output_policy: Literal["vitest_no_cache_v1"]
+
+
+class LinkedVerificationCommandPlanV1(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True, hide_input_in_errors=True)
+    ordinal: int = Field(ge=1)
+    logical_command_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+    physical_argv: list[str] = Field(min_length=1)
+    output_policy: Literal["unchanged", "vitest_no_cache_v1"]
+
+    @model_validator(mode="after")
+    def exact_cache_policy(self) -> LinkedVerificationCommandPlanV1:
+        if self.output_policy == "vitest_no_cache_v1" and self.physical_argv[-2:] != ["--", "--no-cache"]:
+            raise ValueError("The reviewed Vitest physical plan must explicitly disable its cache")
+        return self
+
+
 class LinkedVerificationInputV1(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, frozen=True, hide_input_in_errors=True)
     version: Literal[1]
@@ -22,6 +45,10 @@ class LinkedVerificationInputV1(BaseModel):
     acknowledge_all_fresh_checks: Literal[True]
     acknowledge_no_coding_or_repair: Literal[True]
     acknowledge_original_history_and_budget_preserved: Literal[True]
+    successor: LinkedVerificationSuccessorV1 | None = Field(default=None, exclude_if=lambda value: value is None)
+    acknowledge_old_results_not_reused: Literal[True] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
     @field_validator("version", mode="before")
     @classmethod
@@ -41,6 +68,17 @@ class LinkedVerificationInputV1(BaseModel):
         if value is not True:
             raise ValueError("Explicit fresh verification consent is required")
         return True
+
+    @field_validator("acknowledge_old_results_not_reused", mode="before")
+    @classmethod
+    def exact_no_reuse(cls, value: Any) -> Literal[True] | None:
+        return None if value is None else cls.explicit_consent(value)
+
+    @model_validator(mode="after")
+    def successor_consent(self) -> LinkedVerificationInputV1:
+        if (self.successor is None) != (self.acknowledge_old_results_not_reused is None):
+            raise ValueError("A successor requires explicit consent that its predecessor results are not reused")
+        return self
 
 
 class LinkedVerificationCandidateV1(BaseModel):
@@ -64,6 +102,10 @@ class LinkedVerificationCandidateV1(BaseModel):
     owner_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
     run_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
     journal_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+    successor: LinkedVerificationSuccessorV1 | None = Field(default=None, exclude_if=lambda value: value is None)
+    execution_plan: list[LinkedVerificationCommandPlanV1] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     digest: str = Field(pattern=r"^[a-f0-9]{64}$")
 
     @field_validator("version", mode="before")
@@ -73,6 +115,13 @@ class LinkedVerificationCandidateV1(BaseModel):
 
     @model_validator(mode="after")
     def sealed_candidate(self) -> LinkedVerificationCandidateV1:
+        if (self.successor is None) != (self.execution_plan is None):
+            raise ValueError("A successor requires its complete visible physical execution plan")
+        if self.execution_plan is not None and (
+            [item.ordinal for item in self.execution_plan] != list(range(1, self.effect_budget + 1))
+            or not any(item.output_policy == "vitest_no_cache_v1" for item in self.execution_plan)
+        ):
+            raise ValueError("Successor execution plan differs from its full independent effect budget")
         if native_digest(self.model_dump(exclude={"digest"})) != self.digest:
             raise ValueError("Linked verification candidate digest differs")
         return self
@@ -193,6 +242,7 @@ class LinkedVerificationReceiptV1(BaseModel):
             self.run_id != self.candidate.run_id
             or self.request_id != self.request.request_id
             or self.request.candidate_digest != self.candidate.digest
+            or self.request.successor != self.candidate.successor
             or self.request_digest != digest(self.request.model_dump(mode="json"))
             or not 0 <= self.progress.completed <= self.progress.started <= self.candidate.effect_budget
             or (self.settlement is not None) != (self.status == "completed")
@@ -234,6 +284,63 @@ class LinkedVerificationReceiptV1(BaseModel):
         ):
             raise ValueError("Linked verification cannot settle incomplete or foreign checks")
         return self
+
+
+def linked_verification_frontier(
+    receipts: Sequence[LinkedVerificationReceiptV1],
+    *,
+    run_id: str,
+    implementation_receipt_digest: str,
+    terminal_receipt_digest: str,
+    parent_attempt: int | None = None,
+) -> LinkedVerificationReceiptV1 | None:
+    """Resolve one validated native successor chain; callers retain all authenticated history."""
+    if not receipts:
+        return None
+    values = {value.request_id: value for value in receipts}
+    if len(values) != len(receipts):
+        raise ValueError("Linked verification history repeats a native request")
+    children: dict[str, str] = {}
+    roots = []
+    for value in receipts:
+        if (
+            value.run_id != run_id
+            or value.candidate.implementation_receipt_digest != implementation_receipt_digest
+            or value.candidate.terminal_receipt_digest != terminal_receipt_digest
+        ):
+            raise ValueError("Linked verification history belongs to another implementation")
+        edge = value.candidate.successor
+        if edge is None:
+            roots.append(value.request_id)
+            continue
+        predecessor = values.get(edge.predecessor_request_id)
+        if (
+            predecessor is None
+            or predecessor.request_id == value.request_id
+            or predecessor.request_id in children
+            or predecessor.event_digest != edge.predecessor_event_digest
+            or predecessor.status != "needs_reconciliation"
+            or predecessor.progress.unknown
+            or predecessor.progress.failed
+            or predecessor.progress.started != predecessor.progress.completed
+            or predecessor.candidate.source_tree != value.candidate.source_tree
+            or predecessor.candidate.original_effect_budget != value.candidate.original_effect_budget
+            or predecessor.candidate.original_effect_count != value.candidate.original_effect_count
+            or (parent_attempt is not None and edge.parent_attempt != parent_attempt)
+        ):
+            raise ValueError("A successor requires its unique known stopped predecessor and exact parent scope")
+        children[predecessor.request_id] = value.request_id
+    if len(roots) != 1:
+        raise ValueError("Linked verification history requires one unambiguous native root")
+    current, visited = roots[0], set()
+    while current not in visited:
+        visited.add(current)
+        if current not in children:
+            if len(visited) != len(values):
+                raise ValueError("Linked verification history contains a disconnected successor")
+            return values[current]
+        current = children[current]
+    raise ValueError("Linked verification successors cannot cycle")
 
 
 def verification_progress(operation: Data, events: list[Data]) -> VerificationProgress:
