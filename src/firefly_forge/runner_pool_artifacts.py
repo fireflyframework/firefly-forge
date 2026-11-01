@@ -97,6 +97,7 @@ class RunnerPoolArtifacts:
         *,
         authorize: Authorize,
     ) -> dict[str, Any]:
+        await authorize()
         if self.objects is not None:
             receipt = {"kind": kind, "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()}
             width = self.objects.objects.settings.chunk_bytes
@@ -107,6 +108,7 @@ class RunnerPoolArtifacts:
 
             self.objects.credential_registry = self.credential_registry
             await self.objects.upload(profile, invocation, kind, receipt, source(), fence, authorize=authorize)
+            await authorize()
         return self.retain(profile, invocation, kind, data)
 
     async def read_durable(
@@ -118,6 +120,7 @@ class RunnerPoolArtifacts:
         *,
         authorize: Authorize,
     ) -> bytes:
+        await authorize()
         if self.objects is None:
             return self.read(profile, invocation, kind, receipt)
         self.objects.credential_registry = self.credential_registry
@@ -126,11 +129,13 @@ class RunnerPoolArtifacts:
         data = bytearray()
         async for chunk in self.objects.read(profile, invocation, kind, receipt, authorize=authorize):
             data.extend(chunk)
+        await authorize()
         return bytes(data)
 
     async def input_archive_durable(
         self, profile: RunnerPoolProfile, invocation: RunnerInvocation, *, authorize: Authorize
     ) -> bytes:
+        await authorize()
         if self.objects is not None:
             inputs: tuple[tuple[ArtifactKind, int, str], ...] = (
                 ("source", invocation.source_bytes, invocation.archive_digest),
@@ -140,6 +145,7 @@ class RunnerPoolArtifacts:
                 receipt = {"kind": kind, "bytes": size, "sha256": digest}
                 data = await self.read_durable(profile, invocation, kind, receipt, authorize=authorize)
                 self.retain(profile, invocation, kind, data)
+            await authorize()
         return self.input_archive(profile, invocation)
 
     def _folder(self, invocation: RunnerInvocation) -> Path:

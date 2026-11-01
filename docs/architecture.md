@@ -132,7 +132,11 @@ carrier's project-size bounds.
 
 `RunnerPoolExecutions` uses the selected backend for source, stdin, output and
 result custody. The existing artifact RPC can reconstruct a retained byte bundle
-after controller restart. The separate `object-artifacts/upload` RPC consumes a
+after controller restart. Local and object-backed custody require the current
+authorization callback. The controller checks it before reading, retaining or
+bundling local bytes, and again after asynchronous object operations before
+writing a local copy or returning bytes. A revoked callback stops the operation
+with its original exception. The separate `object-artifacts/upload` RPC consumes a
 raw stream, with typed invocation/fence/length/hash metadata in the bounded
 `X-Forge-Artifact-Request` header. `RunnerControllerClient.upload_artifact_file()`
 reads a regular producer file in 64 KiB frames. It does not call `read_bytes()` or
