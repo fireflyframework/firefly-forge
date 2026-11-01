@@ -617,6 +617,29 @@ Older runs without an automatic-verification grant stay manual until an authenti
 
 Progress in the [repository workflow](repository-workflow.md) comes from durable run states. The bot reports starts, checks, questions and delivery outcomes through centralized Agentic templates. A confirmed GitHub comment and a successful product delivery remain separate records.
 
+### Fresh verification after an accepted recovery
+
+An accepted implementation may need fresh checks after its runtime or dependency inputs change. `LinkedVerifications` provides a separate verification operation for that case. It preserves the original implementation claim, held handoff, usage and sandbox counters. Its own allowance is the length of the complete effective check list, including required policy and framework checks.
+
+```mermaid
+flowchart LR
+    A[Accepted implementation] --> B[Review current source and checks]
+    B --> C[Record explicit verification consent]
+    C --> D[Run checks through the qualified backend]
+    D --> E{Confirmed outcome}
+    E -->|All checks pass| F[Settle parent verification]
+    E -->|Check fails| G[Retain failed command evidence]
+    E -->|Outcome uncertain| H[Hold for readback]
+```
+
+The owning execution leader prepares the candidate. Admission rechecks the current operator, project access and host-administrator permission, then records a queued request through the native execution-request repositories. The HTTP request executes no project commands. Status reads inspect the retained operation under current authority.
+
+The worker reserves the repository's execution slot and records each command intent before dispatch. It uses the prepared physical wrapper and private build environment, with the same effective timeout rules as ordinary execution. Source, input and authority changes stop further dispatch. An unfinished command remains uncertain after restart; the worker never queues that command again automatically. The global publication lock is released during command execution so unrelated projects can continue delivery.
+
+Successful settlement requires every declared check and its matching result. The parent verification receipt binds the operation, source and command list; ordinary Engine continuation validates that receipt again before the Git checkpoint. A failure retains its actual command ordinal, exit code and bounded output preview for the operator and communication model. Neither a failed check nor an uncertain outcome grants another coding attempt.
+
+This recovery path currently supports the configured host backend and requires current factory-administrator authority. Docker and runner-pool transports are refused explicitly. Candidate inspection and admission require the owning leader; API replicas can serve authorized status reads. The [operator integration guide](agent-integrations.md) describes the SDK, CLI and MCP contracts. Full runner, Git and source-control acceptance remains separate from a successful isolated consumer test.
+
 ### Persistent human decisions and image evidence
 
 A pending human `worker_request` keeps its run paused. A normal worker restart reads that retained state without selecting an answer or invoking another coding task. An authenticated `worker_response` records the actor and exact answer once; resumption remains a separate authorized action. Studio hides execution and handoff controls until the human question is answered. Factory-owned verification retains its separate system-response path.
