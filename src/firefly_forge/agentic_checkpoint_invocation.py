@@ -286,6 +286,16 @@ def _runtime_material_digest() -> str:
                     "linked_verification_models.py",
                     "linked_verifications.py",
                     "linked_verification_controllers.py",
+                    "object_storage.py",
+                    "runner_artifact_publications.py",
+                    "runner_object_artifacts.py",
+                    "source_archive.py",
+                    "source_archive_index.py",
+                    "source_archive_scan_models.py",
+                    "source_archive_service.py",
+                    "source_explorer.py",
+                    "coding_check_grants.py",
+                    "coding_check_models.py",
                 )
             },
         }
