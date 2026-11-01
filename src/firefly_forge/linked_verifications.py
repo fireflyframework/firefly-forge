@@ -6,6 +6,8 @@ from __future__ import annotations
 import asyncio
 import copy
 import hashlib
+import os
+import time
 import uuid
 from contextlib import nullcontext
 from dataclasses import dataclass
@@ -24,6 +26,7 @@ from firefly_forge.agentic_checkpoint_invocation import (
 )
 from firefly_forge.bridge_completions import BridgeCompletions, _outside_unit
 from firefly_forge.checkpoint_mode_runtime import mode_execution_scope
+from firefly_forge.checkpoint_source_identity import SelectedSourceFence, _revalidate, _stamp
 from firefly_forge.configuration import redact_secrets
 from firefly_forge.consumed_terminal_reconciliations import ReconciliationCommitFence
 from firefly_forge.execution_environment import build_execution_environment
@@ -44,6 +47,7 @@ from firefly_forge.linked_verification_models import (
 from firefly_forge.native_terminal_completion_models import validate_native_receipt
 from firefly_forge.process import ProcessResult, checked
 from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied, ProjectAccess
+from firefly_forge.sandbox import _directory_fd
 from firefly_forge.sandbox_models import SandboxInput, validate_sandbox_snapshot
 from firefly_forge.scm_linked_verification_models import (
     PreparedSCMLinkedVerificationAdmission,
@@ -56,6 +60,7 @@ from firefly_forge.store import Store, identifier, now
 from firefly_forge.verification_scope_attestation import PreparedBuildScope, prepare_build_scope
 from firefly_forge.verification_source_preparation import prepare_verification_source, verification_catalog_root
 from firefly_forge.work_duration_models import effective_work_timeout
+from firefly_forge.workspace_tools import _descriptor_path
 
 Data = dict[str, Any]
 
@@ -201,7 +206,7 @@ class PreparedLinkedVerification:
             if seal != self.scm_seal or seal.digest != self.scm_digest:
                 raise ValueError("SCM verification grant view changed after preparation")
 
-    def fence(self) -> None:
+    def _authority_fence(self) -> None:
         store = self.service.store
         self._scm_view()
         if self.scm is not None:
@@ -225,6 +230,7 @@ class PreparedLinkedVerification:
             digest(self.run) != self.candidate.run_digest
             or digest({"entries": self.entries}) != self.candidate.journal_digest
             or digest(self.inputs.witness.model_dump(mode="json")) != self.candidate.input_scope_digest
+            or digest(self.source.cut) != self.candidate.source_digest
         ):
             raise ValueError("Linked verification prepared view changed")
         if (
@@ -233,19 +239,22 @@ class PreparedLinkedVerification:
             or _policy_material_digest() != self.candidate.policy_digest
         ):
             raise ValueError("Linked verification qualified runtime changed")
-        self.source.fence.revalidate()
         if digest(git_index_identity(self.workspace).model_dump(mode="json")) != self.candidate_index:
             raise ValueError("Linked verification staged source changed")
+
+    def fence(self) -> None:
+        self._authority_fence()
+        self.source.fence.revalidate()
 
     @property
     def candidate_index(self) -> str:
         return digest(self.source.index.model_dump(mode="json"))
 
-    async def current(self) -> None:
+    async def _authority_current(self) -> None:
         if self.scm is not None:
             self._scm_view()
             await self.scm.current()
-            self.fence()
+            self._authority_fence()
         await self.service.store.assert_ownership()
         await self.service._authority(self.run, self.actor)
         async with self.service.store._unit():
@@ -256,11 +265,62 @@ class PreparedLinkedVerification:
                 or _task(await self.service.journal._task(self.run["id"], "verify")) != self.verify_task
             ):
                 raise ValueError("Linked verification parent frontier changed")
-        self.fence()
+        self._authority_fence()
+
+    async def current(self) -> None:
+        await self._authority_current()
+        self.source.fence.revalidate()
 
     async def revalidate(self) -> None:
         await self.inputs.fence()
         await self.current()
+
+    def _result_payload_current(self) -> None:
+        self._authority_fence()
+        fence = self.source.fence
+        if not isinstance(fence, SelectedSourceFence):
+            raise ValueError("Known QA outputs require their original typed source witness")
+        root = _directory_fd(self.workspace)
+        try:
+            if _descriptor_path(root) != fence.workspace or tuple(_stamp(os.fstat(root))[:4]) != fence.root_identity:
+                raise ValueError("Known QA outputs changed the original source root")
+            deadline = time.monotonic() + fence.timeout_seconds
+            for stream in fence.streams[:2]:
+                if stream.closed:
+                    raise ValueError("Known QA outputs lost the original source witness")
+                # Existing capture permits directory timestamps only while canonical selection is rechecked.
+                _revalidate(root, stream, deadline)
+            _revalidate(root, fence.streams[2], deadline, strict_directories=True)
+        finally:
+            os.close(root)
+
+    async def after_result(self) -> None:
+        """Rebind ignored output namespaces only after a known successful native result."""
+        before = self.source
+        await self.inputs.fence()
+        self._result_payload_current()
+        after = await workspace_source_capture(
+            self.service.store, self.workspace, assert_current=self._authority_current
+        )
+        try:
+            self._result_payload_current()
+            if (
+                after.cut != before.cut
+                or after.index != before.index
+                or after.physical_digest is None
+                or after.physical_digest != before.physical_digest
+                or after.fence is None
+            ):
+                raise ValueError("Known QA outputs changed selected source, identity or index")
+            await self._authority_current()
+            after.fence.revalidate()
+            self.source = after
+        except BaseException:
+            if after.fence is not None:
+                after.fence.close()
+            raise
+        before.fence.close()
+        await self.revalidate()
 
     def close(self) -> None:
         self.source.fence.close()
@@ -873,7 +933,7 @@ class LinkedVerifications:
                     if result.exit_code != 0:
                         await self._hold(operation_id, "check_failed")
                         return
-                    await prepared.revalidate()
+                    await prepared.after_result()
                 async with self.engine.publication_lock:
                     await self._settle(prepared, operation_id)
         except asyncio.CancelledError:
