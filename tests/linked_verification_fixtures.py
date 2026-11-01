@@ -87,4 +87,10 @@ def receipt(value=None, *, status="queued"):
             "commands_digest": value["commands_digest"],
             "checks_count": value["effect_budget"],
         }
+    elif status == "executing":
+        data["progress"]["next_ordinal"] = 1
+    elif status == "needs_reconciliation":
+        data["progress"].update(started=1, unknown=True)
+    elif status == "failed":
+        data["progress"].update(started=1, completed=1, failed=True)
     return LinkedVerificationReceiptV1.model_validate(data).model_dump(mode="json")

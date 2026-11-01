@@ -194,3 +194,25 @@ def test_fifty_one_declared_commands_roundtrip_and_settle_without_a_new_fixed_ca
     )
     assert parsed.candidate.effect_budget == parsed.settlement.checks_count == 51
     assert parsed.candidate.original_effect_budget == 22 and parsed.candidate.original_effect_count == 18
+
+
+@pytest.mark.parametrize(
+    ("status", "change"),
+    [
+        ("completed", {"next_ordinal": 1}),
+        ("completed", {"ready_to_settle": True}),
+        ("queued", {"failed": True}),
+        ("queued", {"next_ordinal": 1}),
+        ("needs_reconciliation", {"next_ordinal": 1}),
+        ("needs_reconciliation", {"ready_to_settle": True}),
+    ],
+)
+def test_receipt_refuses_status_and_progress_contradictions(status, change):
+    from linked_verification_fixtures import receipt
+
+    from firefly_forge.linked_verification_models import LinkedVerificationReceiptV1
+
+    value = receipt(status=status)
+    value["progress"].update(change)
+    with pytest.raises(ValueError):
+        LinkedVerificationReceiptV1.model_validate(value)
