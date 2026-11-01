@@ -233,6 +233,7 @@ def admission_contract_digest() -> str:
                 "sandbox_command_slots.py",
                 "agentic_checkpoint_boundary.py",
                 "checkpoint_source_identity.py",
+                "workspace_tools.py",
                 "agentic_runtime.py",
                 "agentic_checkpoint_invocation.py",
                 "agent_checkpoint_models.py",

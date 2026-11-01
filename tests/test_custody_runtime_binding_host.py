@@ -22,6 +22,7 @@ MODULES = [
     "scm_linked_verification.py",
     "scm_linked_verification_models.py",
     "scm_linked_verification_records.py",
+    "workspace_tools.py",
 ]
 
 
