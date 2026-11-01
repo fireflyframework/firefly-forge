@@ -21,6 +21,7 @@ from firefly_forge.prompts import prompt_text
 from firefly_forge.scm_authority_models import StrictContract
 from firefly_forge.scm_conversation_models import SCM_SOURCE_QUESTION_LIMIT
 from firefly_forge.scm_linked_verification_records import SCMVerificationCommunicationV1
+from firefly_forge.scm_native_verification_status_models import SCMNativeVerificationStatusV1, native_verification_facts
 from firefly_forge.skills import inject_skills
 
 Data = dict[str, Any]
@@ -465,7 +466,10 @@ def communication_facts(
     git_delivery: CommunicationGitDeliveryV1 | None = None,
     audience: CommunicationAudienceV1 | None = None,
     linked_verification: SCMVerificationCommunicationV1 | None = None,
+    native_verification: SCMNativeVerificationStatusV1 | None = None,
 ) -> Data:
+    if native_verification is not None and (not run or linked_verification or assistant or publication or git_delivery):
+        raise ValueError("Native verification status needs its independently authorized parent execution")
     if linked_verification is not None:
         if assistant or publication or git_delivery or audience or conversation is None:
             raise ValueError("Linked verification facts need their own current conversation")
@@ -786,6 +790,10 @@ def communication_facts(
         facts["check_diagnostics"] = diagnostics
     if detail := recorded_error(run):
         facts["recorded_error"] = detail
+    if native_verification is not None:
+        facts["native_verification"] = native_verification_facts(native_verification, run)
+        if "check_status" in facts:
+            facts["check_status"]["source"] = "parent_run_final_verification"
     return facts
 
 
@@ -833,6 +841,7 @@ def _validate_draft(draft: CommunicationDraft, facts: Data) -> str:
         "consumed_terminal_recovery",
         "linked_verification",
         "linked_failure",
+        "native_verification",
     } & facts.keys()
     if facts.get("conversation", {}).get("question_sha256"):
         required -= {"work", "requested_work", "product", "audience"}
@@ -996,6 +1005,7 @@ class CommunicationWriter:
         audience: CommunicationAudienceV1 | None = None,
         status_draft: str | None = None,
         linked_verification: SCMVerificationCommunicationV1 | None = None,
+        native_verification: SCMNativeVerificationStatusV1 | None = None,
     ) -> Data:
         facts = communication_facts(
             run,
@@ -1005,6 +1015,7 @@ class CommunicationWriter:
             git_delivery=git_delivery,
             audience=audience,
             linked_verification=linked_verification,
+            native_verification=native_verification,
         )
         context: Data = {"fact_packet_sha256": content_digest(facts)}
         if status_draft is not None:
@@ -1070,6 +1081,9 @@ class CommunicationWriter:
             if len(native_card) > 6000:
                 raise ValueError("Assistant communication exceeds its public text bound")
         result = {"body": native_card, "communication": evidence}
+        if native_verification is not None:
+            result["body"] = ""
+            evidence.update(mode="held", reason="native_verification_requires_configured_authoring")
         router = getattr(self.store, "task_router", None)
         if router is None:
             return result
@@ -1120,6 +1134,10 @@ class CommunicationWriter:
                 from firefly_forge.scm_natural_runtime import catalog
 
                 instructions += "\n" + catalog().text("scm-natural/verification-communication")
+            if native_verification is not None:
+                from firefly_forge.scm_natural_runtime import catalog
+
+                instructions += "\n" + catalog().text("scm-natural/native-verification-status")
             if language_instructions:
                 instructions += "\n" + language_instructions["draft"]
             skill = next(item for item in community_catalog() if item["id"] == "humanizer")
@@ -1178,6 +1196,8 @@ class CommunicationWriter:
                     else "collaboration/communication-review-system",
                     version="1.0.1" if publication else "1.0.7",
                 )
+                if native_verification is not None:
+                    review_instructions += "\n" + catalog().text("scm-natural/native-verification-status")
                 if language_instructions:
                     review_instructions += "\n" + language_instructions["review"]
                 review_prompt = prompt_text(

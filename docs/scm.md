@@ -1207,6 +1207,28 @@ separate evidence; configuring the API alone does not establish live delivery.
 
 ## Request fresh checks after accepted recovery
 
+Status reads in an authenticated issue also include native linked-verification
+operations requested through the API. The reader verifies the existing issue/run
+lineage and current project read permission before disclosing results; it does not
+borrow the operation's original actor or require its SCM proposal. It validates
+the complete paged request/event history and resolves the current successor chain
+against the same accepted implementation, terminal receipt and parent attempt.
+
+The reply keeps three measurements separate: the retained factory handoff,
+checks on the parent run, and fresh results in the current independent operation.
+Four known passing results out of seven remain visible when that operation is
+held. Unknown outcomes stay unknown. A new successor's results start at zero;
+previous results remain historical. Output text and stored private details are
+not copied into the status fact packet. Ledger or read-permission changes before
+publication hold the reply, and an uncertain comment is never automatically sent
+again.
+
+A known, closed, nonfailed held frontier can supply a read-only predecessor
+reference for a fresh review. This reference is not consent or a runner grant.
+Candidate preparation and confirmation must still establish current source and
+execution authority independently. Reading API-origin progress does not confer
+the mapped person's separate native host-administrator role.
+
 An accepted recovery can retain completed implementation output while leaving
 verification held. Fresh checks use a separate linked-verification operation;
 they do not resume coding, repair failed checks, replay the consumed action, or
