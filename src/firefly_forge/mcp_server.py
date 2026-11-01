@@ -41,6 +41,7 @@ from firefly_forge.known_worker_completion_models import (
 )
 from firefly_forge.learning_models import LearningPolicy
 from firefly_forge.learning_observation_attempt_models import LearningObservationAttemptInput
+from firefly_forge.linked_verification_models import LinkedVerificationInputV1
 from firefly_forge.mcp_registry import MCPGrantInput, MCPReviewInput
 from firefly_forge.model_profiles import ModelProfileInput
 from firefly_forge.models import RepositoryInput, RunInput
@@ -97,6 +98,7 @@ ConsumedTerminalRequest = Annotated[Any, WithJsonSchema(ConsumedTerminalInputV2.
 ConsumedTerminalReconciliationRequest = Annotated[
     Any, WithJsonSchema(ConsumedTerminalReconciliationInputV1.model_json_schema())
 ]
+LinkedVerificationRequest = Annotated[Any, WithJsonSchema(LinkedVerificationInputV1.model_json_schema())]
 SCMPollFunctionalGrantRequest = SkipValidation[SCMPollFunctionalGrantInputV1]
 GitDeliveryPolicyRequest = SkipValidation[GitDeliveryPolicyInputV1]
 GitDeliveryRequest = SkipValidation[GitDeliveryInputV1]
@@ -197,6 +199,46 @@ def create_server() -> MCPServer:
 
         with client() as connection:
             return connection.consumed_terminal_reconciliation_status(identifier, request_id)
+
+    @server.tool(
+        description=prompt_text("mcp/get_linked_verification_candidate"),
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        ),
+    )
+    def get_linked_verification_candidate(identifier: RecoveryIdentifier) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.linked_verification_candidate(identifier)
+
+    @server.tool(
+        description=prompt_text("mcp/request_linked_verification"),
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=False, idempotent_hint=True, open_world_hint=True
+        ),
+    )
+    def request_linked_verification(
+        identifier: RecoveryIdentifier, request: LinkedVerificationRequest
+    ) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.request_linked_verification(identifier, request)
+
+    @server.tool(
+        description=prompt_text("mcp/get_linked_verification_status"),
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        ),
+    )
+    def get_linked_verification_status(
+        identifier: RecoveryIdentifier, request_id: RecoveryIdentifier
+    ) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.linked_verification_status(identifier, request_id)
 
     @server.tool(
         description=prompt_text("mcp/get_final_outcome_candidate"),

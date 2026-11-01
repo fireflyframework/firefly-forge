@@ -12,6 +12,9 @@ from firefly_forge.mcp_server import create_server
 from firefly_forge.prompts import prompt_catalog
 
 NEW_TOOLS = {
+    "get_linked_verification_candidate",
+    "request_linked_verification",
+    "get_linked_verification_status",
     "get_consumed_terminal_reconciliation_candidate",
     "reconcile_consumed_terminal",
     "get_consumed_terminal_reconciliation_status",
@@ -78,7 +81,7 @@ def _baseline():
 
 async def test_original_mcp_wire_metadata_keeps_reviewed_configuration_extensions():
     tools = await create_server().list_tools()
-    assert len(tools) == 199
+    assert len(tools) == 202
     original = [tool for tool in tools if tool.name not in NEW_TOOLS]
     assert len(original) == 142
     actual = ListToolsResult(tools=original).model_dump_json(by_alias=True, exclude_none=True)

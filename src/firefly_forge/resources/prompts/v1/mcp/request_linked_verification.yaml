@@ -1,0 +1,9 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/request_linked_verification
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Submit the exact reviewed candidate digest, stable request ID and three explicit acknowledgments once to queue an independent verification-only operation. The worker runs only the frozen configured checks; this grants no coding or repair, does not reset the original budget and does not publish Git changes. Queued is not completed. After uncertain delivery read status with the same request ID; never repeat POST or choose a replacement identity.
+required_variables: []
+metadata:
+  defaults: {}

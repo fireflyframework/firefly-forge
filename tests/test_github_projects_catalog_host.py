@@ -53,12 +53,19 @@ def test_projects_appends_eight_tools_after_the_exact_parent_prompt_rows():
     }
     prior = json.dumps(manifest["templates"][:366], sort_keys=True, separators=(",", ":")).encode()
     assert hashlib.sha256(prior).hexdigest() == "8c907f8be997e8dae0d34e9a051dafefb8b420ca451f77c9d068051af5e2c634"
-    assert {(entry["id"], entry["version"]) for entry in manifest["templates"][366:]} == {
+    assert {(entry["id"], entry["version"]) for entry in manifest["templates"][366:370]} == {
         ("collaboration/communication-system", "1.0.10"),
         ("collaboration/communication-review-system", "1.0.7"),
         ("collaboration/communication-repair-request", "1.0.2"),
         ("collaboration/communication-delivery-references", "1.0.0"),
     }
-    assert len(manifest["templates"]) == len(prompt_catalog().registry) == 370
+    prior_370 = json.dumps(manifest["templates"][:370], sort_keys=True, separators=(",", ":")).encode()
+    assert hashlib.sha256(prior_370).hexdigest() == "0c40aed0b9212f745cca56947db5b73f4cd68a6f854d4e920349ce74a67e4135"
+    assert {(entry["id"], entry["version"]) for entry in manifest["templates"][370:]} == {
+        ("mcp/get_linked_verification_candidate", "1.0.0"),
+        ("mcp/request_linked_verification", "1.0.0"),
+        ("mcp/get_linked_verification_status", "1.0.0"),
+    }
+    assert len(manifest["templates"]) == len(prompt_catalog().registry) == 373
     for row in manifest["templates"]:
         assert hashlib.sha256((root / row["path"]).read_bytes()).hexdigest() == row["sha256"]

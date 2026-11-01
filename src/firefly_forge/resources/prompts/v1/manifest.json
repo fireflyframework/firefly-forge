@@ -3185,6 +3185,30 @@
       "variables": {
         "references": "string"
       }
+    },
+    {
+      "id": "mcp/get_linked_verification_candidate",
+      "version": "1.0.0",
+      "path": "mcp/get_linked_verification_candidate.yaml",
+      "sha256": "0a3b946d2e6bcba8019103afd3421d40aa474f5c1cf02a6f11eeeb34331a972f",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/request_linked_verification",
+      "version": "1.0.0",
+      "path": "mcp/request_linked_verification.yaml",
+      "sha256": "a2c69df508367351028e41ba93a7e37c58541e2f101b75ba3460c54bb9936ab2",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_linked_verification_status",
+      "version": "1.0.0",
+      "path": "mcp/get_linked_verification_status.yaml",
+      "sha256": "e61adbba0a3c2621daa1405b6c637f7a0f87f690eb857e8679f0f5b5b4a3bbaa",
+      "field": "user",
+      "variables": {}
     }
   ]
 }
