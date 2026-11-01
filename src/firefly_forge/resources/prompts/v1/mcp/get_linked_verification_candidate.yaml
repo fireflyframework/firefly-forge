@@ -1,0 +1,9 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/get_linked_verification_candidate
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Read the current hash-only candidate for one independent set of fresh verification checks. The candidate binds the actor, accepted implementation, source, registered runtime, runner, inputs and exact command count. This read grants no execution or coding authority.
+required_variables: []
+metadata:
+  defaults: {}

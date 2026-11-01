@@ -30,6 +30,9 @@ def test_client_carries_authentication_and_validated_run():
 async def test_mcp_tools_have_real_input_contracts():
     tools = {tool.name: tool for tool in await create_server().list_tools()}
     assert set(tools) == {
+        "get_linked_verification_candidate",
+        "request_linked_verification",
+        "get_linked_verification_status",
         "get_consumed_terminal_reconciliation_candidate",
         "reconcile_consumed_terminal",
         "get_consumed_terminal_reconciliation_status",

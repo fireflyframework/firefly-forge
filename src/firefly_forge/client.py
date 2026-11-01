@@ -57,6 +57,7 @@ if TYPE_CHECKING:
         ConsumedTerminalInputV2,
         ConsumedTerminalReconciliationInputV1,
     )
+    from firefly_forge.linked_verification_models import LinkedVerificationInputV1
     from firefly_forge.model_profiles import ModelProfileInput
     from firefly_forge.original_selection_models import OriginalSelectionReadmissionInput
     from firefly_forge.product_assistant import AssistantRecoveryInput, AssistantTurnInput
@@ -256,6 +257,56 @@ class ForgeClient:
         run_id, request_id = self._recovery_identifier(run_id), self._recovery_identifier(request_id)
         response = self.request("GET", f"runs/{run_id}/worker-completion-settlements/{request_id}/reconciliation")
         return self._consumed_terminal_reconciliation_receipt(response, run_id, request_id)
+
+    def linked_verification_candidate(self, run_id: str) -> dict[str, Any]:
+        """Read the frozen fresh-check scope without admitting an operation."""
+        from firefly_forge.linked_verification_models import LinkedVerificationCandidateV1
+
+        run_id = self._recovery_identifier(run_id)
+        response = self.request("GET", f"runs/{run_id}/linked-verifications/candidate")
+        try:
+            candidate = LinkedVerificationCandidateV1.model_validate(response)
+            if candidate.run_id != run_id:
+                raise ValueError("Linked verification candidate scope differs")
+        except ValueError:
+            raise ValueError("The linked verification candidate belongs to another reviewed run") from None
+        return candidate.model_dump(mode="json")
+
+    @staticmethod
+    def _linked_verification_receipt(
+        response: Any, run_id: str, request_id: str, expected_request: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        from firefly_forge.linked_verification_models import LinkedVerificationReceiptV1
+
+        try:
+            receipt = LinkedVerificationReceiptV1.model_validate(response)
+            if (
+                receipt.run_id != run_id
+                or receipt.request_id != request_id
+                or expected_request is not None
+                and receipt.request.model_dump(mode="json") != expected_request
+            ):
+                raise ValueError("Linked verification receipt scope differs")
+        except ValueError:
+            raise ValueError("The linked verification receipt belongs to another reviewed operation") from None
+        return receipt.model_dump(mode="json")
+
+    def request_linked_verification(
+        self, run_id: str, request: LinkedVerificationInputV1 | dict[str, Any]
+    ) -> dict[str, Any]:
+        """Admit once; uncertain delivery requires reading the same request identity."""
+        from firefly_forge.linked_verification_models import LinkedVerificationInputV1
+
+        run_id = self._recovery_identifier(run_id)
+        body = self._recovery_body(LinkedVerificationInputV1, request)
+        response = self.request("POST", f"runs/{run_id}/linked-verifications", json=body)
+        return self._linked_verification_receipt(response, run_id, body["request_id"], body)
+
+    def linked_verification_status(self, run_id: str, request_id: str) -> dict[str, Any]:
+        """Read progress without retrying a check or changing the original budget."""
+        run_id, request_id = self._recovery_identifier(run_id), self._recovery_identifier(request_id)
+        response = self.request("GET", f"runs/{run_id}/linked-verifications/{request_id}")
+        return self._linked_verification_receipt(response, run_id, request_id)
 
     def provider_recovery_allowance_candidate(
         self, run_id: str, agent: Literal["codex", "claude"], *, adopt_current_executable: bool = False

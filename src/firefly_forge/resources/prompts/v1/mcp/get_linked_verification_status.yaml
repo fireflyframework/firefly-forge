@@ -1,0 +1,9 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/get_linked_verification_status
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Read the exact linked verification operation and its recorded command progress. Unknown or failed checks are not successful; only a completed receipt with its typed settlement records parent verification. This read never retries a command, creates another operation or grants Git delivery.
+required_variables: []
+metadata:
+  defaults: {}

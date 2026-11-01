@@ -155,6 +155,53 @@ def reconcile_consumed_terminal(
         display(connection.reconcile_consumed_terminal(run_id, request_id, request))
 
 
+@main.group("linked-verifications")
+def linked_verifications() -> None:
+    """Review and explicitly admit one independent set of fresh checks, without coding."""
+
+
+@linked_verifications.command("candidate")
+@click.argument("run_id")
+def linked_verification_candidate(run_id: str) -> None:
+    with client() as connection:
+        display(connection.linked_verification_candidate(run_id))
+
+
+@linked_verifications.command("request")
+@click.argument("run_id")
+@click.option("--request-id", required=True)
+@click.option("--candidate-digest", required=True)
+@click.option("--acknowledge-all-fresh-checks", is_flag=True, required=True)
+@click.option("--acknowledge-no-coding-or-repair", is_flag=True, required=True)
+@click.option("--acknowledge-original-history-and-budget-preserved", is_flag=True, required=True)
+def request_linked_verification(
+    run_id: str,
+    request_id: str,
+    candidate_digest: str,
+    acknowledge_all_fresh_checks: bool,
+    acknowledge_no_coding_or_repair: bool,
+    acknowledge_original_history_and_budget_preserved: bool,
+) -> None:
+    request = dict(
+        version=1,
+        request_id=request_id,
+        candidate_digest=candidate_digest,
+        acknowledge_all_fresh_checks=acknowledge_all_fresh_checks,
+        acknowledge_no_coding_or_repair=acknowledge_no_coding_or_repair,
+        acknowledge_original_history_and_budget_preserved=acknowledge_original_history_and_budget_preserved,
+    )
+    with client() as connection:
+        display(connection.request_linked_verification(run_id, request))
+
+
+@linked_verifications.command("status")
+@click.argument("run_id")
+@click.argument("request_id")
+def linked_verification_status(run_id: str, request_id: str) -> None:
+    with client() as connection:
+        display(connection.linked_verification_status(run_id, request_id))
+
+
 @main.group("final-outcome-continuations")
 def final_outcome_continuations() -> None:
     """Review a final result that was already consumed and keep its original request."""
