@@ -10,6 +10,27 @@ from test_source_edit_v14_transition_host import declared_names
 
 from firefly_forge import agentic_checkpoint_invocation, source_budget_allowances
 
+CURRENT_AUTHORITY_APPEND = (
+    "linked_verification_models.py",
+    "linked_verifications.py",
+    "linked_verification_controllers.py",
+    "git_linked_verification.py",
+    "scm_linked_verification.py",
+    "scm_linked_verification_models.py",
+    "scm_linked_verification_records.py",
+    "object_storage.py",
+    "runner_artifact_publications.py",
+    "runner_object_artifacts.py",
+    "source_archive.py",
+    "source_archive_index.py",
+    "source_archive_scan_models.py",
+    "source_archive_service.py",
+    "source_explorer.py",
+    "coding_check_grants.py",
+    "coding_check_models.py",
+)
+
+
 MATERIALS = {
     "agentic_checkpoint_invocation.py": {
         "function": "runtime_contract",
@@ -37,6 +58,7 @@ MATERIALS = {
             "oauth_resources.py",
             "oauth_authority.py",
             "oauth_credential_fingerprints.py",
+            *CURRENT_AUTHORITY_APPEND,
         ],
     },
     "source_budget_allowances.py": {
@@ -63,6 +85,8 @@ MATERIALS = {
             "oauth_provider_policies.py",
             "oauth_resources.py",
             "oauth_authority.py",
+            *CURRENT_AUTHORITY_APPEND,
+            "workspace_tools.py",
         ],
     },
 }
