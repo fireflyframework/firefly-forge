@@ -26,7 +26,7 @@ from firefly_forge.linked_verification_models import (
     LinkedVerificationReceiptV1,
     verification_progress,
 )
-from firefly_forge.linked_verifications import _completed_checks
+from firefly_forge.linked_verifications import _completed_checks, _history_digest
 from firefly_forge.project_access import AccessDenied
 from firefly_forge.scm_linked_verification_models import PreparedSCMLinkedVerificationAdmission
 from firefly_forge.source_snapshot import GitIndexIdentityV1, git_index_identity
@@ -54,6 +54,7 @@ class _PreparedSettlement:
     fence: Callable[[], None]
     actor_id: str
     phase_digest: str
+    history_digest: str
     scm: PreparedSCMLinkedVerificationAdmission | None
     workspace: Path
     payload: SelectedSourceFence | None = None
@@ -76,6 +77,7 @@ class _GitCommitFence(TransactionSynchronizationAdapter):
     unit: UnitOfWork
     owner_task: asyncio.Task[Any]
     row: Any
+    native_history: tuple[tuple[Any, str], ...] = ()
     expected: str | None = None
     index: GitIndexIdentityV1 | None = None
 
@@ -98,8 +100,13 @@ class _GitCommitFence(TransactionSynchronizationAdapter):
             or self.index is None
             or git_index_identity(self.prepared.workspace) != self.index
             or self.prepared.payload is None
+            or not self.native_history
+            or any(
+                self.deliveries.engine.linked_verifications._history_row_digest(row) != expected
+                for row, expected in self.native_history
+            )
         ):
-            raise AccessDenied("Git commit lost its exact native unit, owner task or sealed phase")
+            raise AccessDenied("Git commit lost its exact native unit, owner task, history or sealed phase")
         self.prepared.fence()
         self.prepared.payload.revalidate(payload_only=True)
 
@@ -120,9 +127,20 @@ async def bind_linked_git_writer(deliveries: Any, run_id: str, row: Any) -> _Git
     if prepared.run_id != run_id or unit is None or task is None or unit.owner_task is not task:
         raise AccessDenied("Linked Git settlement requires its exact native writer")
     await assert_linked_git_closed(deliveries, run_id, prepared=prepared)
+    service = deliveries.engine.linked_verifications
+    rows, history, frontier = await service._frontier(run_id, lock=True)
+    if frontier is None or _history_digest(history) != prepared.history_digest:
+        raise AccessDenied("Git writer lost its prepared verification history")
     if current_unit_of_work() is not unit or unit.owner_task is not task:
         raise AccessDenied("Linked Git settlement changed its native writer during preparation")
-    cut = _GitCommitFence(deliveries, prepared, unit, task, row)
+    cut = _GitCommitFence(
+        deliveries,
+        prepared,
+        unit,
+        task,
+        row,
+        native_history=tuple((value, service._history_row_digest(value)) for value in rows),
+    )
     register_synchronization(cut)
     return cut
 
@@ -162,13 +180,18 @@ async def assert_linked_git_closed(
             raise ValueError("Git delivery lost its linked verification request repository")
         return None
     async with store._unit():
-        rows = await requests.records.for_run(identifier(run_id), KIND)
-        if not rows:
-            return None
         service = getattr(deliveries.engine, "linked_verifications", None)
-        if len(rows) != 1 or service is None or service.store is not store or service.requests is not requests:
+        if service is None:
+            if not await requests.records.for_run(identifier(run_id), KIND):
+                return None
             raise ValueError("Git delivery requires the exact linked verification receipt consumer")
-        row = rows[0]
+        if service.store is not store or service.requests is not requests:
+            raise ValueError("Git delivery requires the exact linked verification receipt consumer")
+        rows, history, frontier = await service._frontier(run_id, lock=current_unit_of_work() is not None)
+        if frontier is None:
+            return None
+        history_digest = _history_digest(history)
+        row = next(value for value in rows if value.id.hex == frontier.request_id)
         if row.run_id != identifier(run_id):
             raise ValueError("Linked verification belongs to another Git source")
         events = await service._events(row)
@@ -317,6 +340,7 @@ async def assert_linked_git_closed(
                 service.engine.component_directory(run, service.engine.workspaces / run_id),
                 current,
                 actor=actor,
+                **({"successor": receipt.candidate.successor} if receipt.candidate.successor is not None else {}),
             )
             if digest(inputs.witness.model_dump(mode="json")) != receipt.candidate.input_scope_digest:
                 raise ValueError("Git settlement build inputs differ from their completed verification")
@@ -334,6 +358,7 @@ async def assert_linked_git_closed(
             fence,
             actor.id.hex,
             phase_digest,
+            history_digest,
             grant,
             deliveries.workspace(run),
         )
@@ -343,6 +368,7 @@ async def assert_linked_git_closed(
         or captured.run_id != run_id
         or captured.receipt_digest != digest({"data": data, "events": events})
         or captured.task_digest != digest(task)
+        or captured.history_digest != history_digest
         or store.execution_ownership_token is not captured.ownership
         or store.configuration.write_generation is not captured.generation
         or CURRENT_PRINCIPAL.get() != captured.reader

@@ -118,6 +118,12 @@ def linked_delivery(operational):
         assert request_id == row.id and len(events) <= maximum
         return [SimpleNamespace(data=copy.deepcopy(event)) for event in events]
 
+    async def page(run_id, kind, *, after=None, limit=64):
+        values = sorted(await c.requests.records.for_run(run_id, kind), key=lambda value: value.id)
+        return [value for value in values if after is None or value.id > after][:limit]
+
+    c.requests.records.for_run_page = page
+    c.service.engine.credential_registry = dict
     c.requests.journal.linked_verification_events = linked_events
     c.service.store.execution_requests = c.requests
     c.service.engine.linked_verifications = LinkedVerifications(

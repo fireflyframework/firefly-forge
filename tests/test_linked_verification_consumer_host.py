@@ -5,7 +5,7 @@ import asyncio
 import copy
 from datetime import UTC, datetime, timedelta
 from types import MethodType, SimpleNamespace
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import httpx
 import pytest
@@ -22,7 +22,7 @@ from firefly_forge.identity import Principal
 from firefly_forge.journal import Journal, digest
 from firefly_forge.linked_verification_controllers import LinkedVerificationController
 from firefly_forge.linked_verification_models import LinkedVerificationInputV1
-from firefly_forge.linked_verifications import LinkedVerifications
+from firefly_forge.linked_verifications import LinkedVerifications, final_commands
 from firefly_forge.process import ProcessResult
 from firefly_forge.project_access import CURRENT_PRINCIPAL
 from firefly_forge.verification_scope_attestation import PreparedBuildScope, VerificationScopeV1
@@ -59,7 +59,7 @@ async def linked_case(consumed_terminal, monkeypatch):
             run_id=run["id"],
             handoff_intent_digest=source["handoff_intent_digest"],
             source_digest=source["source_digest"],
-            commands_digest=source["commands_digest"],
+            commands_digest=digest({"commands": final_commands(run, workspace)}),
             scope_digest=source["scope_digest"],
             runtime_contract="1" * 64,
             dependency_digest=digest({"fixture": observed}),
@@ -290,6 +290,40 @@ async def test_revoked_queued_consent_is_held_once_before_any_effect(linked_case
     assert operation["status"] == "needs_reconciliation"
     assert not c.calls
     assert await c.env.store.get_run(c.env.run_id) == original
+
+
+async def test_known_result_guard_hold_retains_safe_phase_and_cause(linked_case, monkeypatch):
+    c = linked_case
+    inputs = c.api._inputs
+
+    async def sensitive_guard(*args, **kwargs):
+        prepared = await inputs(*args, **kwargs)
+        original_fence = prepared._fence
+
+        async def fence():
+            try:
+                await original_fence()
+            except ValueError as error:
+                raise ValueError("sensitive-fixture-value-must-not-be-published") from error
+
+        return PreparedBuildScope(prepared.witness, prepared._measure, fence, prepared._environment)
+
+    monkeypatch.setattr(c.api, "_inputs", sensitive_guard)
+    c.inputs_state["drift_after_result"] = True
+    result = await admit_and_execute(c)
+    assert result["status"] == "needs_reconciliation"
+    assert result["progress"]["started"] == result["progress"]["completed"] == 1
+    assert result["progress"]["unknown"] is False
+    assert result["hold_diagnostic"] == {
+        "phase": "post_result_inputs",
+        "cause_code": "input_scope_changed",
+        "exception_type": "ValueError",
+    }
+    assert "sensitive-fixture-value" not in str(result)
+    async with c.env.store._unit():
+        row = await c.env.requests.records.find_by_id(UUID(result["request_id"]))
+        events = await c.api._events(row)
+    assert events[-1]["evidence"]["diagnostic"] == result["hold_diagnostic"]
 
 
 @pytest.mark.parametrize("outcome", ["failed", "unknown", "drift_after_result"])

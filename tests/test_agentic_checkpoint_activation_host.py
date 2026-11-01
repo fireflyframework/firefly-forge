@@ -130,6 +130,10 @@ async def activated(tmp_path, monkeypatch):
         async def for_run(self, run, kind):
             return [r for r in self.rows if r.run_id == run and r.kind == kind]
 
+        async def for_run_page(self, run, kind, *, after=None, limit=64):
+            rows = sorted(await self.for_run(run, kind), key=lambda row: row.id)
+            return [row for row in rows if after is None or row.id > after][:limit]
+
         async def state(self, status, limit=50, *, kind=None):
             return [r for r in self.rows if r.status == status and (kind is None or r.kind == kind)][:limit]
 

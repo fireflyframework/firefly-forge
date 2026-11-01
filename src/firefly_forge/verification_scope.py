@@ -173,6 +173,35 @@ def wrap_build_argv(argv: list[str], profile: str = DENY_NETWORK_PROFILE) -> lis
     return bounded_argv([str(SANDBOX_EXEC), "-p", profile, *argv])
 
 
+def vitest_no_cache_argv(argv: list[str], workspace: Path) -> list[str]:
+    """Apply the reviewed physical cache policy without replacing logical QA intent."""
+    if (
+        len(argv) != 5
+        or Path(argv[0]).name not in {"npm", "npm.cmd"}
+        or argv[1] != "--prefix"
+        or argv[3:] != ["run", "test"]
+    ):
+        return list(argv)
+    if build_check_kind(argv, workspace) != "node_build":
+        raise ValueError("Vitest cache policy requires its recognized declared test script")
+    directory = (workspace / argv[2]).resolve()
+    expected = ["node", "node_modules/vitest/vitest.mjs", "run", "--configLoader", "runner"]
+    try:
+        package = json.loads((directory / "package.json").read_text())
+        installed = directory / "node_modules/vitest"
+        tool = json.loads((installed / "package.json").read_text())
+        if (
+            shlex.split(package["scripts"]["test"]) != expected
+            or tool.get("name") != "vitest"
+            or tool.get("version") != "4.1.11"
+            or not (installed / "vitest.mjs").is_file()
+        ):
+            raise ValueError("Unsupported Vitest script or version for the reviewed no-cache policy")
+    except (OSError, KeyError, TypeError, json.JSONDecodeError):
+        raise ValueError("Vitest cache policy requires its available qualified script and version") from None
+    return [*argv, "--", "--no-cache"]
+
+
 def fresh_build_check(argv: list[str]) -> bool:
     return (
         len(argv) == 5
@@ -184,7 +213,9 @@ def fresh_build_check(argv: list[str]) -> bool:
 
 def build_check_kind(argv: list[str], workspace: Path) -> Literal["python_static", "node_build"] | None:
     tail = argv[1:]
-    if tail[:1] == ["-B"]:
+    flags: set[str] = set()
+    while tail and tail[0] in {"-B", "-I"} and tail[0] not in flags:
+        flags.add(tail[0])
         tail = tail[1:]
     if tail[:1] == ["-m"] and len(tail) >= 2 and tail[1] in {"ruff", "mypy"}:
         return "python_static"
