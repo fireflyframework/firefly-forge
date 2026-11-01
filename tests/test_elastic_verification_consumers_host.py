@@ -27,6 +27,7 @@ async def test_actual_engine_reaches_verification_frontier_with_full_suite(tmp_p
     store.run.data.update(operation=operation, commands=checks(), implementation_rounds=1, verification=[])
     worker = SimpleNamespace(execute=AsyncMock(side_effect=AssertionError("No provider dispatch is permitted")))
     engine = Engine(store, tmp_path / "workspaces", lambda _: worker)
+    (engine.workspaces / RUN).mkdir(parents=True)
     engine._inspect_workspace = AsyncMock(return_value={"base_revision": "b" * 40})
     engine._receipt = AsyncMock()
 
