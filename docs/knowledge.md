@@ -13,7 +13,7 @@ The [framework refresh guide](framework-knowledge-refresh.md) covers the impleme
 
 ## Pinned service and SDK
 
-The managed installer verifies the published flycanon `26.10.6` server, source archive, runtime requirements and configuration before installation. forge uses the matching Python SDK. The server runs in a separate framework environment; its qualified pyfly `26.09.04` event contract does not replace forge's pyfly `26.10.7` dependency.
+The managed installer verifies the published flycanon `26.10.6` server, source archive, runtime requirements and configuration before installation. forge uses the matching Python SDK. The server runs in a separate framework environment; its qualified pyfly `26.09.04` event contract does not replace forge's pyfly `26.10.22` dependency.
 
 Workspace creation requires the body `id` to equal `X-Workspace-Id`. The knowledge connection selects the target workspace before creating it, including project-scoped learning workspaces. A mismatch returns `400 workspace_scope_mismatch` before storage or event publication. Existing credentials, corpora and saved run configuration retain their original state; upgrading the SDK does not authorize a retry of an unknown remote effect.
 

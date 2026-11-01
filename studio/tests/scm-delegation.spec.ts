@@ -1,6 +1,7 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { expect, test, type Page } from "@playwright/test";
 import { mockIdentity } from "./auth-fixture";
+import { mockFactoryDashboard } from "./factory-dashboard-fixture";
 import { navigate } from "./navigation";
 
 const projectId = "a".repeat(32),
@@ -58,6 +59,22 @@ async function setup(page: Page, reader = false) {
         },
       });
     if (await mockIdentity(route)) return;
+    if (
+      route.request().method() === "GET" &&
+      (await mockFactoryDashboard(route, {
+        projects: [
+          {
+            id: projectId,
+            name: project.definition.name,
+            component_count: 1,
+            repository_count: 1,
+          },
+        ],
+        runs: [],
+        administrator: !reader,
+      }))
+    )
+      return;
     if (path.includes("scm-actor-bindings")) {
       if (route.request().method() === "GET") state.delegationReads++;
       else state.writes++;
@@ -349,8 +366,7 @@ test("a different full stored project cut cannot open owner review", async ({
 test("a bounded person lookup cannot be relabeled while its response is pending", async ({
   page,
 }) => {
-  const { setupDelegation, nativeUser } =
-    await import("./scm-delegation-fixture");
+  const { setupDelegation } = await import("./scm-delegation-fixture");
   const state = await setupDelegation(page);
   await page
     .getByRole("button", { name: "Review a delegation", exact: true })
@@ -370,19 +386,179 @@ test("a bounded person lookup cannot be relabeled while its response is pending"
     .fill("Warehouse");
   let release!: () => void;
   state.eligibleGate = new Promise<void>((resolve) => (release = resolve));
-  await dialog
-    .getByRole("button", { name: "Find person", exact: true })
-    .click();
+  await dialog.getByRole("button", { name: "Search", exact: true }).click();
   await expect(
     dialog.getByLabel("Find a registered person", { exact: true }),
   ).toBeDisabled();
   release();
+  await dialog.getByRole("radio", { name: /Warehouse reviewer/ }).click();
   await dialog
-    .getByLabel("Registered person", { exact: true })
-    .selectOption(nativeUser);
+    .getByRole("group", { name: "Selected registered person", exact: true })
+    .getByRole("button", { name: "Change", exact: true })
+    .click();
   await expect(
     dialog.getByLabel("Find a registered person", { exact: true }),
   ).toHaveValue("Warehouse");
+});
+
+test("person lookup searches explicitly and preserves a visible choice without a delegation write", async ({
+  page,
+}) => {
+  const { setupDelegation, nativeUser } =
+    await import("./scm-delegation-fixture");
+  const state = await setupDelegation(page);
+  const searches: string[] = [];
+  await page.route("**/eligible-users**", async (route) => {
+    const query = new URL(route.request().url()).searchParams.get("query")!;
+    searches.push(query);
+    await route.fulfill({
+      json:
+        query === "Missing"
+          ? []
+          : [
+              {
+                id: nativeUser,
+                display_name: "Warehouse reviewer",
+                email: "reviewer@example.test",
+                contact_email: null,
+                enabled: true,
+              },
+            ],
+    });
+  });
+  await page
+    .getByRole("button", { name: "Review a delegation", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog", {
+    name: "Review SCM delegation",
+    exact: true,
+  });
+  await dialog
+    .getByLabel("Webhook-reported account", { exact: true })
+    .selectOption("2".repeat(32));
+  await dialog
+    .getByRole("button", { name: "Continue to scope", exact: true })
+    .click();
+  const query = dialog.getByLabel("Find a registered person", { exact: true });
+  await query.fill("Warehouse");
+  expect(searches).toEqual([]);
+  await query.press("Enter");
+  const choice = dialog.getByRole("radio", {
+    name: /Warehouse reviewer.*reviewer@example.test/,
+  });
+  await expect(choice).toBeVisible();
+  await expect(choice).not.toBeChecked();
+  expect(searches).toEqual(["Warehouse"]);
+  await choice.focus();
+  await page.keyboard.press("Space");
+  const selected = dialog.getByRole("group", {
+    name: "Selected registered person",
+    exact: true,
+  });
+  await expect(selected).toContainText("Warehouse reviewer");
+  await expect(selected).toContainText("reviewer@example.test");
+  const change = selected.getByRole("button", { name: "Change", exact: true });
+  await expect(change).toBeFocused();
+  await change.click();
+  await expect(query).toBeFocused();
+  await expect(query).toHaveValue("Warehouse");
+  await expect(dialog.getByRole("radio")).toHaveCount(0);
+  await query.fill("Missing");
+  expect(searches).toEqual(["Warehouse"]);
+  await dialog.getByRole("button", { name: "Search", exact: true }).click();
+  await expect(dialog.getByRole("status")).toContainText("No matching people");
+  await expect(selected).toHaveCount(0);
+  expect(state.posts).toHaveLength(0);
+});
+
+test("editing a person query clears earlier selectable results before another GET", async ({
+  page,
+}) => {
+  const { setupDelegation, delegationScope } =
+    await import("./scm-delegation-fixture");
+  const state = await setupDelegation(page);
+  let reads = 0;
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname.endsWith("/eligible-users")) reads++;
+  });
+  const dialog = await delegationScope(page);
+  const query = dialog.getByLabel("Find a registered person", { exact: true });
+  await query.fill("Warehouse");
+  await query.press("Enter");
+  await expect(dialog.getByRole("radio")).toHaveCount(1);
+  await query.fill("Different person");
+  await expect(dialog.getByRole("radio")).toHaveCount(0);
+  expect(reads).toBe(1);
+  await expect(
+    dialog.getByRole("button", { name: "Review delegation", exact: true }),
+  ).toBeDisabled();
+  expect(state.posts).toHaveLength(0);
+});
+
+for (const invalid of ["disabled", "invalid identity", "too many results"])
+  test(`person lookup refuses ${invalid} before selection or delegation`, async ({
+    page,
+  }) => {
+    const { setupDelegation, delegationScope, nativeUser } =
+      await import("./scm-delegation-fixture");
+    const state = await setupDelegation(page);
+    await page.route("**/eligible-users**", async (route) => {
+      const person = {
+        id: invalid === "invalid identity" ? "not-a-native-id" : nativeUser,
+        display_name: "Warehouse reviewer",
+        email: "reviewer@example.test",
+        contact_email: null,
+        enabled: invalid !== "disabled",
+      };
+      await route.fulfill({
+        json:
+          invalid === "too many results" ? Array(21).fill(person) : [person],
+      });
+    });
+    const dialog = await delegationScope(page);
+    const query = dialog.getByLabel("Find a registered person", {
+      exact: true,
+    });
+    await query.fill("Warehouse");
+    await query.press("Enter");
+    await expect(dialog.getByRole("alert")).toContainText("Search again");
+    await expect(dialog.getByRole("radio")).toHaveCount(0);
+    await expect(
+      dialog.getByRole("button", { name: "Review delegation", exact: true }),
+    ).toBeDisabled();
+    expect(state.posts).toHaveLength(0);
+  });
+
+test("person lookup validates short input and recovers from a failed search without using stale results", async ({
+  page,
+}) => {
+  const { setupDelegation, delegationScope } =
+    await import("./scm-delegation-fixture");
+  const state = await setupDelegation(page);
+  let requests = 0;
+  await page.route("**/eligible-users**", async (route) => {
+    requests++;
+    await route.abort("failed");
+  });
+  const dialog = await delegationScope(page);
+  const query = dialog.getByLabel("Find a registered person", { exact: true });
+  await query.fill("Wa");
+  await query.press("Enter");
+  await expect(dialog.getByRole("alert")).toContainText("3 to 120 characters");
+  expect(requests).toBe(0);
+  await query.fill("Warehouse");
+  await query.press("Enter");
+  await expect(dialog.getByRole("alert")).toContainText("Search again");
+  expect(requests).toBe(1);
+  await expect(query).toHaveValue("Warehouse");
+  await expect(dialog.getByRole("radio")).toHaveCount(0);
+  await expect(
+    dialog.getByRole("group", {
+      name: "Selected registered person",
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  expect(state.posts).toHaveLength(0);
 });
 
 test("storage refusal before dispatch sends nothing and never invents a replacement", async ({
@@ -698,6 +874,7 @@ for (const width of [1440, 390])
           name: "Review SCM delegation",
           exact: true,
         });
+        expect(state.posts).toHaveLength(0);
         await expect
           .poll(() =>
             modal.evaluate((node) => {
@@ -705,12 +882,17 @@ for (const width of [1440, 390])
                 field = node.querySelector(".wizard-field-scroll")!,
                 actions = node
                   .querySelector(".wizard-actions")!
-                  .getBoundingClientRect();
+                  .getBoundingClientRect(),
+                fieldBox = field.getBoundingClientRect();
               return (
                 r.top >= 0 &&
                 r.bottom <= innerHeight + 1 &&
                 r.left >= 0 &&
                 r.right <= innerWidth + 1 &&
+                field.clientHeight >= 64 &&
+                /auto|scroll/.test(getComputedStyle(field).overflowY) &&
+                fieldBox.top >= r.top &&
+                fieldBox.bottom <= actions.top + 1 &&
                 field.scrollWidth <= field.clientWidth + 1 &&
                 actions.bottom <= r.bottom + 1
               );

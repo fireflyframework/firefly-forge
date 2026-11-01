@@ -191,11 +191,32 @@ def test_every_packaged_resource_matches_its_reviewed_text_vector():
     fixture = json.loads((Path(__file__).parent / "fixtures/prompt-template-vectors-v2.json").read_text())
     catalog = prompt_catalog()
     assert len(fixture["vectors"]) == 77
-    assert len(catalog.registry) == 355
+    assert len(catalog.registry) == 370
     for vector in fixture["vectors"]:
         assert (
             catalog.text(vector["id"], version=vector.get("version", "1.0.0"), **vector["variables"]) == vector["text"]
         ), vector["id"]
+
+    additions = {
+        "mcp/get_consumed_terminal_reconciliation_candidate": (
+            "Read the hash-only current candidate for the same uncharged consumed-terminal claim. "
+            "It binds the current operator, qualified runtime, source, index, native task and journal; "
+            "it grants no execution."
+        ),
+        "mcp/reconcile_consumed_terminal": (
+            "Submit the reviewed reconciliation digest and three explicit acknowledgments for this same claimed "
+            "request once. Append native reconciliation authority and continue only local postprocessing of known "
+            "output in the same task attempt, then pause. No model, tool, verification, QA or publication dispatch "
+            "is granted. After uncertain delivery read reconciliation status; do not repeat POST or choose another "
+            "identity."
+        ),
+        "mcp/get_consumed_terminal_reconciliation_status": (
+            "Read the same consumed-terminal reconciliation receipt after submission or uncertain delivery. "
+            "This read never retries continuation or queues another claim."
+        ),
+    }
+    for name, text in additions.items():
+        assert catalog.text(name) == text
 
 
 async def test_actual_builder_and_designer_model_inputs_keep_roles_order_and_tool_schemas(tmp_path):

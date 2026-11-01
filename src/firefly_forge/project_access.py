@@ -43,9 +43,19 @@ class AccessTransactions(Protocol):
     def _unit(self) -> AbstractAsyncContextManager[AsyncSession]: ...
 
 
+class PersonalObservationAuthority(Protocol):
+    async def project_memberships(self, user: Principal) -> list[dict[str, Any]]: ...
+
+
 class ProjectAccess:
-    def __init__(self, store: AccessTransactions, records: ForgeMembershipRepository | None = None) -> None:
+    def __init__(
+        self,
+        store: AccessTransactions,
+        records: ForgeMembershipRepository | None = None,
+        personal_tokens: PersonalObservationAuthority | None = None,
+    ) -> None:
         self.store, self.records = store, records or ForgeMembershipRepository()
+        self.personal_tokens = personal_tokens
 
     @staticmethod
     def permits(role: str, permission: str) -> bool:
@@ -53,7 +63,7 @@ class ProjectAccess:
 
     @staticmethod
     def is_admin(user: Principal) -> bool:
-        return user.authentication_method != "scm_mapping" and (
+        return user.authentication_method not in {"scm_mapping", "personal_token"} and (
             user.authentication_method == "local_bootstrap" or "forge-admin" in user.api_roles
         )
 
@@ -66,6 +76,11 @@ class ProjectAccess:
             return False
 
     async def memberships(self, user: Principal) -> list[dict[str, Any]]:
+        if user.authentication_method == "personal_token":
+            authority = self.personal_tokens or getattr(self.store, "personal_tokens", None)
+            if authority is None:
+                raise AccessDenied("Personal observation authority is unavailable")
+            return await cast(PersonalObservationAuthority, authority).project_memberships(user)
         async with self.store._unit():
             identity = await ForgeIdentityUserRepository().find_by_id(user.id)
             if identity is not None and not identity.enabled:
@@ -81,6 +96,8 @@ class ProjectAccess:
             ]
 
     async def require_project(self, user: Principal, project_id: str, permission: Permission) -> None:
+        if user.authentication_method == "personal_token" and permission != "read":
+            raise AccessDenied("Personal credentials allow project observation only")
         if user.authentication_method == "scm_mapping":
             await self.authorize_actor(self.actor_snapshot(user), project_id, permission)
             return
@@ -91,6 +108,8 @@ class ProjectAccess:
             raise AccessDenied("Your project role does not allow this action")
 
     async def require_repository(self, user: Principal, repository_id: str, permission: Permission) -> None:
+        if user.authentication_method == "personal_token" and permission != "read":
+            raise AccessDenied("Personal credentials allow project observation only")
         if user.authentication_method == "scm_mapping":
             delegation = user.scm_delegation or {}
             if delegation.get("repository_id") != repository_id:
@@ -238,6 +257,8 @@ class ProjectAccess:
     ) -> bool:
         if not actor:
             return True
+        if actor.get("authentication_method") == "personal_token":
+            raise AccessDenied("Observation credentials cannot authorize execution effects")
         if actor.get("authentication_method") == "scm_mapping":
             from firefly_forge.scm_actor_authority import SCMActorAuthority
             from firefly_forge.store import Store

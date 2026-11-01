@@ -57,6 +57,11 @@ def checkpoint_invocation(value: CheckpointInvocation | None) -> Iterator[None]:
 
 def runtime_contract() -> str:
     _outside_unit()
+    return _runtime_material_digest()
+
+
+def _runtime_material_digest() -> str:
+    """Bounded local fingerprint, without checkpoint admission or dispatch."""
     root = Path(__file__).parent
     return digest(
         {
@@ -243,6 +248,41 @@ def runtime_contract() -> str:
                     "policies.py",
                     "completed_final_epoch.py",
                     "consumed_terminal_completions.py",
+                    "personal_token_format.py",
+                    "personal_token_controllers.py",
+                    "personal_tokens.py",
+                    "personal_token_models.py",
+                    "personal_token_persistence.py",
+                    "factory_dashboard.py",
+                    "factory_dashboard_controllers.py",
+                    "factory_dashboard_models.py",
+                    "factory_dashboard_persistence.py",
+                    "identity.py",
+                    "identity_persistence.py",
+                    "access_persistence.py",
+                    "product_provenance.py",
+                    "engine_activity.py",
+                    "engine_activity_persistence.py",
+                    "consumed_terminal_reconciliations.py",
+                    "github_projects.py",
+                    "github_projects_controllers.py",
+                    "github_projects_effects.py",
+                    "github_projects_graphql.py",
+                    "github_projects_models.py",
+                    "github_projects_oauth.py",
+                    "github_projects_persistence.py",
+                    "github_projects_projection.py",
+                    "github_projects_references.py",
+                    "github_projects_requests.py",
+                    "github_projects_worker.py",
+                    "connection_oauth.py",
+                    "connection_oauth_models.py",
+                    "connection_oauth_persistence.py",
+                    "connection_oauth_controllers.py",
+                    "oauth_provider_policies.py",
+                    "oauth_resources.py",
+                    "oauth_authority.py",
+                    "oauth_credential_fingerprints.py",
                 )
             },
         }

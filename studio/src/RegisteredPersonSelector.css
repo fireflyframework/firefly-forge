@@ -1,0 +1,147 @@
+/* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+.registered-person-selector {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.registered-person-search {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: stretch;
+}
+.registered-person-query {
+  position: relative;
+  min-width: 0;
+}
+.registered-person-query > svg {
+  position: absolute;
+  inset-inline-start: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  pointer-events: none;
+}
+.registered-person-selector .registered-person-query input {
+  width: 100%;
+  background: var(--input);
+  border: 1px solid var(--line-strong);
+  border-radius: 5px;
+  padding: 11px 12px 11px 36px;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--text);
+  min-height: 44px;
+}
+.registered-person-query input::placeholder {
+  color: var(--dim);
+}
+.registered-person-search > button {
+  min-height: 44px;
+  padding-inline: 12px;
+}
+.registered-person-selector > label {
+  margin: 0;
+}
+.registered-person-selector > small,
+.registered-person-status {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.registered-person-selector .registered-person-results {
+  min-width: 0;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  margin: 8px 0 0;
+}
+.registered-person-results > legend {
+  padding: 0 0 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.registered-person-option {
+  display: grid;
+  grid-template-columns: 16px 32px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+  cursor: pointer;
+}
+.registered-person-selector .registered-person-option input[type="radio"] {
+  width: 16px;
+  min-width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--amber);
+}
+.registered-person-avatar {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--surface-subtle);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+}
+.registered-person-identity {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.registered-person-identity > span {
+  color: var(--muted);
+  font-size: 13px;
+}
+.registered-person-selected {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  min-width: 0;
+}
+.registered-person-selected-heading {
+  grid-column: 2;
+  grid-row: 1;
+}
+.registered-person-selected-heading > span {
+  display: none;
+}
+.registered-person-selected-identity {
+  grid-column: 1;
+  grid-row: 1;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+@media (max-width: 640px) {
+  .registered-person-selected {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+  .registered-person-selected-heading {
+    grid-column: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .registered-person-selected-heading > span {
+    display: inline;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .registered-person-selected-identity {
+    grid-row: 2;
+  }
+}

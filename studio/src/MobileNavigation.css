@@ -50,6 +50,14 @@
   .mobile-menu-dialog:not([open]) {
     display: none;
   }
+  .mobile-menu-dialog:has(.mobile-account) {
+    grid-template-rows: auto minmax(0, 1fr) auto;
+  }
+  .mobile-account {
+    padding-top: 16px;
+    margin-top: 16px;
+    border-top: 1px solid var(--line);
+  }
   .mobile-menu-dialog::backdrop {
     background: #0006;
     backdrop-filter: blur(3px);

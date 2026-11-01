@@ -1,4 +1,5 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+import { mockFactoryDashboard } from "./factory-dashboard-fixture";
 import {
   expect,
   test,
@@ -87,6 +88,7 @@ async function factory(
   custom?: (route: Route) => Promise<boolean>,
 ) {
   await page.route("**/api/v1/**", async (route) => {
+    if (await mockFactoryDashboard(route)) return;
     if (custom && (await custom(route))) return;
     const path = new URL(route.request().url()).pathname;
     let json: unknown = [];

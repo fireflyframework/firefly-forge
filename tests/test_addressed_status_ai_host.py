@@ -10,7 +10,7 @@ import pytest
 from communication_model_fixture import reviewed_model
 from pydantic_ai.messages import ModelResponse, ToolCallPart
 from test_addressed_status_polling import addressed
-from test_addressed_status_signed import grant, signed_address
+from test_addressed_status_signed import grant, retained_signed_address
 from test_communication_writer import configured_store
 from test_conversation_communication_host import TEXT, output
 from test_scm_polling import poll_case as poll_case
@@ -38,7 +38,7 @@ def coordinator(monkeypatch):
 
 
 async def writer_address(c, body="@forge how is this going?", number=80):
-    delivery, comment = await signed_address(c, body=body, number=number)
+    delivery, comment = await retained_signed_address(c, body=body, number=number)
     c.state["comments"].append(comment)
     await grant(c, delivery)
     return delivery
@@ -167,10 +167,10 @@ async def test_spanish_run_change_during_generation_holds_without_native_fallbac
 async def test_signed_spanish_status_uses_current_native_scope_and_the_configured_ai_writer(
     poll_case, tmp_path, coordinator
 ):
-    from test_addressed_status_signed import grant, signed_address
+    from test_addressed_status_signed import grant, retained_signed_address
 
     async with poll_case() as c:
-        delivery, comment = await signed_address(c, body="@forge ¿cómo va?")
+        delivery, comment = await retained_signed_address(c, body="@forge ¿cómo va?")
         c.state["comments"].append(comment)
         await grant(c, delivery)
         c.store.task_router = (await configured_store(tmp_path)).task_router

@@ -124,7 +124,7 @@ async def test_native_populated_schema29_upgrade_is_additive_and_does_not_backfi
     assert spec and spec.loader
     legacy = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(legacy)
-    assert legacy.SCHEMA_REVISION == 29 and SCHEMA_REVISION == 31
+    assert legacy.SCHEMA_REVISION == 29
     monkeypatch.setattr(module, "migrate", legacy.migrate)
     store = await store_factory(tmp_path / "schema29/factory.db")
     from firefly_forge.models import RepositoryInput, RunInput

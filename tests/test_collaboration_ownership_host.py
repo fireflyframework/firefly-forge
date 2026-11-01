@@ -15,6 +15,7 @@ class LeaseConnection:
         self.held = False
         self.invalidated = False
         self.closed = False
+        self.backend_start = "2026-10-31 00:00:00+00"
 
     async def scalar(self, statement, parameters=None):
         if self.invalidated:
@@ -24,7 +25,9 @@ class LeaseConnection:
             self.held = True
             return True
         if "EXISTS" in query:
-            return self.held
+            return self.held and parameters["backend_start"] == self.backend_start
+        if "backend_start::text" in query:
+            return self.backend_start
         assert query == "SELECT pg_backend_pid()"
         return 741
 
@@ -47,6 +50,7 @@ class LeaseConnection:
     [
         "release",
         "lost_connection",
+        "backend_start",
         "stopping",
         "poller_stops",
         "acquired_during_token",
@@ -74,6 +78,8 @@ async def test_owned_write_refuses_lost_ownership_during_token_preparation(tmp_p
             await store.release_ownership()
         elif change == "lost_connection":
             await connection.invalidate()
+        elif change == "backend_start":
+            connection.backend_start = "1900-01-01 00:00:00+00"
         elif change == "stopping":
             store.execution_stopping = True
         elif change == "poller_stops":

@@ -42,6 +42,7 @@ from firefly_forge.product_lifecycle import IntegrationContract, validate_integr
 from firefly_forge.product_provenance import AIOrigin, validate_origin
 from firefly_forge.prompts import prompt_text
 from firefly_forge.scm_connections import SCMConnections
+from firefly_forge.scm_gitlab_notes import GitLabNoteReadbackUncertain, GitLabNoteThread
 from firefly_forge.scm_product_change_models import SCMProductChangeCommandV1
 from firefly_forge.scm_provider_backoff import DeferredFeedbackChanged, ProviderRequestDeferred, retained_deferred
 from firefly_forge.scm_resume_models import SCMResumeCommandV2, SCMResumeStatusV2
@@ -707,12 +708,20 @@ class Collaboration:
                     self.store.reject_credentials(event)
                 reason = self._allowed(repo, settings, event, provider)
                 if not reason:
-                    command = RepositoryCommand.parse(
-                        event.pop("text"),
-                        bot_addresses=getattr(self.scm, "bot_addresses", lambda _: ("forge",))(provider),
+                    text = event.pop("text")
+                    observation_wake = provider == "github" and not text.lstrip().startswith("/")
+                    command = (
+                        None
+                        if observation_wake
+                        else RepositoryCommand.parse(
+                            text, bot_addresses=getattr(self.scm, "bot_addresses", lambda _: ("forge",))(provider)
+                        )
                     )
-                    event["command"] = command.model_dump(exclude_none=True)
-                    if getattr(command, "adapter", None) in {"addressed_status_v1", "retained_question_reply_v1"}:
+                    event["command"] = command.model_dump(exclude_none=True) if command is not None else None
+                    if observation_wake or getattr(command, "adapter", None) in {
+                        "addressed_status_v1",
+                        "retained_question_reply_v1",
+                    }:
                         from firefly_forge.journal import digest as source_digest
                         from firefly_forge.scm_comment_source import github_comment_source
                         from firefly_forge.scm_conversation_models import SignedAddressedSourceV1
@@ -750,31 +759,35 @@ class Collaboration:
                             external_actor_id=source["author_id"],
                             comment_id=source["comment_id"],
                         ).model_dump(mode="json")
-                    versioned_resume = (
-                        isinstance(command, SCMResumeCommandV2)
-                        and verified_reference is not None
-                        and self.resume_authority is not None
-                    )
-                    product_edit = (
-                        isinstance(command, SCMProductChangeCommandV1)
-                        and verified_reference is not None
-                        and self.product_change_authority is not None
-                    )
-                    if (
-                        not versioned_resume
-                        and not product_edit
-                        and not (
-                            command.action == "intake"
+                    if observation_wake:
+                        event["api_observation"] = {"version": 1, "state": "pending", "source_key": event["source_key"]}
+                    else:
+                        assert command is not None
+                        versioned_resume = (
+                            isinstance(command, SCMResumeCommandV2)
                             and verified_reference is not None
-                            and self.product_intake_authority is not None
+                            and self.resume_authority is not None
                         )
-                        and command.action
-                        not in [
-                            *settings["allowed_commands"],
-                            *settings.get("channel_commands", []),
-                        ]
-                    ):
-                        reason = "command_disabled"
+                        product_edit = (
+                            isinstance(command, SCMProductChangeCommandV1)
+                            and verified_reference is not None
+                            and self.product_change_authority is not None
+                        )
+                        if (
+                            not versioned_resume
+                            and not product_edit
+                            and not (
+                                command.action == "intake"
+                                and verified_reference is not None
+                                and self.product_intake_authority is not None
+                            )
+                            and command.action
+                            not in [
+                                *settings["allowed_commands"],
+                                *settings.get("channel_commands", []),
+                            ]
+                        ):
+                            reason = "command_disabled"
             except (ValueError, KeyError, TypeError):
                 event.pop("text", None)
                 event.pop("command", None)
@@ -849,7 +862,11 @@ class Collaboration:
                     raise ValueError("Provider delivery identifier was reused with different bytes")
                 return copy.deepcopy(previous.data)
             source_key = (
-                str(event["source_key"])
+                (
+                    "webhook:" + hashlib.sha256(delivery_key.encode()).hexdigest()
+                    if "api_observation" in event
+                    else str(event["source_key"])
+                )
                 if reason is None
                 else "denied:" + hashlib.sha256(delivery_key.encode()).hexdigest()
             )
@@ -877,6 +894,8 @@ class Collaboration:
                 data["remote_id"] = event["remote_id"]
             if verified_reference is not None:
                 data["verification"] = verified_reference
+            if not reason and "api_observation" in event:
+                data["api_observation"] = event["api_observation"]
             if not reason and "addressed_source" in event:
                 data["source_snapshot"] = event["source_snapshot"]
                 data["addressed_source"] = event["addressed_source"]
@@ -927,6 +946,10 @@ class Collaboration:
     async def process(self, receipt_id: str) -> Data:
         settings_generation = self.store.configuration.settings_generation
         initial = await self.receipt(receipt_id)
+        if initial.get("api_observation") is not None:
+            if self.polling is None:
+                return initial
+            return dict(await self.polling.wake_observation(receipt_id))
         if (initial.get("command") or {}).get("adapter") in {"addressed_status_v1", "retained_question_reply_v1"}:
             from firefly_forge.scm_conversations import SCMConversations
 
@@ -1675,6 +1698,7 @@ class Collaboration:
         *,
         before_write: Callable[[], Awaitable[None]] | None = None,
         before_dispatch: Callable[[], Awaitable[None]] | None = None,
+        after_confirmation: Callable[[Data], Awaitable[None]] | None = None,
     ) -> Data:
         provider = str(repo["connection_provider"])
         ownership_required = self.store.execution_ownership_acquired or (
@@ -1701,15 +1725,41 @@ class Collaboration:
         ):
             await self.store.assert_ownership()
         self.store.reject_credentials(payload)
+        thread = GitLabNoteThread.prepare(repo, issue, api) if provider == "gitlab" and issue is not None else None
         dispatch = {"before_dispatch": before_dispatch} if before_dispatch is not None else {}
         response = await self.scm._request(
             "POST",
-            api + self._issue_path(provider, repo, issue),
+            thread.endpoint if thread else api + self._issue_path(provider, repo, issue),
             headers={"Authorization": "Bearer " + token, "Accept": "application/json"},
             json=payload,
             **dispatch,
         )
         result: Data = response.json()
+        if thread is not None:
+            remote, noteable_id = thread.confirm(result)
+            try:
+                if after_confirmation is not None:
+                    await after_confirmation(remote)
+                if ownership_required:
+                    await self.store.assert_ownership()
+                if before_write is not None:
+                    await before_write()
+                readback = await self.scm._request(
+                    "GET",
+                    thread.endpoint + "/" + str(remote["id"]),
+                    headers={"Authorization": "Bearer " + token, "Accept": "application/json"},
+                )
+                observed, observed_noteable_id = thread.confirm(readback.json())
+                if observed != remote or observed_noteable_id != noteable_id:
+                    raise ValueError("GitLab readback did not match the accepted note")
+                if ownership_required:
+                    await self.store.assert_ownership()
+                if before_write is not None:
+                    await before_write()
+            except Exception:
+                # POST already confirmed this identity; a deferred GET cannot make it safe to post again.
+                raise GitLabNoteReadbackUncertain(remote) from None
+            return remote
         return {
             "id": result.get("id"),
             "number": result.get("number", result.get("iid", result.get("id"))),
@@ -2057,7 +2107,11 @@ class Collaboration:
                 drafted = {"body": retained["body"], "communication": retained["communication"]}
             elif natural_status:
                 drafted = await self.communication_writer.write(
-                    run, message, public_text, conversation=conversation_input
+                    run,
+                    message,
+                    public_text,
+                    conversation=conversation_input,
+                    status_draft=(data["natural_turn"].get("reply") or None),
                 )
             elif data.get("natural_turn") is not None:
                 drafted = {
@@ -2254,12 +2308,19 @@ class Collaboration:
 
                 dispatch_check = maintain_dispatch_check
 
+            async def retain_confirmed_note(remote: Data) -> None:
+                async with self.store._unit():
+                    row = await self.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)
+                    assert row is not None
+                    await self._write_row(row, feedback_remote=remote)
+
             remote = await self._remote_write(
                 repo,
                 payload,
                 data["issue"],
                 before_write=retained_before_write if retained is not None else before_write,
                 before_dispatch=dispatch_check,
+                **({"after_confirmation": retain_confirmed_note} if data["provider"] == "gitlab" else {}),
             )
             if data.get("maintain_ticket") is not None:
                 from firefly_forge.scm_maintain_ticket_models import confirmed_remote
@@ -2295,8 +2356,13 @@ class Collaboration:
                 await self._write_row(
                     row,
                     feedback_status="held" if held else "needs_reconciliation",
-                    reason="deferred_feedback_authority_changed" if held else "remote_feedback_outcome_unknown",
+                    reason="deferred_feedback_authority_changed"
+                    if held
+                    else "gitlab_note_readback_unconfirmed"
+                    if isinstance(error, GitLabNoteReadbackUncertain)
+                    else "remote_feedback_outcome_unknown",
                     feedback_deferred=row.data.get("feedback_deferred") if held else None,
+                    **({"feedback_remote": error.remote} if isinstance(error, GitLabNoteReadbackUncertain) else {}),
                 )
         else:
             async with self.store._unit():

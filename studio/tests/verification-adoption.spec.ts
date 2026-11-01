@@ -1,5 +1,9 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 // Controlled API fixtures qualify approval UX, never native QA or original CRM recovery.
+import {
+  mockFactoryDashboard,
+  openFactoryRun,
+} from "./factory-dashboard-fixture";
 import { createHash } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
 import { mockIdentity } from "./auth-fixture";
@@ -74,6 +78,8 @@ async function setup(page: Page, theme = "light") {
     };
   }
   await page.route("**/api/v1/**", async (route) => {
+    if (await mockFactoryDashboard(route, { projects: [], runs: [run] }))
+      return;
     if (await mockIdentity(route)) return;
     const req = route.request(),
       path = new URL(req.url()).pathname;
@@ -138,9 +144,7 @@ async function setup(page: Page, theme = "light") {
     .click();
   async function open() {
     await navigate(page, "Factory");
-    await page
-      .getByRole("button", { name: /Verification approval fixture/ })
-      .click();
+    await openFactoryRun(page, /Verification approval fixture/);
     await page
       .getByRole("tab", { name: "Agent questions", exact: true })
       .click();

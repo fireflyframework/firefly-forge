@@ -19,22 +19,59 @@ const props = {
   ),
 };
 
-it("activates the flow layout contract when pageFlow is explicit", () => {
-  const html = renderToStaticMarkup(<Wizard {...props} pageFlow />);
+it("renders page fields and actions in natural flow", () => {
+  const html = renderToStaticMarkup(<Wizard {...props} />);
   expect(html).toContain('data-layout="flow"');
   expect(html).toContain('aria-label="Scoped token"');
   expect(html).toContain("Continue");
 });
 
-it("leaves measured wizards to choose their layout after mounting", () => {
-  const html = renderToStaticMarkup(<Wizard {...props} />);
-  expect(html).not.toContain('data-layout="flow"');
+it("allows a viewport container to reserve a field region before layout effects", () => {
+  const html = renderToStaticMarkup(<Wizard {...props} layout="bounded" />);
+  expect(html).toContain('data-layout="bounded"');
+  expect(html).toContain('aria-label="Configure connection fields"');
+  expect(html).toContain('tabindex="0"');
+  expect(html).not.toContain("form-scroll-status");
 });
 
-it("leaves a parent-managed wizard outside the global flow layout", () => {
-  const html = renderToStaticMarkup(<Wizard {...props} parentLayout />);
-  expect(html).toContain('data-layout="parent"');
-  expect(html).not.toContain('data-layout="flow"');
-  expect(html).toContain('aria-label="Scoped token"');
-  expect(html).toContain("Continue");
+it("keeps ordinary full-page fields in natural flow without a measured frame height", () => {
+  const html = renderToStaticMarkup(<Wizard {...props} />);
+  expect(html).toContain('data-layout="flow"');
+  expect(html).not.toContain("--wizard-frame-height");
+  expect(html).not.toContain("form-scroll-status");
+});
+
+it("keeps an ordinal and a separately named completion state for a completed step", () => {
+  const html = renderToStaticMarkup(<Wizard {...props} active={1} />);
+  expect(html).toContain('aria-label="Step 1, completed"');
+  expect(html).toContain(">1<");
+  expect(html).toContain('aria-current="step"');
+});
+it("does not describe a visited step as validated", () => {
+  const html = renderToStaticMarkup(
+    <Wizard {...props} active={1} progressMode="visited" />,
+  );
+  expect(html).toContain('aria-label="Step 1, visited"');
+  expect(html).not.toContain('aria-label="Step 1, completed"');
+});
+it("offers descriptive rail steps and an accessible native selector without enabling future steps", () => {
+  const html = renderToStaticMarkup(
+    <Wizard
+      {...props}
+      variant="rail"
+      stepDescriptions={["Identity and access", "Review settings"]}
+    />,
+  );
+  expect(html).toContain("Identity and access");
+  expect(html).toContain('aria-label="Setup step"');
+  expect(html).toContain('<option value="1" disabled="">2. Review</option>');
+});
+it("opts into a stable protected field wrapper while keeping the actual flow layout", () => {
+  const html = renderToStaticMarkup(
+    <Wizard {...props} layout="flow" preserveFieldStructure />,
+  );
+  expect(html).toContain('data-layout="flow"');
+  expect(html).toContain("form-scroll-region");
+  expect(html).not.toContain('aria-label="Configure connection fields"');
+  expect(html).not.toContain('tabindex="0"');
 });

@@ -1,8 +1,12 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { expect, test } from "@playwright/test";
-import { navigate } from "./navigation";
+import { navigate, expectAuthenticated } from "./navigation";
 import { mockIdentity } from "./auth-fixture";
 import { retainedRunCreation } from "./run-creation-cancellation-fixture";
+import {
+  mockFactoryDashboard,
+  openFactoryRun,
+} from "./factory-dashboard-fixture";
 test("verified run exposes diff, checks, artifact download and explicit publication", async ({
   page,
 }) => {
@@ -27,6 +31,8 @@ test("verified run exposes diff, checks, artifact download and explicit publicat
     pr_url: "",
   };
   await page.route("**/api/v1/**", async (route) => {
+    if (await mockFactoryDashboard(route, { projects: [], runs: [run] }))
+      return;
     if (await mockIdentity(route)) return;
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith("/artifacts/changes.zip")) {
@@ -65,11 +71,9 @@ test("verified run exposes diff, checks, artifact download and explicit publicat
     .getByLabel("API token", { exact: true })
     .fill("entered-operator-token-for-test");
   await page.getByRole("button", { name: "Save connection" }).click();
-  await expect(
-    page.getByRole("button", { name: "API connected" }),
-  ).toBeVisible();
+  await expectAuthenticated(page);
   await page.getByRole("button", { name: "Factory", exact: true }).click();
-  await page.getByRole("button", { name: /Reservation API/ }).click();
+  await openFactoryRun(page, run.brief);
   await expect(
     page.getByRole("button", { name: "Retry run" }),
   ).not.toBeVisible();
@@ -174,9 +178,7 @@ test("connect, register a generic repository, create a local run, cancel and ret
     .getByLabel("API token", { exact: true })
     .fill("entered-operator-token-for-test");
   await page.getByRole("button", { name: "Save connection" }).click();
-  await expect(
-    page.getByRole("button", { name: "API connected" }),
-  ).toBeVisible();
+  await expectAuthenticated(page);
   await page
     .getByRole("button", { name: "Repositories", exact: false })
     .first()

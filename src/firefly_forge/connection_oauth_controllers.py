@@ -170,7 +170,10 @@ class ConnectionOAuthController:
             )
         response: Response
         try:
-            if any(len(request.query_params.getlist(key)) != 1 for key in ("code", "state", "iss")):
+            if (
+                any(len(request.query_params.getlist(key)) != 1 for key in ("code", "state"))
+                or len(request.query_params.getlist("iss")) > 1
+            ):
                 raise ValueError("Authorization response requires exact code, state and issuer")
             await self.connections.complete(
                 name, state, code, request.cookies.get("forge_connection_" + name, ""), actor, issuer=iss

@@ -3,15 +3,18 @@
 
 import json
 from types import SimpleNamespace
+from uuid import UUID
 
 import pytest
 from starlette.requests import Request
 
 from firefly_forge.access_routes import AccessRoutes
+from firefly_forge.identity import Principal
 from firefly_forge.project_access import AccessDenied
 from firefly_forge.request_limits import RequestLimits
 
 ID = "e" * 32
+USER = Principal(UUID(int=1), "fixture-issuer", "fixture-subject")
 
 
 @pytest.mark.parametrize("publish", [False, True])
@@ -38,7 +41,7 @@ async def test_creation_route_authorizes_nested_project_and_repository(publish):
     access = SimpleNamespace(
         current_administrator=administrator, require_project=project, require_repository=repository
     )
-    await AccessRoutes(access, SimpleNamespace()).authorize(SimpleNamespace(), request)
+    await AccessRoutes(access, SimpleNamespace()).authorize(USER, request)
     assert ("project", "b" * 32, "execute") in calls
     assert ("repository", "a" * 32, "execute") in calls
     assert (("project", "b" * 32, "release") in calls) is publish
@@ -57,7 +60,7 @@ async def test_creation_route_does_not_accept_top_level_scope_instead_of_input()
     )
     with pytest.raises(AccessDenied):
         await AccessRoutes(SimpleNamespace(current_administrator=administrator), SimpleNamespace()).authorize(
-            SimpleNamespace(), request
+            USER, request
         )
 
 
@@ -142,7 +145,7 @@ async def test_cancel_route_accepts_read_scope_after_execute_is_lost():
     await AccessRoutes(
         SimpleNamespace(current_administrator=administrator, require_project=require, require_repository=require),
         SimpleNamespace(),
-    ).authorize(SimpleNamespace(), request)
+    ).authorize(USER, request)
     assert calls == ["b" * 32, "a" * 32]
 
 
@@ -212,7 +215,7 @@ async def test_terminal_routes_allow_only_exact_decision_read_and_cancel_write(m
     )
     routes = AccessRoutes(SimpleNamespace(current_administrator=administrator), SimpleNamespace())
     if allowed:
-        await routes.authorize(SimpleNamespace(), request)
+        await routes.authorize(USER, request)
     else:
         with pytest.raises(AccessDenied):
-            await routes.authorize(SimpleNamespace(), request)
+            await routes.authorize(USER, request)

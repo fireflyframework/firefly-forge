@@ -5,6 +5,7 @@ import asyncio
 import copy
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
+from uuid import UUID
 
 import pytest
 from starlette.requests import Request
@@ -12,6 +13,7 @@ from test_collaboration import product
 
 from firefly_forge import collaboration as module
 from firefly_forge.access_routes import AccessRoutes
+from firefly_forge.identity import Principal
 from firefly_forge.project_access import AccessDenied
 
 REPO = "a" * 32
@@ -143,7 +145,9 @@ async def test_conditional_nested_review_cannot_bypass_current_route_permission(
         receive,
     )
     with pytest.raises(AccessDenied, match="review authority"):
-        await AccessRoutes(access, SimpleNamespace()).authorize(SimpleNamespace(), request)
+        await AccessRoutes(access, SimpleNamespace()).authorize(
+            Principal(UUID(int=1), "https://identity.example/realms/forge", "reviewer"), request
+        )
     assert permissions == ["edit", "review"]
 
 

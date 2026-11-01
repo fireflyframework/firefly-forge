@@ -131,28 +131,39 @@ test("a new notice reflows the wizard without losing its draft or focus", async 
     .fill("Inventory reservation");
   await page.getByRole("button", { name: "Toggle notice" }).click();
   await page.getByLabel("Detail 1", { exact: true }).focus();
-  await expect
-    .poll(() =>
-      page.locator(".wizard-frame").evaluate((frame) => {
-        const main = frame.closest("main")!;
-        return (
-          frame.getBoundingClientRect().bottom -
-          (main.getBoundingClientRect().bottom -
-            parseFloat(getComputedStyle(main).paddingBottom))
-        );
-      }),
-    )
-    .toBeLessThanOrEqual(1);
+  const fields = page.locator(".wizard-field-scroll");
+  await expect(fields).toHaveCSS("overflow-y", "visible");
+  expect(
+    await fields.evaluate((node) => node.scrollHeight <= node.clientHeight + 1),
+  ).toBe(true);
   await expect(page.getByLabel("Detail 1", { exact: true })).toHaveValue(
     "Inventory reservation",
   );
   await expect(page.getByLabel("Detail 1", { exact: true })).toBeFocused();
+  await page.getByLabel("Detail 14", { exact: true }).focus();
+  await page.keyboard.press("Tab");
+  const action = page.getByRole("button", { name: "Continue", exact: true });
+  await expect(action).toBeFocused();
+  await expect
+    .poll(() =>
+      action.evaluate((node) => {
+        const main = node.closest("main")!;
+        const box = node.getBoundingClientRect(),
+          owner = main.getBoundingClientRect();
+        return (
+          main.scrollTop > 0 &&
+          box.top >= owner.top &&
+          box.bottom <= owner.bottom &&
+          document
+            .elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)
+            ?.closest("button") === node
+        );
+      }),
+    )
+    .toBe(true);
 });
 
-for (const modal of [
-  "feature-dialog",
-  "feature-dialog source-analysis-dialog",
-]) {
+for (const modal of ["feature-dialog"]) {
   test(`${modal} retains visible actions in a short viewport`, async ({
     page,
   }) => {

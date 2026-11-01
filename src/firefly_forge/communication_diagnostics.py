@@ -89,8 +89,35 @@ def check_diagnostics(run: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def claimed_recovery(run: dict[str, Any]) -> dict[str, Any] | None:
+    marker = run.get("consumed_terminal_recovery")
+    if (
+        run.get("status") not in ("paused", "needs_reconciliation")
+        or type(marker) is not dict
+        or set(marker) != {"version", "state", "request_id", "record_digest", "claim_digest"}
+        or type(marker["version"]) is not int
+        or marker["version"] != 2
+        or marker["state"] != "claimed"
+        or any(
+            not isinstance(marker[key], str) or re.fullmatch(pattern, marker[key]) is None
+            for key, pattern in (
+                ("request_id", r"[a-f0-9]{32}"),
+                ("record_digest", r"[a-f0-9]{64}"),
+                ("claim_digest", r"[a-f0-9]{64}"),
+            )
+        )
+    ):
+        return None
+    return {
+        **marker,
+        "source": "recorded_run_projection_not_admission",
+        "execution_grant": False,
+        "next_native_action": "reconcile_same_claim_without_new_execution",
+    }
+
+
 def recorded_error(run: dict[str, Any]) -> dict[str, Any] | None:
-    if run.get("status") not in ("failed", "needs_reconciliation"):
+    if run.get("status") not in ("failed", "needs_reconciliation") and claimed_recovery(run) is None:
         return None
     error = run.get("error")
     if not isinstance(error, str) or not (excerpt := _public_excerpt(error, tail=True)):

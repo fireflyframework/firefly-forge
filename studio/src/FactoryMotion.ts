@@ -86,12 +86,29 @@ export class FactoryMotion {
 
 export function syncStationClips(
   actions: ReadonlyMap<string, AnimationAction>,
-  workingStation: string | null,
+  workingStation: string | ReadonlySet<string> | null,
 ) {
   for (const [id, action] of actions) {
-    if (id === workingStation) {
+    if (
+      typeof workingStation === "string"
+        ? id === workingStation
+        : workingStation?.has(id)
+    ) {
       if (!action.isScheduled()) action.play();
       action.paused = false;
     } else action.paused = true;
   }
+}
+
+export function aggregateActiveStations(
+  stations: readonly FactoryStation[],
+  gates: MotionGates,
+): ReadonlySet<string> {
+  return new Set(
+    Object.values(gates).some(Boolean)
+      ? []
+      : stations
+          .filter((station) => station.state === "active")
+          .map((station) => station.id),
+  );
 }

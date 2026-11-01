@@ -36,6 +36,7 @@ export type ForgeRun = {
   attempt?: number;
   provider_recovery?: unknown;
   invalid_read_continuity?: unknown;
+  consumed_terminal_recovery?: unknown;
   usage?: Record<string, unknown>;
   implementation_pending?: boolean;
   backend?: string;
@@ -53,6 +54,7 @@ export type ForgeRun = {
   pr_url?: string | null;
   source_tree?: string;
   checkpoint_revision?: string;
+  base_revision?: string;
   branch?: string;
   publication_request?: { id: string; status: string };
   cancel_request?: { id: string; status: string };

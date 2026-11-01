@@ -1,9 +1,86 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 // Contract fixtures for native OAuth lifecycle and create-only registration; not provider acceptance.
 import { expect, test, type Page } from "@playwright/test";
-import { navigate } from "./navigation";
+import { navigate, expectAuthenticated } from "./navigation";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
+
+async function expectNaturalWizard(page: Page, selector: string) {
+  const wizard = page.locator(selector);
+  await expect(wizard).toHaveAttribute("data-layout", "flow");
+  await expect(page.locator(".workspace-main > main")).toHaveCSS(
+    "overflow-y",
+    "auto",
+  );
+  await wizard.locator(".wizard-heading h2").focus();
+  const fields = wizard.locator(".wizard-field-scroll");
+  await expect(fields).toHaveCSS("overflow-y", "visible");
+  const initial = await wizard.evaluate((node) => {
+    const main = node.closest("main")!;
+    const field = node.querySelector<HTMLElement>(".wizard-field-scroll")!;
+    const title = node
+      .querySelector(".wizard-heading h2")!
+      .getBoundingClientRect();
+    const bounds = main.getBoundingClientRect();
+    return {
+      natural:
+        field.scrollHeight <= field.clientHeight + 1 && field.scrollTop === 0,
+      horizontal:
+        main.scrollWidth <= main.clientWidth + 1 &&
+        document.documentElement.scrollWidth <= innerWidth,
+      title: title.top >= bounds.top - 1 && title.bottom <= bounds.bottom + 1,
+    };
+  });
+  expect(initial).toEqual({ natural: true, horizontal: true, title: true });
+  const actions = [];
+  for (const action of await wizard.locator(".wizard-actions button").all()) {
+    await action.evaluate((node) => {
+      const main = node.closest("main")!;
+      const box = node.getBoundingClientRect(),
+        bounds = main.getBoundingClientRect();
+      main.scrollTop += Math.max(0, box.bottom - bounds.bottom + 12);
+    });
+    if (await action.isEnabled()) await action.focus();
+    await expect
+      .poll(() =>
+        action.evaluate((node) => {
+          const box = node.getBoundingClientRect(),
+            main = node.closest("main")!.getBoundingClientRect();
+          const footer = document
+            .querySelector(".workspace-main > footer")!
+            .getBoundingClientRect();
+          return (
+            box.top >= main.top &&
+            box.bottom <= Math.min(main.bottom, footer.top) &&
+            box.left >= main.left &&
+            box.right <= main.right &&
+            node.contains(
+              document.elementFromPoint(
+                box.x + box.width / 2,
+                box.y + box.height / 2,
+              ),
+            )
+          );
+        }),
+      )
+      .toBe(true);
+    actions.push(await action.innerText());
+  }
+  expect(await fields.evaluate((node) => node.scrollTop)).toBe(0);
+  expect(
+    await page.evaluate(
+      () =>
+        document
+          .querySelector(".workspace-main > header")!
+          .getBoundingClientRect().top >= 0 &&
+        document
+          .querySelector(".workspace-main > footer")!
+          .getBoundingClientRect().bottom <=
+          innerHeight + 1,
+    ),
+  ).toBe(true);
+  return { ...initial, actions };
+}
 
 async function fixture(
   page: Page,
@@ -394,7 +471,8 @@ async function fixture(
     });
   });
   await page.goto("/");
-  await navigate(page, "Administration");
+  if (admin) await navigate(page, "Administration");
+  else await expectAuthenticated(page);
   return writes;
 }
 test("default inactive providers cannot create a registration or send a remote request", async ({
@@ -611,35 +689,7 @@ for (const viewport of [
       await page.getByLabel("Appearance", { exact: true }).selectOption(theme);
       await openExisting(page);
       await page.evaluate(() => document.fonts.ready);
-      await expect(page.locator(".oauth-wizard")).toHaveCSS(
-        "--wizard-frame-height",
-        /px/,
-      );
-      const geometry = await page.locator(".oauth-wizard").evaluate((frame) => {
-        const heading = frame
-            .querySelector(".wizard-heading")!
-            .getBoundingClientRect(),
-          steps = frame.querySelector(".wizard-steps")!.getBoundingClientRect(),
-          actions = frame
-            .querySelector(".wizard-actions")!
-            .getBoundingClientRect(),
-          main = frame.closest("main")!.getBoundingClientRect(),
-          footer = document
-            .querySelector(".workspace-main > footer")!
-            .getBoundingClientRect();
-        return {
-          heading: heading.top,
-          steps: steps.top,
-          actions: actions.bottom,
-          main: main.top,
-          footer: footer.top,
-          overflow: document.documentElement.scrollWidth > innerWidth,
-        };
-      });
-      expect(geometry.heading).toBeGreaterThanOrEqual(geometry.main);
-      expect(geometry.steps).toBeGreaterThanOrEqual(geometry.main);
-      expect(geometry.actions).toBeLessThanOrEqual(geometry.footer);
-      expect(geometry.overflow).toBe(false);
+      await expectNaturalWizard(page, ".oauth-wizard");
     });
   }
 test("administrator registers an explicit confidential client without persisting its secret", async ({
@@ -702,10 +752,13 @@ test("project ownership cannot enter connection administration", async ({
 }) => {
   const writes = await fixture(page, true, false);
   await expect(
+    page.getByRole("button", { name: "Administration", exact: true }),
+  ).toHaveCount(0);
+  await expect(
     page
       .locator("main")
       .getByRole("button", { name: "Connected accounts", exact: true }),
-  ).toBeDisabled();
+  ).toHaveCount(0);
   expect(writes).toEqual([]);
 });
 test("changing to a public client discards the secret before keyboard submission", async ({
@@ -826,38 +879,8 @@ for (const viewport of [
       await expect(wizard.locator('[aria-current="step"]')).toContainText(
         stage,
       );
-      if (stage !== "Prerequisites")
-        await expect(wizard).toHaveCSS("--wizard-frame-height", /px/);
       await page.evaluate(() => document.fonts.ready);
-      const shape = await wizard.evaluate((frame) => {
-        const main = frame.closest("main")!,
-          m = main.getBoundingClientRect(),
-          h = frame.querySelector(".wizard-heading")!.getBoundingClientRect(),
-          a = frame.querySelector(".wizard-actions")!.getBoundingClientRect(),
-          f = document
-            .querySelector(".workspace-main > footer")!
-            .getBoundingClientRect();
-        const button = frame.querySelector<HTMLButtonElement>(
-            ".wizard-actions .primary",
-          )!,
-          r = button.getBoundingClientRect(),
-          target = document.elementFromPoint(
-            r.x + r.width / 2,
-            r.y + r.height / 2,
-          );
-        return {
-          scroll: main.scrollTop,
-          heading: h.top,
-          main: m.top,
-          action: a.bottom,
-          footer: f.top,
-          hit: target === button || button.contains(target),
-        };
-      });
-      expect(shape.scroll).toBe(0);
-      expect(shape.heading).toBeGreaterThanOrEqual(shape.main);
-      expect(shape.action).toBeLessThanOrEqual(shape.footer);
-      expect(shape.hit).toBe(true);
+      await expectNaturalWizard(page, ".oauth-wizard");
       if (process.env.OAUTH_UI_PROOF) {
         mkdirSync(process.env.OAUTH_UI_PROOF, { recursive: true });
         await page.screenshot({
@@ -1566,9 +1589,13 @@ test("desktop consent exposes the exact resource and requested scopes before ope
   await expect(
     page.locator('.oauth-wizard [aria-current="step"]'),
   ).toContainText("Browser consent");
-  await expect(page.locator(".oauth-wizard")).toHaveCSS(
-    "--wizard-frame-height",
-    /px/,
+  await expect(page.locator(".oauth-wizard")).toHaveAttribute(
+    "data-layout",
+    "flow",
+  );
+  await expect(page.locator(".oauth-wizard .wizard-field-scroll")).toHaveCSS(
+    "overflow-y",
+    "visible",
   );
   await page.evaluate(() => document.fonts.ready);
   for (const label of ["Resource", "Requested scopes"]) {
@@ -1799,53 +1826,12 @@ for (const viewport of [
       await expect(wizard.locator('[aria-current="step"]')).toContainText(
         stage,
       );
-      await expect(wizard).toHaveCSS("--wizard-frame-height", /px/);
       await page.evaluate(() => document.fonts.ready);
-      await expect(wizard).not.toHaveAttribute("data-layout", "flow");
-      const shape = await wizard.evaluate((frame) => {
-        const main = frame.closest("main")!,
-          heading = frame
-            .querySelector(".wizard-heading")!
-            .getBoundingClientRect(),
-          actions = frame
-            .querySelector(".wizard-actions")!
-            .getBoundingClientRect(),
-          fields = frame
-            .querySelector(".wizard-field-scroll")!
-            .getBoundingClientRect(),
-          footer = document
-            .querySelector(".workspace-main > footer")!
-            .getBoundingClientRect(),
-          button = frame.querySelector<HTMLButtonElement>(
-            ".wizard-actions .primary",
-          )!,
-          rect = button.getBoundingClientRect(),
-          target = document.elementFromPoint(
-            rect.x + rect.width / 2,
-            rect.y + rect.height / 2,
-          );
-        return {
-          scroll: main.scrollTop,
-          heading: heading.top,
-          main: main.getBoundingClientRect().top,
-          action: actions.bottom,
-          footer: footer.top,
-          fields: fields.bottom,
-          actionTop: actions.top,
-          hit: target === button || button.contains(target),
-          overflow: document.documentElement.scrollWidth > innerWidth,
-        };
-      });
-      await testInfo.attach(`local-${stage}-allocation`, {
+      const shape = await expectNaturalWizard(page, ".oauth-service-wizard");
+      await testInfo.attach(`local-${stage}-flow`, {
         body: JSON.stringify(shape),
         contentType: "application/json",
       });
-      expect(shape.scroll).toBe(0);
-      expect(shape.heading).toBeGreaterThanOrEqual(shape.main);
-      expect(shape.fields).toBeLessThanOrEqual(shape.actionTop);
-      expect(shape.action).toBeLessThanOrEqual(shape.footer);
-      expect(shape.hit).toBe(true);
-      expect(shape.overflow).toBe(false);
       if (process.env.OAUTH_UI_PROOF) {
         mkdirSync(process.env.OAUTH_UI_PROOF, { recursive: true });
         await page.screenshot({
@@ -1856,7 +1842,7 @@ for (const viewport of [
           fullPage: true,
         });
       } else await page.screenshot();
-      await expect(wizard).not.toHaveAttribute("data-layout", "flow");
+      await expect(wizard).toHaveAttribute("data-layout", "flow");
     }
     await frame("Service address");
     for (const label of [
@@ -2169,7 +2155,14 @@ for (const theme of ["light", "dark"]) {
     });
     expect(hit.within).toBe(true);
     expect(hit.hit).toBe(true);
-    expect(await page.locator("main").evaluate((e) => e.scrollTop)).toBe(0);
+    expect(
+      await page
+        .locator("main")
+        .evaluate((e) => e.scrollWidth <= e.clientWidth + 1),
+    ).toBe(true);
+    expect(
+      await page.locator(".wizard-field-scroll").evaluate((e) => e.scrollTop),
+    ).toBe(0);
     if (process.env.OAUTH_UI_PROOF) {
       mkdirSync(process.env.OAUTH_UI_PROOF, { recursive: true });
       await page.screenshot({

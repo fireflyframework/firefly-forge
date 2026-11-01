@@ -32,7 +32,7 @@ def _git_digest(value: Any) -> bool:
 class AnalysisContextInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     digest: str = Field(pattern=r"^[a-f0-9]{64}$")
-    component_ids: list[str] = Field(default_factory=list, max_length=50)
+    component_ids: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def unique_components(self) -> AnalysisContextInput:
@@ -116,11 +116,8 @@ class ReviewedAnalysisContext:
 
     @staticmethod
     def _document(project_id: str, report: Data, request: AnalysisContextInput) -> Data:
-        selected = [
-            component
-            for component in report["components"]
-            if not request.component_ids or component["id"] in request.component_ids
-        ]
+        requested = set(request.component_ids)
+        selected = [component for component in report["components"] if not requested or component["id"] in requested]
         return {
             "analysis_id": report["id"],
             "analysis_digest": report["digest"],

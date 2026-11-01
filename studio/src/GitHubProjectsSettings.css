@@ -1,0 +1,207 @@
+/* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+.github-projects-settings h3 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.board-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.github-projects-settings code {
+  overflow-wrap: anywhere;
+}
+.github-projects-setup {
+  width: 100%;
+  min-width: 0;
+}
+.workspace-main > main:has(> .github-projects-setup) {
+  background: var(--surface);
+}
+.board-setup-heading {
+  margin-bottom: 32px;
+}
+.board-setup-heading > button {
+  margin-bottom: 16px;
+}
+.board-setup-heading h1 {
+  margin: 0;
+}
+.board-setup-heading > p {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.board-setup-heading strong {
+  color: var(--text);
+}
+.github-projects-setup code {
+  overflow-wrap: anywhere;
+}
+.board-status-progress {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.github-projects-setup .board-status-wizard .wizard-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+.github-projects-setup .board-status-wizard .wizard-heading > p:empty {
+  display: none;
+}
+.github-projects-setup .board-status-wizard .wizard-heading > h2 {
+  margin: 0;
+}
+.github-projects-setup .field {
+  margin: 0;
+}
+.board-destination {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.board-destination span {
+  color: var(--muted);
+}
+.github-projects-setup fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+  display: grid;
+  gap: 18px;
+}
+.board-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 24px;
+}
+.board-mapping-direction,
+.board-review-path {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.board-status-map {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+.board-status-map th,
+.board-status-map td {
+  padding: 18px 0;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+  text-align: left;
+}
+.board-status-map th {
+  width: 45%;
+  padding-inline-end: 24px;
+  font-weight: 400;
+}
+.board-status-map thead th {
+  padding-top: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.board-status-map small {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+.board-status-map select {
+  width: 100%;
+  min-width: 0;
+}
+.board-status-source-label,
+.board-status-map .board-status-target-label {
+  display: none;
+}
+.board-proof {
+  display: grid;
+  gap: 8px;
+  padding: 16px 0;
+  border-block: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+.board-proof a {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.board-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  line-height: 1.5;
+}
+.board-check input {
+  accent-color: var(--accent-ink);
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  margin-top: 3px;
+}
+.board-pending {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+@media (max-width: 760px) {
+  .board-status-map,
+  .board-status-map tbody {
+    display: block;
+  }
+  .board-status-map thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .board-status-map tbody tr {
+    display: grid;
+    padding-block: 20px;
+    gap: 14px;
+    border-bottom: 1px solid var(--line);
+  }
+  .board-status-map tbody th,
+  .board-status-map td {
+    display: block;
+    padding: 0;
+    width: 100%;
+    border: 0;
+  }
+  .board-status-source-label,
+  .board-status-map .board-status-target-label {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .board-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .board-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

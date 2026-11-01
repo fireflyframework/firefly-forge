@@ -24,7 +24,21 @@ from firefly_forge.framework_knowledge_models import (
     FrameworkSearchInput,
 )
 from firefly_forge.git_delivery_models import GitDeliveryInputV1, GitDeliveryPolicyInputV1
-from firefly_forge.known_worker_completion_models import ConsumedTerminalInputV2
+from firefly_forge.github_projects_models import (
+    BoardConnectionInputV1,
+    BoardConnectionViewV1,
+    BoardCreateInputV1,
+    BoardCreationReceiptV1,
+    BoardDiscoveryInputV1,
+    BoardDiscoveryV1,
+    BoardObserveInputV1,
+    BoardRequestReceiptV1,
+    BoardSyncInputV1,
+)
+from firefly_forge.known_worker_completion_models import (
+    ConsumedTerminalInputV2,
+    ConsumedTerminalReconciliationInputV1,
+)
 from firefly_forge.learning_models import LearningPolicy
 from firefly_forge.learning_observation_attempt_models import LearningObservationAttemptInput
 from firefly_forge.mcp_registry import MCPGrantInput, MCPReviewInput
@@ -80,6 +94,9 @@ RunCreationCancelRequest = SkipValidation[RunCreationCancelInput]
 AgentCheckpointRestoreRequest = SkipValidation[RestoreInput]
 FinalOutcomeContinuationRequest = Annotated[Any, WithJsonSchema(FinalOutcomeContinuationInputV1.model_json_schema())]
 ConsumedTerminalRequest = Annotated[Any, WithJsonSchema(ConsumedTerminalInputV2.model_json_schema())]
+ConsumedTerminalReconciliationRequest = Annotated[
+    Any, WithJsonSchema(ConsumedTerminalReconciliationInputV1.model_json_schema())
+]
 SCMPollFunctionalGrantRequest = SkipValidation[SCMPollFunctionalGrantInputV1]
 GitDeliveryPolicyRequest = SkipValidation[GitDeliveryPolicyInputV1]
 GitDeliveryRequest = SkipValidation[GitDeliveryInputV1]
@@ -138,6 +155,48 @@ def create_server() -> MCPServer:
 
         with client() as connection:
             return connection.consumed_terminal_status(identifier, request_id)
+
+    @server.tool(
+        description=prompt_text("mcp/get_consumed_terminal_reconciliation_candidate"),
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        ),
+    )
+    def get_consumed_terminal_reconciliation_candidate(
+        identifier: RecoveryIdentifier, request_id: RecoveryIdentifier
+    ) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.consumed_terminal_reconciliation_candidate(identifier, request_id)
+
+    @server.tool(
+        description=prompt_text("mcp/reconcile_consumed_terminal"),
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        ),
+    )
+    def reconcile_consumed_terminal(
+        identifier: RecoveryIdentifier, request_id: RecoveryIdentifier, request: ConsumedTerminalReconciliationRequest
+    ) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.reconcile_consumed_terminal(identifier, request_id, request)
+
+    @server.tool(
+        description=prompt_text("mcp/get_consumed_terminal_reconciliation_status"),
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        ),
+    )
+    def get_consumed_terminal_reconciliation_status(
+        identifier: RecoveryIdentifier, request_id: RecoveryIdentifier
+    ) -> dict[str, Any]:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.consumed_terminal_reconciliation_status(identifier, request_id)
 
     @server.tool(
         description=prompt_text("mcp/get_final_outcome_candidate"),
@@ -2030,6 +2089,112 @@ def create_server() -> MCPServer:
 
         with client() as connection:
             return connection.learning_projection_observation_attempt(record_id, attempt_id)
+
+    @server.tool(
+        description=prompt_text("mcp/create_github_projects"),
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=False, idempotent_hint=True, open_world_hint=True
+        ),
+    )
+    def create_github_projects(
+        project_id: str, repository_id: str, request: BoardCreateInputV1
+    ) -> BoardCreationReceiptV1:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.create_github_projects(project_id, repository_id, request)
+
+    @server.tool(
+        description=prompt_text("mcp/get_github_projects_creation"),
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        ),
+    )
+    def get_github_projects_creation(project_id: str, repository_id: str, request_id: str) -> BoardCreationReceiptV1:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.github_projects_creation(project_id, repository_id, request_id)
+
+    @server.tool(
+        description=prompt_text("mcp/get_github_projects_connection"),
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        ),
+    )
+    def get_github_projects_connection(project_id: str, repository_id: str) -> BoardConnectionViewV1:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.github_projects_connection(project_id, repository_id)
+
+    @server.tool(
+        description=prompt_text("mcp/discover_github_projects"),
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=True
+        ),
+    )
+    def discover_github_projects(
+        project_id: str, repository_id: str, request: BoardDiscoveryInputV1
+    ) -> BoardDiscoveryV1:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.discover_github_projects(project_id, repository_id, request)
+
+    @server.tool(
+        description=prompt_text("mcp/configure_github_projects"),
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=False, idempotent_hint=True, open_world_hint=True
+        ),
+    )
+    def configure_github_projects(
+        project_id: str, repository_id: str, request: BoardConnectionInputV1
+    ) -> BoardConnectionViewV1:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.configure_github_projects(project_id, repository_id, request)
+
+    @server.tool(
+        description=prompt_text("mcp/sync_github_projects"),
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=False, idempotent_hint=True, open_world_hint=True
+        ),
+    )
+    def sync_github_projects(
+        project_id: str, repository_id: str, run_id: str, request: BoardSyncInputV1
+    ) -> BoardRequestReceiptV1:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.sync_github_projects(project_id, repository_id, run_id, request)
+
+    @server.tool(
+        description=prompt_text("mcp/get_github_projects_request"),
+        annotations=ToolAnnotations(
+            read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+        ),
+    )
+    def get_github_projects_request(project_id: str, repository_id: str, request_id: str) -> BoardRequestReceiptV1:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.github_projects_request(project_id, repository_id, request_id)
+
+    @server.tool(
+        description=prompt_text("mcp/observe_github_projects"),
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=False, idempotent_hint=False, open_world_hint=True
+        ),
+    )
+    def observe_github_projects(
+        project_id: str, repository_id: str, request_id: str, request: BoardObserveInputV1
+    ) -> BoardRequestReceiptV1:
+        from firefly_forge.cli import client
+
+        with client() as connection:
+            return connection.observe_github_projects(project_id, repository_id, request_id, request)
 
     return server
 

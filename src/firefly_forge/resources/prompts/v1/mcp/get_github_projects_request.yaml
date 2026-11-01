@@ -1,0 +1,9 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/get_github_projects_request
+version: 1.0.0
+description: Authenticated factory MCP tool description.
+system_template: ''
+user_template: "Read exact retained GitHub board admission, native operation/checkpoint/delivery scope, per-call intents/results and immutable observation history. A queued request is not remote completion."
+required_variables: []
+metadata:
+  defaults: {}

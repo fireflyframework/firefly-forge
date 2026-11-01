@@ -17,18 +17,85 @@
   gap: 12px;
   flex-wrap: wrap;
 }
+.identity-copyright {
+  padding-top: 20px;
+  margin-top: 24px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
 .identity-cookie-note {
   font-size: 13px;
   line-height: 1.7;
   color: var(--muted);
 }
 .identity-trigger {
-  max-width: 220px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  max-width: none;
+  min-height: 44px;
+  padding: 6px 8px;
+  text-align: left;
 }
-.identity-trigger span {
+.identity-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--accent-line);
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-size: 13px;
+  font-weight: 700;
+}
+.identity-person {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.identity-person strong,
+.identity-person small {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.identity-person strong {
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 650;
+}
+.identity-person small {
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--muted);
+}
+.identity-trigger > svg {
+  flex: 0 0 auto;
+}
+.sidebar-bottom:has(.identity-menu) {
+  padding: 6px 12px;
+}
+.sidebar-bottom .identity-menu {
+  width: 100%;
+  min-width: 0;
+}
+.identity-preferences {
+  display: grid;
+  gap: 10px;
+  padding-top: 20px;
+  margin-top: 20px;
+  border-top: 1px solid var(--line);
+}
+.app:has(.identity-dialog[open]) .workspace-main > .foundation-footer {
+  visibility: hidden;
 }
 .identity-dialog {
   width: min(480px, calc(100vw - 32px));
@@ -62,25 +129,28 @@
 .identity-dialog strong {
   font-size: 18px;
 }
+.identity-dialog strong,
+.identity-dialog p,
+.identity-dialog code {
+  overflow-wrap: anywhere;
+}
 .identity-account-actions {
   padding-top: 20px;
   border-top: 1px solid var(--line);
   margin-top: 24px;
 }
 @media (max-width: 900px) {
-  .identity-trigger {
-    min-width: 40px;
-    max-width: 40px;
-    padding: 0;
+  .app > .sidebar > .sidebar-bottom:has(.identity-menu),
+  .sidebar-bottom .identity-menu {
+    display: contents;
   }
-  .identity-trigger span {
+  .sidebar-bottom .identity-trigger {
     display: none;
   }
-  .topbar:has(.identity-menu) .connection-mobile-label {
-    display: none;
-  }
-  .topbar:has(.identity-menu) .connection-indicator {
-    min-width: 40px;
+  .mobile-account .identity-trigger {
+    display: flex;
+    max-width: none;
+    min-width: 0;
     padding: 8px;
   }
   .identity-dialog {

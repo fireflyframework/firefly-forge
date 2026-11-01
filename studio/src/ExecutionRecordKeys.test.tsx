@@ -15,6 +15,7 @@ import { ExecutionRecord } from "./ExecutionRecord";
 import { RunnerContinuation } from "./RunnerContinuation";
 import { AgentCheckpointRecovery } from "./AgentCheckpointRecovery";
 import { InvalidReadRecovery } from "./InvalidReadRecovery";
+import { ConsumedTerminalReconciliation } from "./ConsumedTerminalReconciliation";
 it("keeps recovery controls under distinct React identities through plan polls", () => {
   const run: ForgeRun = {
     id: "a".repeat(32),
@@ -114,4 +115,54 @@ it("keeps an actual pending runner command visible after continuity admission", 
       (node) => isValidElement(node) && node.type === RunnerContinuation,
     ),
   ).toBe(true);
+});
+it("uses only claimed-result reconciliation and clears its identity after an actor or revision change", () => {
+  const run: ForgeRun = {
+    id: "a".repeat(32),
+    repository_id: "b".repeat(32),
+    brief: "Retained source",
+    status: "paused",
+    attempt: 3,
+    base_revision: "d".repeat(40),
+    consumed_terminal_recovery: {
+      state: "claimed",
+      request_id: "e".repeat(32),
+    },
+  };
+  const session = {
+    user: { id: "c".repeat(32) },
+    global_admin: true,
+    memberships: [],
+  } as unknown as IdentitySession;
+  const render = (current = run, actor = session) =>
+    Children.toArray(
+      ExecutionRecord({
+        run: current,
+        connection: { base: "/api/v1", token: "" },
+        session: actor,
+      }).props.children,
+    ).filter(isValidElement);
+  const children = render();
+  expect(children.some((n) => n.type === ConsumedTerminalReconciliation)).toBe(
+    true,
+  );
+  for (const component of [
+    RunnerContinuation,
+    InvalidReadRecovery,
+    AgentCheckpointRecovery,
+  ])
+    expect(children.some((n) => n.type === component)).toBe(false);
+  const key = (nodes: typeof children) =>
+    nodes.find((n) => n.type === ConsumedTerminalReconciliation)?.key;
+  expect(key(render({ ...run, base_revision: "f".repeat(40) }))).not.toBe(
+    key(children),
+  );
+  expect(
+    key(
+      render(run, {
+        ...session,
+        user: { ...session.user, id: "9".repeat(32) },
+      }),
+    ),
+  ).not.toBe(key(children));
 });

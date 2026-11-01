@@ -32,7 +32,9 @@ async def refused_claim(c, *, prior_preclaim=True):
             return [await c.journal._task(RUN, "implement")]
 
         c.journal.tasks.find_pending_recovery = pending
-        assert await c.journal.recover() == 1
+        before_startup = copy.deepcopy([row.data for row in c.journal.records.rows])
+        assert await c.journal.recover() == 0
+        assert [row.data for row in c.journal.records.rows] == before_startup
         before, _ = await admit(c)
 
         async def budget(self, key):
@@ -132,9 +134,10 @@ async def test_claimed_pre_job_refusal_requires_separate_review_and_resumes_same
             return [await c.journal._task(RUN, "implement")]
 
         c.journal.tasks.find_pending_recovery = pending
-        assert await c.journal.recover() == 1
-        assert c.journal.records.rows[-1].kind == "recovery"
+        before_startup = copy.deepcopy([row.data for row in c.journal.records.rows])
         assert await c.journal.recover() == 0
+        assert await c.journal.recover() == 0
+        assert [row.data for row in c.journal.records.rows] == before_startup
     with pytest.raises(ValueError, match="never-claimed"):
         await c.continuity.recoveries.candidate(RUN, failed["id"])
     history = copy.deepcopy([row.data for row in c.journal.records.rows])
@@ -167,9 +170,10 @@ async def test_claimed_pre_job_refusal_requires_separate_review_and_resumes_same
     assert queued["admission_seal"] == failed["admission_seal"]
     assert queued["checkpoint_digest"] == failed["checkpoint_digest"]
     if restart_cut == "after":
-        assert await c.journal.recover() == 1
-        assert c.journal.records.rows[-1].kind == "recovery"
+        before_startup = copy.deepcopy([row.data for row in c.journal.records.rows])
         assert await c.journal.recover() == 0
+        assert await c.journal.recover() == 0
+        assert [row.data for row in c.journal.records.rows] == before_startup
     if restart_cut == "verification":
         from firefly_forge.journal import digest
 

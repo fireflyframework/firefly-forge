@@ -1,5 +1,5 @@
 # Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
-"""Bind release-note links to files under the publishing repository and tag."""
+"""Render one release section with documentation links bound to its repository and tag."""
 
 import argparse
 import re
@@ -12,6 +12,34 @@ LINK = re.compile(
     r"(?P<destination><[^>\n]+>|(?:\\.|[^\s()\\]|\((?:\\.|[^()\\])*\))+)"
     r"(?P<title>[ \t]+(?:\"[^\"\n]*\"|'[^'\n]*'))?\)"
 )
+
+
+def release_section(text: str, tag: str) -> str:
+    """Select an exact version heading, excluding headings inside Markdown fences."""
+    headings: list[tuple[str, int]] = []
+    fence: tuple[str, int] | None = None
+    offset = 0
+    for line in text.splitlines(keepends=True):
+        marker = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)$", line.rstrip("\r\n"))
+        if fence is not None:
+            if marker and marker[1][0] == fence[0] and len(marker[1]) >= fence[1] and not marker[2].strip():
+                fence = None
+        elif marker:
+            fence = (marker[1][0], len(marker[1]))
+        else:
+            heading = re.match(r"^##[ \t]+(\S+)(?:[ \t].*)?$", line.rstrip("\r\n"))
+            if heading:
+                headings.append((heading[1], offset))
+        offset += len(line)
+    if fence is not None:
+        raise ValueError("Release notes contain an unclosed Markdown fence")
+    selected = [index for index, (version, _) in enumerate(headings) if version == tag.removeprefix("v")]
+    if len(selected) != 1:
+        raise ValueError("Expected exactly one release section for " + tag)
+    index = selected[0]
+    start = headings[index][1]
+    end = headings[index + 1][1] if index + 1 < len(headings) else len(text)
+    return text[start:end].rstrip("\r\n")
 
 
 def render_notes(source: Path, root: Path, repository: str, tag: str) -> str:
@@ -41,8 +69,12 @@ def render_notes(source: Path, root: Path, repository: str, tag: str) -> str:
         start, end = match.span("destination")
         return match[0][: start - match.start()] + normalized + match[0][end - match.start() :]
 
-    parts = CODE.split(source.read_text(encoding="utf-8"))
-    return "".join(part if index % 2 else LINK.sub(replace, part) for index, part in enumerate(parts))
+    parts = CODE.split(release_section(source.read_text(encoding="utf-8"), tag))
+    notes = "".join(part if index % 2 else LINK.sub(replace, part) for index, part in enumerate(parts))
+    history = f"https://github.com/{repository}/blob/{quote(tag, safe='')}/" + quote(
+        source.relative_to(root).as_posix(), safe="/"
+    )
+    return notes + f"\n\n[Full release history]({history})\n"
 
 
 if __name__ == "__main__":

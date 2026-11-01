@@ -1,6 +1,6 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { mockIdentity } from "./auth-fixture";
-import { navigate } from "./navigation";
+import { navigate, expectAuthenticated } from "./navigation";
 import { expect, test } from "@playwright/test";
 
 test("operator configures an AI without reading back its key and selects versioned project policies", async ({
@@ -141,9 +141,7 @@ test("operator configures an AI without reading back its key and selects version
     .getByLabel("API token", { exact: true })
     .fill("operator-token-at-least-24-chars");
   await page.getByRole("button", { name: "Save connection" }).click();
-  await expect(
-    page.getByRole("button", { name: "API connected" }),
-  ).toBeVisible();
+  await expectAuthenticated(page);
   await page.getByRole("button", { name: "Configure", exact: true }).click();
   await page.setViewportSize({ width: 390, height: 844 });
   const formWidth = await page
@@ -160,7 +158,8 @@ test("operator configures an AI without reading back its key and selects version
     .getByLabel("API key", { exact: true })
     .fill("private-provider-key");
   await page
-    .getByRole("button", { name: "Save Firefly Agentic settings" })
+    .getByRole("region", { name: "Configure Firefly Agentic", exact: true })
+    .getByRole("button", { name: "Save settings", exact: true })
     .click();
   expect(saved).toEqual({
     values: { model: "openai:new-model", api_key: "private-provider-key" },

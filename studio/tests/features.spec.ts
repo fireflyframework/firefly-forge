@@ -1,6 +1,7 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { expect, test, type Page } from "@playwright/test";
 import { navigate } from "./navigation";
+import { factoryDashboardFixture } from "./factory-dashboard-fixture";
 import { mockIdentity } from "./auth-fixture";
 import { expectProgressFits } from "./wizard-progress";
 import { retainedRunCreation } from "./run-creation-cancellation-fixture";
@@ -73,7 +74,12 @@ async function fallback(
       await route.fulfill({ json: result });
       return;
     }
-    if (path.endsWith("/repositories"))
+    const dashboard = factoryDashboardFixture(new URL(request.url()), {
+      projects: [],
+      runs: [],
+    });
+    if (dashboard !== undefined) await route.fulfill({ json: dashboard });
+    else if (path.endsWith("/repositories"))
       await route.fulfill({ json: [repository] });
     else if (path.endsWith("/runs")) await route.fulfill({ json: [] });
     else if (path.endsWith("/providers"))
@@ -582,14 +588,23 @@ test("repository workflow saves write-only signing settings and disables Bitbuck
   await expect(page.getByLabel("New webhook signing secret")).toHaveValue("");
 });
 
-test("project board shows only actual project runs, branches, tickets and plan task states", async ({
+test("project board shows only actual project runs, branches, tickets and recorded plan states", async ({
   page,
 }) => {
+  const project = {
+    id: "b".repeat(32),
+    name: "Inventory product",
+    component_count: 2,
+    repository_count: 1,
+  };
   const run = {
-    id: "run-1",
+    id: "c".repeat(32),
     repository_id: repositoryId,
+    project_id: project.id,
+    project_name: project.name,
     brief: "Verify reservation boundaries",
-    status: "succeeded",
+    status: "verifying",
+    active_task: "verify",
     branch: "forge/actual-checkpoint",
     issue_context: {
       provider: "github",
@@ -601,37 +616,64 @@ test("project board shows only actual project runs, branches, tickets and plan t
       url: "https://github.com/example/inventory/issues/9",
     },
   };
+  const unrelated = {
+    ...run,
+    id: "d".repeat(32),
+    project_id: "e".repeat(32),
+    project_name: "Other product",
+    brief: "Unrelated project work",
+    status: "failed",
+  };
+  const plan = {
+    tasks: [
+      {
+        id: "verify",
+        title: "Run project checks",
+        status: "running",
+        instructions: "Execute recorded checks",
+        attempt: 1,
+      },
+    ],
+  };
+  const planReads: string[] = [];
   await fallback(page, (path) => {
-    if (path.endsWith("/runs"))
-      return [
-        run,
-        {
-          id: "other-run",
-          repository_id: "other-repository",
-          brief: "Unrelated project work",
-          status: "failed",
-        },
-      ];
-    if (path.endsWith("/runs/run-1/plan"))
-      return {
-        tasks: [
-          {
-            id: "verify",
-            title: "Run project checks",
-            status: "running",
-            instructions: "Execute recorded checks",
-            attempt: 1,
-          },
-        ],
-      };
+    if (path.endsWith("/runs")) return [run, unrelated];
+    if (path.endsWith(`/runs/${run.id}/plan`)) {
+      planReads.push(path);
+      return plan;
+    }
     if (path.endsWith("/deployments")) return [];
+  });
+  await page.route("**/api/v1/factory-dashboard**", async (route) => {
+    const dashboard = factoryDashboardFixture(new URL(route.request().url()), {
+      projects: [
+        project,
+        {
+          id: unrelated.project_id,
+          name: unrelated.project_name,
+          component_count: 1,
+          repository_count: 1,
+        },
+      ],
+      runs: [run, unrelated],
+      plans: { [run.id]: plan },
+    });
+    await route.fulfill({ json: dashboard });
   });
   await connect(page);
   await navigate(page, "Factory");
-  await expect(page.getByLabel("Project", { exact: true })).toHaveValue(
-    repositoryId,
+  expect(planReads).toEqual([]);
+  await page.getByRole("button", { name: "Browse work", exact: true }).click();
+  await page
+    .getByRole("dialog", { name: "Factory work" })
+    .getByRole("button", { name: /^Inventory product / })
+    .click();
+  await expect(page.locator(".factory-scope-caption h2")).toHaveText(
+    project.name,
   );
-  await page.getByRole("button", { name: "Board", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Show run board", exact: true })
+    .click();
   await expect(
     page.getByText("forge/actual-checkpoint", { exact: true }),
   ).toBeVisible();
@@ -641,9 +683,28 @@ test("project board shows only actual project runs, branches, tickets and plan t
   await expect(
     page.getByRole("link", { name: "#9 Reservation behavior" }),
   ).toHaveAttribute("href", "https://github.com/example/inventory/issues/9");
-  const task = page.getByRole("region", { name: "Selected run tasks" });
-  await expect(task.getByText("running", { exact: true })).toBeVisible();
-  await expect(task.getByText("done", { exact: true })).toHaveCount(0);
+  expect(planReads).toEqual([]);
+  await page
+    .locator(".factory-run-record")
+    .getByRole("button", { name: "Focus run", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Show production floor", exact: true })
+    .click();
+  const task = page
+    .getByRole("group", { name: "Recorded execution stages" })
+    .getByRole("button", { name: /^Test / });
+  await task.click();
+  await expect(task).toHaveAttribute("aria-pressed", "true");
+  await expect(task).toHaveClass(/\bunknown\b/);
+  await expect(task).not.toHaveClass(/\bdone\b/);
+  await expect(page.locator(".factory-inspection")).toContainText(
+    "The task is recorded as running; a current owned runner lease is not available.",
+  );
+  expect(planReads.length).toBeGreaterThan(0);
+  expect(planReads.every((path) => path.endsWith(`/runs/${run.id}/plan`))).toBe(
+    true,
+  );
 });
 
 test("credential profile wizard sends write-only keys and clears values after save", async ({

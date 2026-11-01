@@ -2,13 +2,33 @@
 import { expect, test } from "@playwright/test";
 import { mockIdentity } from "./auth-fixture";
 import { navigate } from "./navigation";
+import { factoryDashboardFixture } from "./factory-dashboard-fixture";
 
-test("project selectors distinguish duplicate names across factory and knowledge settings", async ({
+test("repository selectors distinguish duplicate names while Factory lists explicit product projects", async ({
   page,
 }) => {
   await page.route("**/api/v1/**", async (route) => {
     if (await mockIdentity(route)) return;
-    const path = new URL(route.request().url()).pathname;
+    const url = new URL(route.request().url()),
+      path = url.pathname;
+    const dashboard = factoryDashboardFixture(url, {
+      projects: [
+        {
+          id: "c".repeat(32),
+          name: "Inventory product",
+          component_count: 3,
+          repository_count: 2,
+        },
+        {
+          id: "d".repeat(32),
+          name: "Inventory audit",
+          component_count: 1,
+          repository_count: 1,
+        },
+      ],
+      runs: [],
+    });
+    if (dashboard !== undefined) return route.fulfill({ json: dashboard });
     await route.fulfill({
       json: path.endsWith("/repositories")
         ? [
@@ -81,9 +101,19 @@ test("project selectors distinguish duplicate names across factory and knowledge
       .filter({ hasText: "Inventory" }),
   ).toHaveText(expected);
   await navigate(page, "Factory");
-  await expect(
-    page.getByLabel("Project", { exact: true }).locator("option"),
-  ).toHaveText(expected);
+  await page.getByRole("button", { name: "Browse work", exact: true }).click();
+  const drawer = page.getByRole("dialog", {
+    name: "Factory work",
+    exact: true,
+  });
+  await expect(drawer.locator(".factory-project-row")).toHaveText([
+    "Inventory product3 components · 2 repositories",
+    "Inventory audit1 component · 1 repository",
+  ]);
+  await drawer.getByRole("button", { name: /^Inventory audit / }).click();
+  await expect(page.locator(".factory-scope-caption h2")).toHaveText(
+    "Inventory audit",
+  );
   await navigate(page, "Knowledge");
   await expect(
     page

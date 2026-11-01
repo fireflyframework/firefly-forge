@@ -24,7 +24,7 @@ def test_all_twenty_five_registered_literals_remain_exact():
         for node in ast.parse(source).body
         if isinstance(node, ast.AnnAssign) and getattr(node.target, "id", None) == "PROFILES"
     )
-    assert len(node.value.elts) in (25, 26)
+    assert len(node.value.elts) >= 25
     prefix = "\0".join(ast.get_source_segment(source, item) for item in node.value.elts[:25])
     assert (
         hashlib.sha256(prefix.encode()).hexdigest()

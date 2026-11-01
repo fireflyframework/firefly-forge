@@ -2,6 +2,7 @@
 import { expect, test } from "@playwright/test";
 import { navigate } from "./navigation";
 import { mockIdentity } from "./auth-fixture";
+import { mockFactoryDashboard } from "./factory-dashboard-fixture";
 for (const scale of [1, 1.25, 2]) {
   test(`wizard actions stay above the footer and labels remain readable at ${scale}× scale`, async ({
     browser,
@@ -16,6 +17,11 @@ for (const scale of [1, 1.25, 2]) {
     const page = await context.newPage();
     await page.route("**/api/v1/**", async (route) => {
       if (await mockIdentity(route)) return;
+      if (
+        route.request().method() === "GET" &&
+        (await mockFactoryDashboard(route, { projects: [], runs: [] }))
+      )
+        return;
       const path = new URL(route.request().url()).pathname;
       const json = path.endsWith("/repositories")
         ? [

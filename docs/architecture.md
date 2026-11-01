@@ -263,6 +263,16 @@ Source: [`api.py`](https://github.com/fireflyframework/firefly-forge/blob/main/s
 
 `Store.event()` retains the sanitized message separately from that bounded projection. Studio renders supported summaries, leaves plain logs readable and offers an explicit verified reader for complete content. Unsupported structured previews receive a generic card. The optional Claude summary fields preserve the existing descriptor version and byte/hash binding; the archive writer, current-authority checks, credential fences and D04 export limits are shared. See [the activity contract](agent-integrations.md#read-complete-retained-provider-activity) and [the operator walkthrough](run-evidence.md#read-complete-provider-activity).
 
+### Current Engine stage observations
+
+`EngineActivity` is a native pyfly service with a separate PostgreSQL observation table. After a new native task intent is admitted, Engine records the exact run, task, attempt, current plan and frozen scope. One heartbeat renews its current local tasks together. Receipts and shutdown end those observations. SQL checks the current canonical execution identity and project permission, the owning PostgreSQL backend and advisory fence, and the observation's expiry before the dashboard counts it as active.
+
+This describes an Engine-owned stage, including a stage awaiting another system. It does not establish remote runner CPU work, provider availability or a person's presence. The existing execution snapshot retains a canonical user ID and its durable grants; it does not retain the original browser cookie. Signing out revokes that browser session, not the queued job. Suspending the execution identity, removing its required project permission or losing its current administrator grant invalidates the corresponding observation. Dashboard readers independently need current read authority and, for cookie access, their exact active session after the snapshot read.
+
+Unsupported SCM-mapped and personal-token execution actors stay unknown. Personal read tokens can still observe their selected projects through the existing read boundary. Observation failure expires to unknown and cannot retry productive work, approve an effect or skip credential and ownership cleanup. The two new observation modules enter the prospective runtime/admission material; their presence does not register a coding profile.
+
+Source: `engine_activity.py`, `engine_activity_persistence.py`, `engine.py` (`_observe_stage`, `_begin_task`, `_receipt`) and `factory_dashboard_persistence.py`. See [the operator guide](factory-dashboard.md#engine-stage-observations) for freshness settings and the limits of the display.
+
 ### Durable natural ticket conversations
 
 `SCMNaturalTasks` retains a human message before its configured `communication`
@@ -701,7 +711,7 @@ flowchart LR
 
 <p class="forge-flow-caption" id="coding-check-flow-guide">Review and grant before reserving the linked attempt. Each interactive call repeats current authority, source and budget checks; independent final verification follows separately. On a narrow screen, scroll horizontally or focus a diagram and use the arrow keys.</p>
 
-The coding channel is separate from the 188-tool operator MCP server. Its token is invocation-scoped, expires no later than the provider deadline, and is removed from streams and retained activity before storage. Accepted effects drain before teardown. Codex retains `workspace-write`; Claude uses an explicit private MCP configuration with strict server/tool selection. These adapters do not make general role-tool declarations enforceable inside an official CLI. A host runner retains service-account execution with timeout/output controls, without filesystem or network isolation. The grant changes no original snapshot, repair allowance or shared runner budget. See [the recovery journey](recovery.md#grant-configured-checks-for-the-final-recovery) and [native API contract](api.md#scoped-coding-check-grants).
+The coding channel is separate from the 199-tool operator MCP server. Its token is invocation-scoped, expires no later than the provider deadline, and is removed from streams and retained activity before storage. Accepted effects drain before teardown. Codex retains `workspace-write`; Claude uses an explicit private MCP configuration with strict server/tool selection. These adapters do not make general role-tool declarations enforceable inside an official CLI. A host runner retains service-account execution with timeout/output controls, without filesystem or network isolation. The grant changes no original snapshot, repair allowance or shared runner budget. See [the recovery journey](recovery.md#grant-configured-checks-for-the-final-recovery) and [native API contract](api.md#scoped-coding-check-grants).
 
 Bridge completion requests follow the same uncertainty rule. A transport failure, unusable completion or cancellation during an unfinished submission retains the original intent and workspace for reconciliation. Local cancellation stops scheduling but cannot establish the remote result. The hold survives cancelled, interrupted or failed run status; resume, handoff and replacement retry check it before dispatch. Recovery of the original Bridge job is not automated. See [provider failure handling](agents.md).
 
@@ -845,7 +855,7 @@ Built-in model instructions are versioned YAML resources loaded and rendered by 
 | Native browser QA | Fresh Docker context, declared local origin and bounded actions | Layout diagnostics and screenshots require actual visual/interaction review. |
 | Native PHP diagnostics | Explicit `profile_php` plus command grant, frozen Docker/archive/network-`none` runner | Runtime metrics or preinstalled Xdebug observations retain command receipts; they do not authorize or approve work. |
 | Internet search | Explicit Brave or Tavily selection, retained credential revision and domain restrictions | Bounded cited results are untrusted references; no key goes to the model. |
-| Factory MCP | 188 authenticated operator tools in `mcp_server.py` | These API tools are distinct from a coding model's workspace tools. |
+| Factory MCP | 199 authenticated operator tools in `mcp_server.py` | These API tools are distinct from a coding model's workspace tools. |
 
 Flycanon retrieves `forge-<repository_id>` project context and shared framework references. Required retrieval failure prevents coding continuation. The retained citations/context digest support recovery. A ProductProject does not automatically create an aggregated memory workspace across its repositories.
 

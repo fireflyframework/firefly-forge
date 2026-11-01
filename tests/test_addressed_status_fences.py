@@ -3,7 +3,7 @@
 
 import pytest
 from test_addressed_status_polling import addressed, configured_status
-from test_addressed_status_signed import grant, signed_address
+from test_addressed_status_signed import grant, retained_signed_address
 from test_scm_polling import poll_case as poll_case
 
 
@@ -17,7 +17,7 @@ async def test_status_rechecks_source_and_membership_after_issue_token_wait(poll
             await configured_status(c, monkeypatch)
             delivery = await addressed(c)
         else:
-            delivery, comment = await signed_address(c)
+            delivery, comment = await retained_signed_address(c)
             c.state["comments"].append(comment)
             await grant(c, delivery)
         prepare = c.scm.issue_authentication
@@ -75,7 +75,7 @@ async def test_status_rejects_retained_context_tampering_during_issue_token_wait
             await configured_status(c, monkeypatch)
             delivery = await addressed(c)
         else:
-            delivery, comment = await signed_address(c)
+            delivery, comment = await retained_signed_address(c)
             c.state["comments"].append(comment)
             await grant(c, delivery)
         prepare = c.scm.issue_authentication

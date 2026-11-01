@@ -1,15 +1,21 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
-import { useEffect, useRef, useState } from "react";
-import { Menu, X, type LucideIcon } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Menu, X } from "lucide-react";
+import {
+  WorkspaceNavigationItems,
+  type WorkspaceNavigationItem,
+} from "./WorkspaceNavigationItems";
 import "./MobileNavigation.css";
 export function MobileNavigation({
   items,
   current,
   onNavigate,
+  account,
 }: {
-  items: { id: string; label: string; icon: LucideIcon; count?: number }[];
+  items: WorkspaceNavigationItem[];
   current: string;
   onNavigate: (id: string) => void;
+  account?: { label: string; content: ReactNode; onOpen: () => void };
 }) {
   const [open, setOpen] = useState(false),
     dialog = useRef<HTMLDialogElement>(null);
@@ -57,22 +63,30 @@ export function MobileNavigation({
           </button>
         </header>
         <nav aria-label="Main navigation">
-          {items.map(({ id, label, icon: Icon, count }) => (
+          <WorkspaceNavigationItems
+            items={items}
+            current={current}
+            onNavigate={(id) => {
+              setOpen(false);
+              onNavigate(id);
+            }}
+          />
+        </nav>
+        {account && (
+          <div className="mobile-account">
             <button
-              key={id}
-              className={current === id ? "active" : ""}
-              aria-current={current === id ? "page" : undefined}
+              className="secondary identity-trigger"
+              aria-label={account.label}
+              aria-haspopup="dialog"
               onClick={() => {
                 setOpen(false);
-                onNavigate(id);
+                account.onOpen();
               }}
             >
-              <Icon size={20} />
-              <span>{label}</span>
-              {count !== undefined && <small>{count}</small>}
+              {account.content}
             </button>
-          ))}
-        </nav>
+          </div>
+        )}
       </dialog>
     </div>
   );

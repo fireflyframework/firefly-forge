@@ -22,7 +22,7 @@ from test_agentic_restore_receipt_native import seed_restore_workspace
 from test_bridge_completion_callbacks import CAPABILITY
 from test_bridge_completion_native import prepared
 
-from firefly_forge import agentic_runtime, agentic_tool_custody
+from firefly_forge import agentic_runtime, agentic_tool_custody, consumed_terminal_reconciliations
 from firefly_forge import invalid_read_continuities as native
 from firefly_forge.agent_roles import ProjectRoles, RoleRegistry
 from firefly_forge.agentic_checkpoint_invocation import runtime_contract
@@ -218,9 +218,12 @@ async def native_continuity(store, tmp_path, monkeypatch):
                 initial_commands = copy.deepcopy(await journal.sandbox_executions(run_id))
                 assert len(initial_commands) == 11
                 monkeypatch.setattr(native, "LEGACY_RUNTIME_CONTRACT", runtime_contract())
-                monkeypatch.setattr(
-                    native, "current_profile_seal", lambda: {"profile_id": "fixture-only", "digest": "8" * 64}
-                )
+
+                def fixture_profile_seal():
+                    return {"profile_id": "fixture-only", "digest": "8" * 64}
+
+                monkeypatch.setattr(native, "current_profile_seal", fixture_profile_seal)
+                monkeypatch.setattr(consumed_terminal_reconciliations, "current_profile_seal", fixture_profile_seal)
                 service = native.InvalidReadContinuities(store, journal, engine, requests)
                 requests.invalid_read_continuities = service
                 write_policy(

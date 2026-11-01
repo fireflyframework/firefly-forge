@@ -1,0 +1,9 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/create_github_projects
+version: 1.0.0
+description: Authenticated factory MCP tool description.
+system_template: ''
+user_template: "Create one private personal GitHub Projects board under the connected OAuth user after explicit consent. Retain the request ID and read its receipt if the result is unknown. Never import CLI tokens, infer another owner, retry a lost create or grant coding authority."
+required_variables: []
+metadata:
+  defaults: {}

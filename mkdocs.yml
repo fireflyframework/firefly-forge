@@ -79,6 +79,7 @@ nav:
       - Install and start: installation.md
       - Your first product: quickstart.md
       - Studio console tour: console-tour.md
+      - Follow factory work: factory-dashboard.md
       - Capabilities and limits: capabilities.md
   - Products:
       - Define a product: product-definition.md
@@ -121,6 +122,7 @@ nav:
       - Agent bridge connection: bridge.md
   - Integrations:
       - Connect Git repositories: scm.md
+      - Track delivery in GitHub Projects: github-projects.md
       - Repository conversations: repository-workflow.md
       - Cited knowledge and memory: knowledge.md
       - Refresh framework references, in development: framework-knowledge-refresh.md
@@ -140,6 +142,7 @@ nav:
       - Application health and maintenance: application-operations.md
       - Security: security.md
       - Sign in and manage project access: identity.md
+      - Personal project API tokens: personal-api-tokens.md
       - Add and manage users: user-administration.md
   - Reference:
       - Architecture: architecture.md

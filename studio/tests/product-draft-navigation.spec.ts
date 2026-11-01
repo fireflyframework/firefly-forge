@@ -238,8 +238,11 @@ test("signing out clears the prior identity's drafts and reload warning", async 
     .click();
   await page.getByRole("button", { name: "Sign out", exact: true }).click();
   await expect(
-    page.getByText("Connect your factory first", { exact: true }),
+    page.getByRole("button", { name: "Connect factory", exact: true }),
   ).toBeVisible();
+  await expect(page.locator(".sidebar-bottom .identity-trigger")).toHaveCount(
+    0,
+  );
   expect(await unloadPrevented(page)).toBe(false);
   await connect(page);
   await navigate(page, "Product definition");
@@ -386,8 +389,11 @@ test("confirmed logout clears drafts even when the following identity refresh fa
     .click();
   await page.getByRole("button", { name: "Sign out", exact: true }).click();
   await expect(
-    page.getByText("Connect your factory first", { exact: true }),
+    page.getByRole("button", { name: "Connect factory", exact: true }),
   ).toBeVisible();
+  await expect(page.locator(".sidebar-bottom .identity-trigger")).toHaveCount(
+    0,
+  );
   expect(await unloadPrevented(page)).toBe(false);
   await expect.poll(state.identityFailures).toBeGreaterThan(0);
   state.restoreIdentity();

@@ -31,7 +31,7 @@ from firefly_forge.verification_source_preparation import (
 Data = dict[str, Any]
 
 if TYPE_CHECKING:
-    from firefly_forge.consumed_terminal_completions import PreparedTerminalAuthority
+    from firefly_forge.consumed_terminal_completions import PreparedReconciledSourceAuthority, PreparedTerminalAuthority
 
 
 @dataclass(frozen=True)
@@ -54,6 +54,7 @@ async def prepare_retained_source(
     workspace: Path,
     *,
     terminal_recovery: PreparedTerminalAuthority | None = None,
+    consumed_reconciliation: PreparedReconciledSourceAuthority | None = None,
 ) -> PreparedRetainedSource:
     _outside_unit()
     await store.assert_ownership()
@@ -86,8 +87,15 @@ async def prepare_retained_source(
             raise ValueError("Retained source run changed before its native cut")
         rows = await journal.sandboxes.for_run(identifier(run["id"]))
         task = await journal._task(run["id"], "implement")
-    record = final_record(ticket, entries, events)
-    state = run.get("verification_handoff") or {}
+    custody_run, custody_entries = run, entries
+    if consumed_reconciliation is not None:
+        from firefly_forge.consumed_terminal_completions import PreparedReconciledSourceAuthority
+
+        if not isinstance(consumed_reconciliation, PreparedReconciledSourceAuthority):
+            raise ValueError("Held source requires its typed same-action reconciliation authority")
+        custody_run, custody_entries = await consumed_reconciliation.current(run, entries)
+    record = final_record(ticket, custody_entries, events)
+    state = custody_run.get("verification_handoff") or {}
     if (
         record is None
         or ticket["status"] != "completed"
@@ -105,7 +113,7 @@ async def prepare_retained_source(
     ):
         raise ValueError("Unchanged source requires the exact next attempt after passed native verification")
     values = {row.id.hex: _canonical(row, entries, run["id"]) for row in rows}
-    custody = validate_completed_handoff(run, entries, rows, values)
+    custody = validate_completed_handoff(custody_run, custody_entries, rows, values)
     handoff = next(e for e in entries if e["digest"] == custody["handoff_intent_digest"])
     intent = handoff["payload"]
     accepted = [
@@ -139,6 +147,8 @@ async def prepare_retained_source(
         ):
             raise ValueError("Retained source lost its current worker ownership or scope")
         check_verification_authority(store, expected, intent)
+        if consumed_reconciliation is not None:
+            await consumed_reconciliation.current(expected, entries)
         async with store._unit():
             if (
                 not _same(await journal.entries(run["id"]), entries)

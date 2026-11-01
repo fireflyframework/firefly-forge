@@ -1534,6 +1534,8 @@ class Journal:
 
         async with self.store._unit():
             run = await self._run(run_id)
+            if "consumed_terminal_recovery" in run.data:
+                raise ValueError("Automatic verification cannot replace consumed terminal postprocessing")
             request = run.data.get("worker_request", {})
             task = await self._task(run_id, "implement")
             retained = run.data.get("verification_handoff", {})
@@ -1667,6 +1669,8 @@ class Journal:
 
         async with self.store._unit():
             run = await self._run(run_id)
+            if "consumed_terminal_recovery" in run.data:
+                raise ValueError("Automatic verification cannot replace consumed terminal postprocessing")
             state = run.data.get("verification_handoff", {})
             if state.get("id") != intent["id"] or state.get("status") != "running":
                 raise ValueError("Automatic verification is not active")
@@ -1730,6 +1734,8 @@ class Journal:
 
         async with self.store._unit():
             run = await self._run(run_id)
+            if "consumed_terminal_recovery" in run.data:
+                raise ValueError("Automatic verification cannot replace consumed terminal postprocessing")
             if assert_inputs is not None:
                 await assert_inputs()
             state = run.data.get("verification_handoff", {})
@@ -1936,6 +1942,8 @@ class Journal:
     async def verification_hold(self, run_id: str, handoff_id: str) -> None:
         async with self.store._unit():
             run = await self._run(run_id)
+            if "consumed_terminal_recovery" in run.data:
+                return
             state = run.data.get("verification_handoff", {})
             if run.status in TERMINAL or state.get("id") != handoff_id or state.get("status") == "held":
                 return
@@ -1962,6 +1970,8 @@ class Journal:
     async def verification_refuse(self, run_id: str, request_digest: str) -> None:
         async with self.store._unit():
             run = await self._run(run_id)
+            if "consumed_terminal_recovery" in run.data:
+                return
             request = run.data.get("worker_request", {})
             handoff = run.data.get("verification_handoff", {})
             completed = (
@@ -2049,8 +2059,6 @@ class Journal:
             count = 0
             for candidate in pending:
                 run = await self._run(candidate.run_id.hex)
-                if run.status == "failed" and candidate.task_id == "implement":
-                    continue
                 task = await self._task(run.id.hex, candidate.task_id)
                 if task.status not in {"running", "needs_reconciliation"}:
                     continue
@@ -2060,6 +2068,20 @@ class Journal:
                 if not self.verify_chain(entries) or any(entry["run_id"] != run.id.hex for entry in entries):
                     raise ValueError("Recovery requires an intact native journal")
                 key = task.data["idempotency_key"]
+                if (
+                    run.status == "failed"
+                    and task.task_id == "implement"
+                    and any(
+                        entry["kind"] == "bridge_request_intent"
+                        and entry["task_id"] == task.task_id
+                        and isinstance(entry["payload"], dict)
+                        and entry["payload"].get("task_key") == key
+                        for entry in entries
+                    )
+                ):
+                    # Saved provider custody has its own same-attempt recovery;
+                    # pre-dispatch failures still need the ordinary restart witness.
+                    continue
                 generation = _recovery_generation(entries, task.task_id, key)
                 for kind, pointer in _RECOVERY_CLAIMS.items():
                     claims = [

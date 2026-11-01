@@ -99,6 +99,16 @@ class SignedAddressedSourceV1(StrictContract):
     comment_id: str = Field(pattern=r"^[1-9][0-9]{0,39}$")
 
 
+class GitHubObservationWakeV1(StrictContract):
+    """A durable scheduling request, without comment-processing authority."""
+
+    version: Literal[1]
+    state: Literal["pending"]
+    source_key: str = Field(pattern=r"^comment:[1-9][0-9]{0,39}$")
+    scheduled_epoch: NativeID | None = None
+    scan_after_wake: bool = False
+
+
 class TicketContextReferenceV1(StrictContract):
     receipt_id: NativeID
     sequence: int = Field(ge=1)

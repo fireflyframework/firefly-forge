@@ -1,31 +1,34 @@
 ---
-description: Understand projects, components, campaigns and run evidence, then follow the factory journeys from repository connection to product support.
+description: Follow five stages from workspace setup through product decisions, delivery planning, source review and operation.
 ---
 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 
 # Understand the factory and follow a delivery
 
-Start with the outcome your customer needs, identify the source that implements it, and choose the work to run. In forge, the product definition describes expected behavior, the project describes the component topology, and a campaign coordinates a particular delivery across those components.
+Follow a product change through five stages. Each stage leaves something you can review before choosing the next action. You can join an existing delivery where its current work belongs.
 
-The example throughout this guide is an inventory product. Warehouse operators reserve stock through a web application; an API enforces the reservation rules. The same product can start as an API with no browser interface. Its customer process and acceptance criteria still belong in the definition.
+| Stage and purpose | Start with | Action, result and next step |
+| --- | --- | --- |
+| [1. Prepare workspace](#prepare-workspace): give the team access to source and services. | Factory address, authorized people and repository access. | Connect repositories and verify required services; continue with a product owner and usable source. |
+| [2. Define or adopt product](#define-or-adopt-a-product): agree on the behavior to deliver. | A customer problem or the existing product and its gaps. | Configure the project and review its product definition; save the revision used for delivery planning. |
+| [3. Plan delivery](#plan-delivery): choose the change and affected components. | A reviewed product revision and executable acceptance checks. | Start one component run or submit a campaign through its supported channel; inspect its saved scope and plan. |
+| [4. Build and review](#build-and-review): establish what the source actually does. | A submitted run or campaign. | Inspect source, checks and recorded evidence in Factory; keep the reviewed checkpoint for delivery. |
+| [5. Deliver and operate](#deliver-and-operate): put the accepted change into use and observe it. | Reviewed source and a configured delivery target. | Explicitly publish or deploy, inspect the actual outcome, then use application observations to plan maintenance. |
+
+The example throughout this guide is an inventory product. Its API accepts stock reservations and refuses requests that exceed available stock. It can remain API-only. If warehouse operators also need a web application, add that component and its checks to the same product.
+
+For a new feature in an existing inventory system, review the current definition and change the affected behavior and acceptance criteria. Keep the product identity, earlier revisions and delivery history. The [guide index](guide.md#choose-where-to-enter-studio) maps Studio sections to the work you need to do.
 
 ## The concepts you will use
 
-| Concept | What you configure or retain | Inventory example |
-| --- | --- | --- |
-| Product definition | A versioned customer contract: problem, owners, journeys, features, integrations, acceptance, architecture and design review. | Reserve available stock; reject an excessive quantity without changing inventory. |
-| Journey | A customer or system process in that definition, including the expected outcome and failure behavior. | An operator selects stock, requests a quantity and receives a reservation or a refusal. |
-| Feature | A stable capability with explicit behavior, journey references and acceptance references. | `reserve-stock`, with a conflict response for insufficient stock. |
-| Integration contract | The intended exchange with an owned or third-party system, including authentication declarations, failures and retry requirements. | Notify the warehouse service after a reservation. Saving the contract does not call that service. |
-| Repository | A registered Git source with its provider identity, branch, access and operator-owned execution settings. | The inventory API repository, granted through a GitHub App. |
-| Product project | A versioned logical product topology that groups components and identifies the repository holding its canonical product definition. | Inventory, with API and web components and one product owner. |
-| Component | A named responsibility bound to one repository, a nonoverlapping relative source root, a stack and verification commands. | `inventory-api` uses pyfly; `inventory-web` uses React with no backend. |
-| Campaign | One admitted delivery across selected project components and their upstream dependencies, with frozen inputs and child-run references. | Implement the reviewed reservation change across API and web. |
-| Run | One execution for a repository/component: build, maintain or test, with its own source, plan, state and evidence. | The API maintenance run adds reservation checks. |
-| Task and attempt | A bounded step in the retained execution plan and a particular execution of that step. | A verification command and its actual exit result. |
-| Journal / WAL | Append-only execution records that connect intent to observed outcomes using sequence and integrity references. | Publication was requested; its outcome is unresolved until reconciled. |
-| Evidence report and archive | A read of retained campaign evidence, or an explicitly saved immutable receipt of that exact report. | The selected API attempt has matching checks; the web attempt is still blocked. |
+The **product definition** records what the customer expects: owners, journeys, features, integrations and acceptance, with architecture and design decisions. A journey describes a customer or system process. A feature such as `reserve-stock` states the behavior that implements part of it, including a refusal that leaves stock unchanged. An integration contract describes an intended exchange with another system, including authentication and failure behavior.
+
+A **product project** groups the source that implements that definition. Its **components** divide responsibilities: `inventory-api` validates reservations, while an optional `inventory-web` presents them. Each component names a registered repository, a source root, a stack and its verification commands. The project identifies which repository holds the canonical definition.
+
+A **campaign** coordinates one delivery across selected components and their upstream dependencies. A **run** performs one build, maintenance or test execution for a repository or component. For example, the API run changes reservation checks; a campaign can coordinate that change with the web component. The campaign retains each child run's inputs and evidence.
+
+Inside a run, a task is a defined step and an attempt is one execution of that step. The journal, also called the WAL, keeps append-only intent and outcome records. A campaign report reads those records; saving an archive keeps an immutable copy of a selected report. These records let you distinguish a requested publication from its observed remote result.
 
 The journey strings and feature IDs have different meanings. Features refer to the exact journey text; acceptance references use `acceptance-1`, `acceptance-2` and so on. A visual product can also keep journey-specific reference views and design evidence. See [product definition](product-definition.md), [feature changes](product-lifecycle.md) and [design review](design-review.md).
 
@@ -76,11 +79,13 @@ The API can use [pyfly](https://fireflyframework.org/frameworks/python/) or [lar
 
 Dependencies control when work is eligible to continue. They do not merge branches, assemble services or establish whole-product integration success. Components in different repositories can execute in parallel; the factory keeps one active run per repository, so monorepo components share that execution constraint. Configure a real integration check for the assembled product.
 
-## 1. Prepare access and connect the source
+## 1. Prepare workspace { #prepare-workspace }
+
+### Prepare access and connect the source { #1-prepare-access-and-connect-the-source }
 
 **Start with:** a running factory, an authorized user, a coding provider and the repositories you intend to use.
 
-1. [Install and start](installation.md) the local factory, including PostgreSQL and the managed flycanon service. Verify a scoped knowledge search before admitting work that requires retrieval.
+1. [Install and start](installation.md) the factory and follow its current [knowledge setup](knowledge.md). Verify a scoped search before starting work that requires retrieval. Fresh service configuration and an existing Flycanon installation can follow different paths; saved bindings and run snapshots keep their recorded service.
 2. [Sign in](identity.md) and assign the relevant [project roles](user-administration.md). Factory administration, repository configuration and permission to execute are separate capabilities.
 3. Register and approve the source-control application at GitHub, GitLab or Bitbucket. In **Connections → Repositories**, save the application settings, authorize when required, check access and select a discovered repository. Follow the [provider-specific setup](scm.md).
 4. Configure the repository's collaboration settings, exact trusted actor identities and enabled commands. Configure its verification commands and execution provider. The [repository workflow](repository-workflow.md) explains webhooks and channel permissions.
@@ -94,7 +99,9 @@ Dependencies control when work is eligible to continue. They do not merge branch
 <figcaption>Connections, Repositories step. The controlled Studio fixture contains Inventory API. Follow the same navigation on your installation, then establish access through its actual provider grant.</figcaption>
 </figure>
 
-## 2. Configure the product project
+## 2. Define or adopt product { #define-or-adopt-a-product }
+
+### Configure the product project { #2-configure-the-product-project }
 
 **Start with:** the registered member repositories, intended topology and a named product owner.
 
@@ -146,11 +153,11 @@ The returned project ID identifies later campaign requests; it is different from
 
 **You can continue when:** the saved project identifies its member repositories, nonoverlapping component roots, canonical product repository and intended dependencies. Select **Product and design system** from its overview to define the product contract.
 
-## 3. Understand existing source and define the product
+### Understand existing source and define the product { #3-understand-existing-source-and-define-the-product }
 
 **Start with:** the configured product project and its named product owner.
 
-For an existing system, [inspect its committed component source](as-is-handoff.md) and review the exact analysis digest. Routes, declarations and file references describe the observed source. Ask the product owner to confirm the actual business behavior before accepting an AS-IS definition. Optional admission of reviewed observations to flycanon has its own upload and indexing evidence.
+For an existing system, [inspect its committed component source](as-is-handoff.md) and review the exact analysis digest. Routes, declarations and file references describe the observed source. Ask the product owner to confirm the actual business behavior before accepting an AS-IS definition. Optional admission of reviewed observations to the configured knowledge service has its own upload and indexing evidence; follow the [current knowledge guide](knowledge.md) for your installation.
 
 For a new product, open **Product definition** and follow **Context → Journeys → Features → Integrations → Review**. In the inventory case, map Reserve stock to `reserve-stock`, its sufficient-stock behavior, its insufficient-stock failure and the acceptance check that proves stock remains unchanged after refusal.
 
@@ -165,13 +172,19 @@ Use **Ask AI** to prepare step context, review the message and send it through t
 <figcaption>Journeys step. Start with the customer's reservation process, then map its behavior and acceptance in Features. The controlled fixture supplies these form values; it does not show a live model generating them.</figcaption>
 </figure>
 
-Choose one run for a bounded repository change, or a [campaign](project-campaigns.md) when the change spans configured components. A campaign's `component_ids` selection includes upstream dependencies. It admits its child runs together with frozen project, product, source and execution settings. The default dependency gate requires verified upstream evidence.
+For later features, [update the existing product contract](product-lifecycle.md). Review the changed journeys, feature behavior and acceptance checks, then save a new revision of the same product. Saving the definition leaves it ready for an explicit delivery request.
+
+## 3. Plan delivery { #plan-delivery }
+
+Start with the reviewed product revision and a specific request, such as rejecting an excessive reservation without changing stock. Select the components and checks affected by that request.
+
+Choose one run for a bounded repository change, or a [campaign](project-campaigns.md) when the change spans configured components. A campaign's `component_ids` selection includes upstream dependencies. Admission records the child runs with frozen project, product, source and execution settings. The default dependency gate requires verified upstream evidence.
 
 After admission, inspect the intended project revision, component selection and child runs, or the single run's repository and frozen product revision. A later project edit does not rewrite those inputs. **Start component run** starts one component; campaign launch uses its explicit API, SDK, CLI or MCP operation described in the campaign guide.
 
 Milestones and waves are not configured in the current campaign report. Use the current component, task and attempt evidence to describe progress; do not infer a completion percentage or a release schedule from the illustration or workflow status.
 
-## 4. Operate from the repository conversation
+### Operate from the repository conversation { #4-operate-from-the-repository-conversation }
 
 **Start with:** a configured webhook, an authorized signed actor and explicitly enabled actions.
 
@@ -229,7 +242,9 @@ Synchronization follows explicit events and operations:
 
 This is not a bidirectional mirror of every issue, branch or project-board field. A campaign report reads retained factory evidence and reports SCM freshness as **not observed**. Remote branch changes require the appropriate new source inspection or execution; reopening a report does not fetch or merge them. Provider contract and loopback-fixture tests remain separate from acceptance of your actual GitHub, GitLab or Bitbucket installation.
 
-## 5. Review execution and resolve interruptions
+## 4. Build and review { #build-and-review }
+
+### Review execution and resolve interruptions { #5-review-execution-and-resolve-interruptions }
 
 **Start with:** an admitted run or selected campaign.
 
@@ -246,7 +261,7 @@ When work pauses, inspect the recorded reason. Answer an exact worker request th
 <figcaption>Verification tab. This controlled example records a failed command, exit 2. Read its output and repair evidence before treating the run as verified; the screenshot itself executes no command.</figcaption>
 </figure>
 
-## 6. Inspect the campaign and retain a delivery checkpoint
+### Inspect the campaign and retain a delivery checkpoint { #6-inspect-the-campaign-and-retain-a-delivery-checkpoint }
 
 **Start with:** the product project and an existing campaign.
 
@@ -263,7 +278,9 @@ Follow the [campaign report walkthrough](project-campaigns.md#read-a-report-in-s
 <figcaption>Campaign summary. Select a component to inspect the receipts behind its state. This successful controlled report is a separate example from the failed verification above; it does not show that failed run becoming successful.</figcaption>
 </figure>
 
-## 7. Publish, deploy and maintain the product
+## 5. Deliver and operate { #deliver-and-operate }
+
+### Publish, deploy and maintain the product { #7-publish-deploy-and-maintain-the-product }
 
 **Start with:** a reviewed, verified source checkpoint and an explicitly configured delivery target.
 
@@ -274,9 +291,9 @@ Follow the [campaign report walkthrough](project-campaigns.md#read-a-report-in-s
 
 **You can continue when:** each requested action has its own observed outcome. A healthy HTTP probe does not prove the customer's complete reservation journey, and a maintenance run does not automatically deploy its fix.
 
-## 8. Keep knowledge and operating guidance current
+### Keep knowledge and operating guidance current { #8-keep-knowledge-and-operating-guidance-current }
 
-flycanon holds scoped framework and repository knowledge. A logical project does not automatically combine every member's memory into a shared workspace. [Knowledge scopes](knowledge.md#keep-project-scope-explicit) and [learning decisions](learning.md) explain retrieval, source admission, verified lessons, invalidation and reuse eligibility. External search fills a defined gap or obtains current documentation; a saved answer needs provenance and verification before reuse.
+The configured knowledge service holds scoped framework and repository knowledge. A logical project does not automatically combine every member's memory into a shared workspace. [Knowledge scopes](knowledge.md#keep-project-scope-explicit) and [learning decisions](learning.md) explain retrieval, source admission, verified lessons, invalidation and reuse eligibility. Retain the original Flycanon bindings and receipts for historical work; selecting a service for new work does not establish that old data was migrated. External search fills a defined gap or obtains current documentation; a saved answer needs provenance and verification before reuse.
 
 Configure the [required tools and runners](tooling-prerequisites.md), [browser review](browser-qa.md) and any [external MCP tools](external-tools.md) before work needs them. A tool listed in a role is not proof that its executor or credentials are ready. The [external-tool walkthrough](external-tools-tour.md) follows configuration and project grants.
 

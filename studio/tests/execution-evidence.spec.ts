@@ -1,7 +1,11 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { expect, test, type Page } from "@playwright/test";
 import { mockIdentity } from "./auth-fixture";
-import { navigate } from "./navigation";
+import {
+  mockFactoryDashboard,
+  openFactoryRun,
+} from "./factory-dashboard-fixture";
+import { navigate, expectAuthenticated } from "./navigation";
 import { readFileSync } from "node:fs";
 const launcherFixture = JSON.parse(
   readFileSync(new URL("./php-launcher-fixture.json", import.meta.url), "utf8"),
@@ -148,6 +152,11 @@ async function openRun(
     : run;
   await page.route("**/api/v1/**", async (route) => {
     if (await mockIdentity(route)) return;
+    if (
+      route.request().method() === "GET" &&
+      (await mockFactoryDashboard(route, { projects: [], runs: [selectedRun] }))
+    )
+      return;
     const path = new URL(route.request().url()).pathname;
     const json = path.endsWith("/repositories")
       ? [
@@ -215,13 +224,9 @@ async function openRun(
   await page
     .getByRole("button", { name: "Save connection", exact: true })
     .click();
-  await expect(
-    page.getByRole("button", { name: "API connected", exact: true }),
-  ).toBeVisible();
+  await expectAuthenticated(page);
   await navigate(page, "Factory");
-  await page
-    .getByRole("button", { name: /Fixture reservation verification/ })
-    .click();
+  await openFactoryRun(page, /Fixture reservation verification/);
 }
 for (const viewport of [
   { width: 1440, height: 900 },
@@ -999,7 +1004,9 @@ for (const viewport of [
       await fullCopy.scrollIntoViewIfNeeded();
       await expect(fullCopy).toBeInViewport();
       const button = await fullCopy.boundingBox();
-      const footer = await page.locator("footer").boundingBox();
+      const footer = await page
+        .locator(".workspace-main > footer")
+        .boundingBox();
       expect(footer).not.toBeNull();
       expect(button).not.toBeNull();
       expect(button!.y + button!.height).toBeLessThanOrEqual(footer!.y);

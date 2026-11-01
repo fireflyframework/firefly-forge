@@ -1,5 +1,5 @@
 # Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
-"""Drain available SCM pages fairly without changing cadence or provider holds."""
+"""Drain pages fairly; metadata wakeups preserve provider cadence and backoff."""
 
 import asyncio
 import copy
@@ -16,14 +16,17 @@ class PollRest(BaseException):
     pass
 
 
-def stop_at_rest(monkeypatch):
+def stop_at_rest(monkeypatch, *, rests=1):
     original = asyncio.sleep
     waits = []
 
     async def sleep(seconds):
+        nonlocal rests
         waits.append(seconds)
         if seconds:
-            raise PollRest
+            rests -= 1
+            if rests == 0:
+                raise PollRest
         await original(0)
 
     monkeypatch.setattr(asyncio, "sleep", sleep)
@@ -56,7 +59,7 @@ async def test_real_worker_reads_the_next_comment_page_before_its_normal_rest(po
         with pytest.raises(PollRest):
             await c.service._poll()
         assert pages == [("issues", 1), ("comments", 1), ("comments", 2)]
-        assert waits[-1] == 60 and all(wait == 0 for wait in waits[:-1])
+        assert waits[-1] == 1 and all(wait == 0 for wait in waits[:-1])
         cursor = c.db["settings"][c.repository].data["_github_poll_v1"]["cursor"]
         assert cursor["ready"] is True and cursor["next_due_at"] == c.state["clock"] + 60
         assert any(row.source_key == "comment:51" for row in c.db["inbox"].values())
@@ -91,7 +94,7 @@ async def test_backlog_rounds_give_each_repository_one_turn_and_stop_retrying_fa
         with pytest.raises(PollRest):
             await c.service._poll()
         assert turns == [c.repository, second, c.repository, c.repository]
-        assert waits == [0, 0, 60]
+        assert waits == [0, 0, 1]
         assert c.db["settings"][second].data["_github_poll_v1"]["cursor"]["last_error"] == "poll_unavailable"
         assert not c.state["posts"] and not c.db["journal"]
 
@@ -114,20 +117,22 @@ async def test_two_available_backlogs_are_interleaved_until_each_finishes(poll_c
         with pytest.raises(PollRest):
             await c.service._poll()
         assert turns == [c.repository, second, c.repository, second, c.repository]
-        assert waits == [0, 0, 60]
+        assert waits == [0, 0, 1]
 
 
 async def test_provider_backoff_preserves_cursor_and_has_no_immediate_worker_retry(poll_case, monkeypatch):  # noqa: F811
     async with poll_case() as c:
         await c.configure()
         before = copy.deepcopy(c.db["settings"][c.repository].data["_github_poll_v1"]["cursor"])
+        configured_requests = len(c.state["requests"])
         c.state.update(read_status=429, read_headers={"Retry-After": "120"})
-        waits = stop_at_rest(monkeypatch)
+        waits = stop_at_rest(monkeypatch, rests=3)
         with pytest.raises(PollRest):
             await c.service._poll()
         cursor = c.db["settings"][c.repository].data["_github_poll_v1"]["cursor"]
         assert cursor["page"] == before["page"] and cursor["phase"] == before["phase"]
-        assert cursor["retry_at"] == c.state["clock"] + 120 and waits == [60]
+        assert cursor["retry_at"] == c.state["clock"] + 120 and waits == [1, 1, 1]
+        assert c.state["requests"][configured_requests:].count(("GET", "/repos/team/product/issues")) == 1
         requests = len(c.state["requests"])
         assert await c.service.step(c.repository) is False
         assert len(c.state["requests"]) == requests
@@ -139,10 +144,10 @@ async def test_finished_scan_waits_for_the_configured_interval_without_provider_
         await c.ready()
         before = copy.deepcopy(c.db["settings"][c.repository].data["_github_poll_v1"])
         requests = len(c.state["requests"])
-        waits = stop_at_rest(monkeypatch)
+        waits = stop_at_rest(monkeypatch, rests=3)
         with pytest.raises(PollRest):
             await c.service._poll()
-        assert waits == [60] and len(c.state["requests"]) == requests
+        assert waits == [1, 1, 1] and len(c.state["requests"]) == requests
         assert c.db["settings"][c.repository].data["_github_poll_v1"] == before
 
 

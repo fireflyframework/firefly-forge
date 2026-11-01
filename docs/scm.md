@@ -207,6 +207,19 @@ and [OAuth changes effective May 2026](https://community.developer.atlassian.com
 
 ## Protect and revoke access
 
+GitLab comment receipts use the positive note ID, project ID, per-project issue
+or merge-request IID and noteable type returned by the
+[Notes API](https://docs.gitlab.com/api/notes/). forge builds the `#note_ID` link
+from the grant-checked registered repository URL; response links do not select
+the destination. Self-managed HTTPS origins and ports are supported. Application
+hosts with a relative URL root remain unsupported and are refused.
+
+The accepted note reference is retained before reading that exact note back.
+If this read fails or returns another identity, the receipt needs reconciliation
+and keeps the known reference. Reprocessing or synchronization never posts it
+again. A lost POST response still has an unknown outcome and requires explicit
+provider inspection. These receipts do not imply GitLab board or field sync.
+
 Private keys, client secrets and OAuth grants stay in `configuration/` under the
 server's private data directory. Files have `0600` permissions and the directory
 has `0700` permissions. API summaries return configured flags for secrets;
@@ -318,6 +331,40 @@ Signed comments identify a configured channel; they do not sign a user into Forg
 A factory administrator can explicitly map a verified provider account to an existing,
 enabled Forge user for selected components and actions in one project and repository.
 The mapping grants no project membership or global administrator privileges.
+
+### Choose the person and scope in Studio
+
+1. Open the account menu in the sidebar, choose **Project access**, and select
+   the project and component repository.
+2. Under **Source-control delegation**, choose **Review a delegation**. In
+   **Account**, select the **Webhook-reported account** from a retained signed
+   delivery, then choose **Continue to scope**.
+3. Search for an existing forge user by name or email. Enter at least three
+   characters and select **Search**. Check the name and any available email before
+   selecting a result. **Change** returns to the search.
+4. Choose the components and allowed actions. Continue to **Review** and check the
+   selected person, components and requests.
+5. Review the application connection and sender trust. If you trust the assertion,
+   select **I trust this webhook assertion.**, then choose **Save delegation** once.
+
+The search reads registered people; it does not create an account or add project
+membership. forge checks the person's current project and repository permissions
+when processing each later request. Provision a missing account through
+[user administration](user-administration.md) before returning to this form.
+
+<figure class="forge-shot" markdown="1">
+
+![The Scope step shows a compact person search and a matching registered account with its name and email.](assets/screenshots/scm-protected-delegation-search-desktop-light.png)
+
+<figcaption>Find and select the person before choosing the delegation scope. This screenshot uses controlled API fixtures and synthetic identities.</figcaption>
+</figure>
+
+<figure class="forge-shot" markdown="1">
+
+![The delegation review shows the registered person, components, allowed actions and webhook trust acknowledgement.](assets/screenshots/scm-protected-delegation-review-desktop-light.png)
+
+<figcaption>Review the person and permitted requests before saving. The displayed fixture does not grant live access.</figcaption>
+</figure>
 
 The first scoped adapters support answering a paused worker question, reading a specific
 run's status, and requesting cancellation through the existing delivery-request runtime.
@@ -603,19 +650,27 @@ webhook that supplies `installation.id` must still match its exact configured
 installation; a wrong or malformed value cannot fall back to the repository
 transport.
 
-This read path requires the existing current API-observed `status` consent for
-the same GitHub account, project and components, plus a configured communication
-profile. forge checks the current comment, author, ticket, repository grant and
-native membership before classification and before feedback. The same comment
-shares one retained identity with polling, so a later observation or redelivery
-does not classify or answer it twice. Unknown model or remote outcomes remain
-held rather than falling back to the basic command handler.
+New natural comments from either signed App or repository hooks retain their
+HMAC delivery separately and durably request an authenticated API observation.
+The worker checks that pending schedule each second, including after a restart;
+provider retry deadlines and the current scan cursor are preserved. A signed
+wake is not an action or a new consent. Configure the existing GitHub API
+polling pipeline and finish its baseline before using this path.
 
-Signed questions use the same natural classifier as polling. This read
-transport does not admit answers, continuations, product turns or checkpoints;
-those outcomes remain pending their separate supported authority. GitLab and
-Bitbucket retain their existing typed webhook commands. Their natural read
-adapters and fresh-provider checks are not implemented by this GitHub change.
+The API observation owns the comment identity and runs the existing natural
+classifier once. Status, answers, continuations, product turns and checkpoints
+retain their own current native permissions, source checks and consent. A
+redelivery or polling-first arrival cannot classify or answer the same comment
+twice. Unmentioned replies still require an exact retained question in that
+pipeline. Unknown model or remote outcomes remain held, and historical signed
+receipts are never automatically promoted or replayed.
+
+The receipt links the signed delivery to the API observation without claiming
+that the observation completed an action. forge rechecks the current comment,
+author, ticket, repository grant and native membership before classification and
+feedback. Repository scheduling uses bounded database pages rather than a global
+repository count limit. GitLab and Bitbucket retain their existing typed webhook
+commands; their natural observation adapters are not implemented by this change.
 
 ## Use GitHub issue comments from a local factory
 
@@ -990,10 +1045,10 @@ missing receipt never authorizes a replacement request or a model call.
 
 ### Remaining GitHub journey boundaries
 
-Internal campaign milestones and progress are not GitHub Projects. The current
-product has no GitHub ProjectsV2 board/card/status-field adapter or remote
-milestone synchronization. Those require a separate scoped adapter and operator
-permission; this feature requests no new GitHub privilege or authentication flow.
+Internal campaign milestones retain their own native history. The separate
+[GitHub Projects adapter](github-projects.md) connects a private board through
+project-scoped user OAuth consent and synchronizes verified issue/PR progress.
+It does not synchronize remote milestones or expand the repository App grant.
 Intermediate code pushes are also separate from verified final publication.
 
 The typed polling `resume` command remains ordinary same-run continuation. It

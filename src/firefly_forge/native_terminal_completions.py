@@ -297,7 +297,17 @@ async def _native_terminal_acceptance(
 
             current_checkpoint = next(e for e in reversed(entries) if e["kind"] == "agent_checkpoint")
             binding = checkpoint_payload(current_checkpoint["payload"]).invocation
-            retained_source = await prepare_retained_source(store, journal, run, Path(binding.workspace["path"]))
+            retained_source = await prepare_retained_source(
+                store,
+                journal,
+                run,
+                Path(binding.workspace["path"]),
+                consumed_reconciliation=(
+                    restoration.retained_source_authority()
+                    if isinstance(restoration, ConsumedTerminalExecution)
+                    else None
+                ),
+            )
             if _bytes(retained_source.proof.model_dump(mode="json")) != _bytes(run["usage"]["retained_source"]):
                 raise ValueError("Native terminal retained-source proof changed after runtime return")
         await store.admit_credentials({"report": prepared.report, "payload": payload, "checkpoint": checkpoint})

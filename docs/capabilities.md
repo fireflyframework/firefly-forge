@@ -22,6 +22,9 @@ verification, retain change evidence and optionally publish a pull request.
 | Automatic repair | Failed checks returned to the provider with bounded retries | Earlier failures remain recorded; final passing checks are separate |
 | Source integrity | Verified source-tree snapshot checked before publication | Changed source requires fresh verification |
 | SCM publication | GitHub, GitLab, Bitbucket, Azure DevOps and Gitea adapters | Each live host/account requires separate acceptance |
+| Factory dashboard | Current-authorized factory/project/run counts, paged work and component repositories | Recorded running states do not establish live worker activity |
+| Personal read tokens | Owner-managed issuance, rotation and revocation over selected current project memberships | No execution, administration or factory-wide observations |
+| Local organization sign-in | Branded Keycloak sandbox preparation, native OIDC/PKCE and durable sessions | External federation and production provider operations require their own acceptance |
 | Run persistence | Native PostgreSQL plans, task states and hash-chain journal | Ambiguous remote effects require reconciliation |
 | Maintenance and tests | Existing-source maintenance and model-free test mode | Checks establish only their asserted behavior |
 | Policies | Versioned, data-only central catalog and project defaults | Recommendations guide workers; optional gates execute commands |

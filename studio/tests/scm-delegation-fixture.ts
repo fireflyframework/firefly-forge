@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { expect, type Page } from "@playwright/test";
 import packet from "./scm-delegation-contract-fixture.json" with { type: "json" };
 import { mockIdentity } from "./auth-fixture";
-import { navigate } from "./navigation";
+import { navigate, expectSignedIn } from "./navigation";
 import type {
   DelegationHead,
   DelegationInput,
@@ -239,7 +239,7 @@ export async function setupDelegation(
           {
             id: nativeUser,
             display_name: "Warehouse reviewer",
-            email: null,
+            email: "reviewer@example.test",
             contact_email: null,
             enabled: true,
           },
@@ -273,16 +273,14 @@ export async function setupDelegation(
     });
   });
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await navigate(page, "Connections");
   if (options.existingSession) {
-    await expect(
-      page.getByRole("button", {
-        name: `Signed in as ${options.reader ? "Project reader" : "Test operator"}`,
-        exact: true,
-      }),
-    ).toBeVisible();
+    await expectSignedIn(
+      page,
+      options.reader ? "Project reader" : "Test operator",
+    );
     await expect(page.getByLabel("API token", { exact: true })).toHaveCount(0);
   } else {
+    await navigate(page, "Connections");
     await page
       .getByLabel("API token", { exact: true })
       .fill("fictional-scm-bootstrap-token-at-least24");
@@ -293,9 +291,9 @@ export async function setupDelegation(
   await navigate(page, "Project access");
   return state;
 }
-export async function delegationReview(
+export async function delegationScope(
   page: Page,
-  capture?: (stage: "account" | "scope" | "review") => Promise<void>,
+  capture?: (stage: "account") => Promise<void>,
 ) {
   const panel = page.getByRole("region", {
     name: "Source-control delegation",
@@ -316,18 +314,28 @@ export async function delegationReview(
   await dialog
     .getByRole("button", { name: "Continue to scope", exact: true })
     .click();
+  return dialog;
+}
+
+export async function delegationReview(
+  page: Page,
+  capture?: (stage: "account" | "scope" | "review") => Promise<void>,
+) {
+  const dialog = await delegationScope(page, capture);
   await dialog
     .getByLabel("Find a registered person", { exact: true })
     .fill("Warehouse");
-  await dialog
-    .getByRole("button", { name: "Find person", exact: true })
-    .click();
+  await dialog.getByRole("button", { name: "Search", exact: true }).click();
   await expect(
-    dialog.getByLabel("Registered person", { exact: true }),
+    dialog.getByRole("radio", { name: /Warehouse reviewer/ }),
+  ).toBeVisible();
+  await dialog.getByRole("radio", { name: /Warehouse reviewer/ }).click();
+  await expect(
+    dialog.getByRole("group", {
+      name: "Selected registered person",
+      exact: true,
+    }),
   ).toContainText("Warehouse reviewer");
-  await dialog
-    .getByLabel("Registered person", { exact: true })
-    .selectOption(nativeUser);
   await dialog
     .getByRole("checkbox", { name: "Inventory API", exact: true })
     .check();

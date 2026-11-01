@@ -70,6 +70,12 @@ All responses are private and uncached. Current project access remains necessary
 after a successful scan. Personal API-token source routes remain unsupported
 until their separate observation allowlist is extended and tested.
 
+## Observe the factory and manage personal tokens
+
+The [Factory dashboard](factory-dashboard.md#read-through-the-api) exposes read-only, paged project choices and factory, project or run observations. Its totals cover the selected scope independently of the page size. Current identity, exact cookie session when used and project access are checked again after the read snapshot.
+
+Signed-in organization users can [create, rotate and revoke personal read tokens](personal-api-tokens.md) under `/identity/tokens`. Secrets are returned once. Personal tokens can observe only their selected projects and runs; they cannot execute work, manage credentials or open the factory-wide dashboard or project chooser. These lifecycle operations require the browser session, application Origin and native CSRF protection.
+
 ## Automatic verification handoffs
 
 New runs freeze `settings.automatic_verification` from `GET /tools/policy`.

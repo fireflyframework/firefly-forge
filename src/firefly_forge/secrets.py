@@ -13,6 +13,7 @@ from typing import Any
 from urllib.parse import unquote, urlsplit
 
 from firefly_forge.credential_text_stream import raw_documents
+from firefly_forge.personal_token_format import PERSONAL_TOKEN_LENGTH, PERSONAL_TOKEN_PATTERN
 
 _ephemeral: ContextVar[tuple[str, ...]] = ContextVar("forge_ephemeral_credentials", default=())
 
@@ -72,6 +73,7 @@ def redact_environment(value: str) -> str:
     represented = {representation for secret in secrets for representation in credential_representations(secret)}
     for secret in sorted(represented, key=len, reverse=True):
         value = value.replace(secret, "[redacted]")
+    value = PERSONAL_TOKEN_PATTERN.sub("[redacted]", value)
     return re.sub(r"(?i)(authorization: ?bearer )[^\s]+", r"\1[redacted]", value)
 
 
@@ -95,12 +97,21 @@ class KnownCredentialScan:
     def __init__(self, credentials: tuple[str, ...], *, bearer: bool = True) -> None:
         self.bearer = bearer
         self.represented = {item for value in credentials for item in credential_representations(value)}
-        self.overlap = max((len("authorization: bearer [redacted]") + 1, *(len(item) for item in self.represented))) - 1
+        self.overlap = (
+            max(
+                (
+                    PERSONAL_TOKEN_LENGTH,
+                    len("authorization: bearer [redacted]") + 1,
+                    *(len(item) for item in self.represented),
+                )
+            )
+            - 1
+        )
         self.tail = ""
 
     def feed(self, chunk: str | None) -> bool:
         value = self.tail + (chunk or "")
-        if any(item in value for item in self.represented):
+        if PERSONAL_TOKEN_PATTERN.search(value) or any(item in value for item in self.represented):
             return True
         for match in re.finditer(r"(?i)(authorization: ?bearer )([^\s]+)", value) if self.bearer else ():
             token = match.group(2)

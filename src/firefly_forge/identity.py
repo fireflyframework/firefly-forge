@@ -19,6 +19,7 @@ import httpx
 from cryptography.fernet import Fernet, InvalidToken
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 from pyfly.container import service
+from pyfly.security.authentication import Authentication, AuthenticationProvider, ProviderManager
 from pyfly.security.oauth2.client import InMemoryClientRegistrationRepository, keycloak
 from pyfly.security.oauth2.login import OAuth2LoginHandler
 from pyfly.security.oauth2.resource_server import ClaimMappings, JWKSTokenValidator
@@ -49,11 +50,14 @@ class Principal:
     subject: str
     display_name: str | None = None
     email: str | None = None
-    authentication_method: Literal["oidc_session", "oidc_bearer", "local_bootstrap", "scm_mapping"] = "oidc_bearer"
+    authentication_method: Literal[
+        "oidc_session", "oidc_bearer", "local_bootstrap", "scm_mapping", "personal_token"
+    ] = "oidc_bearer"
     api_roles: frozenset[str] = field(default_factory=frozenset)
     kind: Literal["human", "service", "local_bootstrap"] = "human"
     api_audience: str | None = None
     scm_delegation: dict[str, Any] | None = None
+    personal_token_id: UUID | None = None
 
 
 class IdentityConfiguration(BaseModel):
@@ -63,6 +67,7 @@ class IdentityConfiguration(BaseModel):
     client_id: str = ""
     client_secret: SecretStr = SecretStr("")
     api_audience: str = ""
+    trusted_id_token_audiences: tuple[str, ...] = ()
     redirect_uri: str = ""
     browser_origin: str = ""
     encryption_key: SecretStr = SecretStr("")
@@ -72,6 +77,8 @@ class IdentityConfiguration(BaseModel):
 
     @model_validator(mode="after")
     def validate_configuration(self) -> IdentityConfiguration:
+        if any(not audience or audience != audience.strip() for audience in self.trusted_id_token_audiences):
+            raise ValueError("Trusted ID-token audiences must be exact nonempty client identifiers")
         if self.browser_origin:
             origin = urlsplit(self.browser_origin)
             if (
@@ -134,6 +141,7 @@ class IdentityConfiguration(BaseModel):
             "bootstrap_token": os.getenv("FORGE_API_TOKEN", ""),
         }
         try:
+            values["trusted_id_token_audiences"] = json.loads(os.getenv("FORGE_OIDC_TRUSTED_ID_TOKEN_AUDIENCES", "[]"))
             return cls.model_validate(values)
         except ValueError:
             raise ValueError(
@@ -169,6 +177,7 @@ class IdentityService:
         sessions: ForgeIdentitySessionRepository | None = None,
         attempts: ForgeIdentityAttemptRepository | None = None,
         client: httpx.AsyncClient | None = None,
+        personal_token_provider: AuthenticationProvider | None = None,
     ) -> None:
         self.store, self.config = store, config or IdentityConfiguration.from_environment()
         self.users, self.sessions = users or ForgeIdentityUserRepository(), sessions or ForgeIdentitySessionRepository()
@@ -193,6 +202,7 @@ class IdentityService:
             else None
         )
         self.validators: dict[str, JWKSTokenValidator] = {}
+        self.personal_token_manager = ProviderManager(personal_token_provider) if personal_token_provider else None
 
     async def stop(self) -> None:
         if self.owns_client:
@@ -211,6 +221,7 @@ class IdentityService:
             "issuer": self.config.issuer,
             "client_id": self.config.client_id,
             "api_audience": self.config.api_audience,
+            "trusted_id_token_audiences": list(self.config.trusted_id_token_audiences),
             "redirect_uri": self.config.redirect_uri,
             "browser_origin": self.config.browser_origin
             or (
@@ -508,6 +519,11 @@ class IdentityService:
                 },
             )
             id_claims = await self._claims(tokens["id_token"], self.config.client_id)
+            audiences = id_claims.get("aud")
+            audience_values = audiences if isinstance(audiences, list) else [audiences]
+            trusted = {self.config.client_id, *self.config.trusted_id_token_audiences}
+            if any(audience not in trusted for audience in audience_values):
+                raise ValueError("ID token contains an untrusted audience")
             if not hmac.compare_digest(str(id_claims.get("nonce", "")), native["oauth2_nonce"]):
                 raise ValueError("Nonce mismatch")
             if id_claims.get("azp", self.config.client_id) != self.config.client_id:
@@ -585,6 +601,26 @@ class IdentityService:
             )
         try:
             if authorization:
+                if authorization.startswith("Bearer forge_pat_"):
+                    if self.personal_token_manager is None:
+                        return None
+                    authenticated = await self.personal_token_manager.authenticate(
+                        Authentication(
+                            principal="personal-token",
+                            credentials=authorization[7:],
+                            details={"credential_kind": "personal_token"},
+                        )
+                    )
+                    return Principal(
+                        UUID(authenticated.principal),
+                        authenticated.details["issuer"],
+                        authenticated.details["subject"],
+                        authenticated.details.get("display_name"),
+                        authenticated.details.get("email"),
+                        authentication_method="personal_token",
+                        kind="service",
+                        personal_token_id=UUID(authenticated.details["personal_token_id"]),
+                    )
                 if not authorization.startswith("Bearer ") or len(authorization) > 16391:
                     return None
                 claims = await self._access(authorization[7:])

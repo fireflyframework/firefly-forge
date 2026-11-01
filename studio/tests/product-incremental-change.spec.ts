@@ -1,6 +1,7 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { expect, test, type Locator } from "@playwright/test";
 import { mockIdentity } from "./auth-fixture";
+import { mockFactoryDashboard } from "./factory-dashboard-fixture";
 import { navigate } from "./navigation";
 import type {
   CustomerProductDefinition,
@@ -206,6 +207,11 @@ test("incremental contract preview preserves untouched features and resolves onl
   }
   await page.route("**/api/v1/**", async (route) => {
     if (await mockIdentity(route)) return;
+    if (
+      route.request().method() === "GET" &&
+      (await mockFactoryDashboard(route, { projects: [], runs: [] }))
+    )
+      return;
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith("/repositories"))
       return route.fulfill({

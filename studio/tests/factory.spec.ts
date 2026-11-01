@@ -90,8 +90,17 @@ test("machinery freezes for inactive, paused, stale updates and reduced motion",
   await state(page, "active");
   expect(await still(page)).toBe(false);
   await page.emulateMedia({ reducedMotion: "reduce" });
-  expect(await still(page)).toBe(true);
+  await expect(page.locator(".factory-fixture .factory-live")).toHaveAttribute(
+    "data-reduced-motion",
+    "true",
+  );
+  await expect.poll(() => still(page)).toBe(true);
   await page.emulateMedia({ reducedMotion: "no-preference" });
+  await expect(page.locator(".factory-fixture .factory-live")).toHaveAttribute(
+    "data-reduced-motion",
+    "false",
+  );
+  expect(await still(page)).toBe(false);
   await state(page, "done");
   expect(await still(page)).toBe(true);
   expect(errors).toEqual([]);

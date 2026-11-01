@@ -1,8 +1,12 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+import {
+  mockFactoryDashboard,
+  openFactoryRun,
+} from "./factory-dashboard-fixture";
 import { expect, test } from "@playwright/test";
 import { createHash } from "node:crypto";
 import { mockIdentity } from "./auth-fixture";
-import { navigate } from "./navigation";
+import { navigate, expectAuthenticated } from "./navigation";
 import { openRoleEditor } from "./agent-lifecycle-fixture";
 import { captureWalkthrough as capture } from "./walkthrough-capture";
 import { record as learningRecord } from "./learning-record-fixture";
@@ -171,6 +175,47 @@ for (const device of ["desktop", "mobile"])
         },
       };
       await page.route("**/api/v1/**", async (route) => {
+        if (
+          await mockFactoryDashboard(route, {
+            projects: [
+              {
+                id: "4".repeat(32),
+                name: "Warehouse inventory",
+                component_count: 1,
+                repository_count: 1,
+              },
+            ],
+            runs: admitted
+              ? [
+                  {
+                    ...run,
+                    project_id: "4".repeat(32),
+                    project_name: "Warehouse inventory",
+                    repository_name: repository.name,
+                    component_id: "api",
+                    component_name: "Inventory API",
+                    branch: "forge/reservation",
+                    issue_context: {
+                      url: "https://github.com/example/inventory/issues/42",
+                      number: 42,
+                      title: "Reserve available stock",
+                    },
+                  },
+                ]
+              : [],
+            plans: {
+              [run.id]: {
+                tasks: [
+                  { id: "prepare", status: "done" },
+                  { id: "implement", status: "done" },
+                  { id: "verify", status: "needs_reconciliation" },
+                  { id: "checkpoint", status: "queued" },
+                ],
+              },
+            },
+          })
+        )
+          return;
         if (await mockIdentity(route)) return;
         const request = route.request(),
           path = new URL(request.url()).pathname;
@@ -434,10 +479,15 @@ for (const device of ["desktop", "mobile"])
       await page
         .getByRole("button", { name: "Save connection", exact: true })
         .click();
-      await page
-        .getByRole("list", { name: "Setup progress" })
-        .getByRole("button", { name: /Workspace$/ })
-        .click();
+      if (device === "mobile")
+        await page
+          .getByRole("combobox", { name: "Setup step" })
+          .selectOption("0");
+      else
+        await page
+          .getByRole("list", { name: "Setup progress" })
+          .getByRole("button", { name: /Workspace/ })
+          .click();
       for (const [index, stage] of [
         "workspace",
         "coding-ai",
@@ -568,8 +618,21 @@ for (const device of ["desktop", "mobile"])
       await expect(
         page.getByText("Your run has been opened.", { exact: true }),
       ).toBeVisible();
+      await page
+        .getByRole("button", { name: "Dismiss notification", exact: true })
+        .click();
       await navigate(page, "Factory");
       await page.evaluate(() => document.fonts.ready);
+      const processGuide = page.locator(".factory-process-guide");
+      await processGuide.locator("summary").click();
+      await expect(processGuide.locator("ol > li")).toHaveCount(5);
+      await capture(page, "factory-process-guide", theme, device, {
+        actionSelector: ".factory-process-guide > summary",
+      });
+      await processGuide.locator("summary").click();
+      await page.locator(".workspace-main > main").evaluate((node) => {
+        node.scrollTop = 0;
+      });
       const floorBounds = await page
         .locator(".factory-live-viewport")
         .evaluate((node) => {
@@ -583,7 +646,10 @@ for (const device of ["desktop", "mobile"])
             bottom: scene.bottom,
             height: scene.height,
             mainTop: main.top,
+            mainBottom: main.bottom,
             footerTop: footer.top,
+            footerHeight: footer.height,
+            viewportHeight: innerHeight,
           };
         });
       await test.info().attach("factory-first-screen-geometry", {
@@ -594,10 +660,40 @@ for (const device of ["desktop", "mobile"])
         path: test.info().outputPath("factory-first-screen.png"),
       });
       expect(floorBounds.top).toBeGreaterThanOrEqual(floorBounds.mainTop);
-      expect(floorBounds.bottom).toBeLessThanOrEqual(floorBounds.footerTop);
+      expect(
+        floorBounds.bottom,
+        JSON.stringify(floorBounds),
+      ).toBeLessThanOrEqual(floorBounds.footerTop);
       expect(floorBounds.height).toBeGreaterThanOrEqual(180);
       await capture(page, "factory-overview", theme, device);
-      await page.getByRole("button", { name: new RegExp(run.brief) }).click();
+      await page
+        .getByRole("button", { name: "Browse work", exact: true })
+        .click();
+      await expect(page.locator(".factory-project-row")).toContainText(
+        "Warehouse inventory",
+      );
+      await capture(page, "factory-projects", theme, device, {
+        producer: "studio/tests/docs-walkthrough.spec.ts",
+        boundary: "dialog",
+        actionSelector: ".factory-project-row",
+      });
+      await page.locator(".factory-project-row").click();
+      await expect(page.locator(".factory-scope-caption")).toContainText(
+        "Warehouse inventory",
+      );
+      await capture(page, "factory-project", theme, device);
+      await page
+        .getByRole("button", { name: "Show run board", exact: true })
+        .click();
+      await expect(page.locator(".factory-status-board")).toContainText(
+        run.brief,
+      );
+      await capture(page, "factory-board", theme, device);
+      await page
+        .locator(".factory-run-record")
+        .filter({ hasText: run.brief })
+        .getByRole("button", { name: "Open run", exact: true })
+        .click();
       await capture(page, "run-context", theme, device);
       for (const tab of ["Changes", "Verification", "Plan", "Artifacts"]) {
         await page.getByRole("tab", { name: tab, exact: true }).click();
@@ -615,12 +711,6 @@ for (const device of ["desktop", "mobile"])
             .evaluate((element) => element.scrollIntoView({ block: "start" }));
         await capture(page, `evidence-${tab.toLowerCase()}`, theme, device);
       }
-      await expect(
-        page.getByText("Your run has been opened.", { exact: true }),
-      ).toBeVisible();
-      await page
-        .getByRole("button", { name: "Dismiss notification", exact: true })
-        .click();
       await navigate(page, "Administration");
       await page
         .locator("main")
@@ -1072,6 +1162,7 @@ for (const device of ["desktop", "mobile"])
       const reads: string[] = [];
       const attemptReads: string[] = [];
       await page.route("**/api/v1/**", async (route) => {
+        if (await mockFactoryDashboard(route)) return;
         if (await mockIdentity(route)) return;
         const request = route.request(),
           path = new URL(request.url()).pathname;
@@ -1282,6 +1373,19 @@ for (const device of ["desktop", "mobile"])
       await expect(
         page.getByLabel("Existing source identifier", { exact: true }),
       ).toHaveValue(source);
+      const sourceDialog = page.getByRole("dialog", {
+        name: "Verify existing source",
+        exact: true,
+      });
+      await expect(sourceDialog.locator(".wizard")).toHaveAttribute(
+        "data-layout",
+        "flow",
+      );
+      await expect(sourceDialog).toHaveCSS("overflow-y", "auto");
+      await expect(sourceDialog.locator(".wizard-field-scroll")).toHaveCSS(
+        "overflow-y",
+        "visible",
+      );
       const assertDialogHeading = async () => {
         await expect
           .poll(() =>
@@ -1301,6 +1405,9 @@ for (const device of ["desktop", "mobile"])
           .toBe(true);
       };
       await capture(page, "learning-observation-source", theme, device);
+      await page.screenshot({
+        path: test.info().outputPath("existing-source-flow.png"),
+      });
       await assertDialogHeading();
       await page
         .getByRole("button", { name: "Review source", exact: true })
@@ -1588,6 +1695,8 @@ for (const device of ["desktop", "mobile"])
       ];
       const calls: string[] = [];
       await page.route("**/api/v1/**", async (route) => {
+        if (await mockFactoryDashboard(route, { projects: [], runs: [queued] }))
+          return;
         if (await mockIdentity(route)) return;
         const request = route.request(),
           path = new URL(request.url()).pathname;
@@ -1662,13 +1771,9 @@ for (const device of ["desktop", "mobile"])
       await page
         .getByRole("button", { name: "Save connection", exact: true })
         .click();
-      await expect(
-        page.getByRole("button", { name: "API connected", exact: true }),
-      ).toBeVisible();
+      await expectAuthenticated(page);
       await navigate(page, "Factory");
-      await page
-        .getByRole("button", { name: /Fixture original queued command/ })
-        .click();
+      await openFactoryRun(page, /Fixture original queued command/);
       await page.getByRole("tab", { name: "Plan", exact: true }).click();
       await page
         .getByRole("button", { name: "Request continuation", exact: true })
@@ -1878,6 +1983,7 @@ for (const device of ["desktop", "mobile"])
         },
       ];
       await page.route("**/api/v1/**", async (route) => {
+        if (await mockFactoryDashboard(route)) return;
         if (await mockIdentity(route)) return;
         const request = route.request(),
           path = new URL(request.url()).pathname;
@@ -1904,7 +2010,13 @@ for (const device of ["desktop", "mobile"])
         if (path.endsWith("/analyses")) {
           if (request.method() === "POST") {
             inspections.push(request.postDataJSON());
-            expect(inspections).toEqual([{ component_ids: ["api", "portal"] }]);
+            expect(inspections).toEqual([
+              {
+                component_ids: ["api", "portal"],
+                expected_project_revision: project.revision,
+                expected_project_digest: project.digest,
+              },
+            ]);
             report = {
               id: "a".repeat(32),
               project_id: project.id,
@@ -1913,6 +2025,7 @@ for (const device of ["desktop", "mobile"])
               method: "source_inspection",
               digest: "e".repeat(64),
               created_at: project.created_at,
+              project_snapshot: structuredClone(project),
               components: project.definition.components.map(
                 (component, index) => ({
                   ...component,
@@ -1973,23 +2086,44 @@ for (const device of ["desktop", "mobile"])
       await page
         .getByRole("button", { name: "Open source inspection", exact: true })
         .click();
-      const dialog = page.getByRole("dialog", {
-        name: "Source inspection review",
+      const sourcePage = page.getByRole("region", {
+        name: "Source inspection",
         exact: true,
       });
       const shot = async (stage: string) => {
         await capture(page, stage, theme, device, {
           resetFields: stage !== "source-analysis-review",
         });
-        await expect(dialog.locator(".wizard-heading")).toBeInViewport();
-        const controlsFit = await dialog.evaluate((element) => {
-          const box = element.getBoundingClientRect();
+        await expect(sourcePage.locator(".wizard")).toHaveAttribute(
+          "data-layout",
+          "flow",
+        );
+        await expect(sourcePage.locator(".wizard-field-scroll")).toHaveCSS(
+          "overflow-y",
+          "visible",
+        );
+        expect(
+          await page
+            .locator(".workspace-main > main")
+            .evaluate(
+              (node) =>
+                node.scrollWidth <= node.clientWidth + 1 &&
+                node.scrollLeft === 0,
+            ),
+        ).toBe(true);
+        const controlsFit = await sourcePage.evaluate((element) => {
+          const header = document
+            .querySelector(".workspace-main > header")!
+            .getBoundingClientRect();
+          const footer = document
+            .querySelector(".workspace-main > footer")!
+            .getBoundingClientRect();
           return [...element.querySelectorAll(".wizard-actions button")].every(
             (button) => {
               const control = button.getBoundingClientRect();
               return (
-                control.top >= box.top &&
-                control.bottom <= Math.min(box.bottom, innerHeight) &&
+                control.top >= header.bottom &&
+                control.bottom <= footer.top &&
                 button.contains(
                   document.elementFromPoint(
                     control.x + control.width / 2,
@@ -2000,7 +2134,40 @@ for (const device of ["desktop", "mobile"])
             },
           );
         });
-        expect(controlsFit).toBe(true);
+        expect(
+          controlsFit,
+          await sourcePage.locator(".wizard-actions").evaluate((element) => {
+            const box = element.getBoundingClientRect();
+            const header = document
+              .querySelector(".workspace-main > header")!
+              .getBoundingClientRect();
+            const footer = document
+              .querySelector(".workspace-main > footer")!
+              .getBoundingClientRect();
+            return JSON.stringify({
+              stage: element.closest(".wizard")?.getAttribute("aria-label"),
+              box: { top: box.top, bottom: box.bottom },
+              header: header.bottom,
+              footer: footer.top,
+              buttons: Array.from(element.querySelectorAll("button")).map(
+                (button) => {
+                  const rect = button.getBoundingClientRect();
+                  return {
+                    label: button.textContent,
+                    top: rect.top,
+                    bottom: rect.bottom,
+                    hit: document
+                      .elementFromPoint(
+                        rect.x + rect.width / 2,
+                        rect.y + rect.height / 2,
+                      )
+                      ?.outerHTML.slice(0, 160),
+                  };
+                },
+              ),
+            });
+          }),
+        ).toBe(true);
         const path = testInfo.outputPath(`${stage}.png`);
         await page.screenshot({ path });
         await testInfo.attach(stage, {
@@ -2008,91 +2175,113 @@ for (const device of ["desktop", "mobile"])
           contentType: "image/png",
         });
       };
-      await expect(dialog.getByRole("checkbox")).toHaveCount(2);
+      await expect(
+        sourcePage
+          .getByRole("list", { name: "Component results" })
+          .getByRole("checkbox"),
+      ).toHaveCount(2);
       for (const name of [
         "Inventory API · apps/api",
         "Customer portal · apps/portal",
       ])
         await expect(
-          dialog.getByRole("checkbox", { name, exact: true }),
+          sourcePage.getByRole("checkbox", { name, exact: true }),
         ).toBeChecked();
       await shot("source-analysis-scope");
       expect(inspections).toHaveLength(0);
-      await dialog
-        .getByRole("button", { name: "Inspect configured source", exact: true })
+      await sourcePage
+        .getByRole("button", { name: /^Inspect \d+ components?$/, exact: true })
         .click();
       await expect(
-        dialog.getByText("2 inspected components · 2 observed declarations", {
-          exact: true,
-        }),
+        sourcePage.getByText(
+          "2 inspected components · 2 observed declarations",
+          {
+            exact: true,
+          },
+        ),
       ).toBeVisible();
       await expect(
-        dialog.getByText("ready for review · source inspection", {
+        sourcePage.getByText("ready for review · source inspection", {
           exact: true,
         }),
       ).toBeVisible();
       await shot("source-analysis-receipt");
-      await dialog
+      await sourcePage
         .getByRole("button", { name: "Continue", exact: true })
         .click();
       for (const declaration of declarations) {
         await expect(
-          dialog
+          sourcePage
             .locator(".source-fact > p")
             .filter({ hasText: declaration.value }),
         ).toHaveText(declaration.value);
         await expect(
-          dialog.getByText(`${declaration.path}:${declaration.line}`, {
+          sourcePage.getByText(`${declaration.path}:${declaration.line}`, {
             exact: true,
           }),
         ).toBeAttached();
       }
       await expect(
-        dialog
+        sourcePage
           .locator(".source-evidence-component > p code")
           .filter({ hasText: commit }),
       ).toHaveCount(2);
       await expect(
-        dialog.getByText(
+        sourcePage.getByText(
           "1 observed declaration · 2 skipped files · source only",
           { exact: true },
         ),
       ).toHaveCount(2);
-      await expect(dialog.getByText("apps/api", { exact: true })).toBeVisible();
       await expect(
-        dialog.getByText("apps/portal", { exact: true }),
+        sourcePage.getByText("apps/api", { exact: true }),
+      ).toBeVisible();
+      await expect(
+        sourcePage.getByText("apps/portal", { exact: true }),
       ).toBeAttached();
+      await sourcePage
+        .getByText("Exact source excerpt", { exact: true })
+        .first()
+        .click();
+      const sourceSnippet = sourcePage
+        .locator(".source-fact .code-snippet")
+        .first();
+      await expect(sourceSnippet).toHaveAttribute("data-highlight", "grammar");
+      expect(await sourceSnippet.locator("pre code").textContent()).toBe(
+        declarations[0].excerpt,
+      );
       await shot("source-analysis-evidence");
-      await dialog
+      await sourcePage
         .getByRole("button", { name: "Continue", exact: true })
         .click();
-      const acknowledge = dialog.getByRole("button", {
-        name: "Acknowledge this report digest",
+      const acknowledge = sourcePage.getByRole("button", {
+        name: "Confirm source review",
         exact: true,
       });
       await expect(acknowledge).toBeDisabled();
       await expect(
-        dialog.getByText("Which customer roles may reserve stock?", {
+        sourcePage.getByText("Which customer roles may reserve stock?", {
           exact: true,
         }),
       ).toBeVisible();
-      await dialog
+      await sourcePage
         .getByRole("checkbox", {
-          name: "I reviewed the source evidence and open questions. This does not claim observed runtime behavior.",
+          name: "I reviewed the source findings and open questions. Runtime behavior still needs testing.",
           exact: true,
         })
         .check();
       await expect(acknowledge).toBeEnabled();
-      await dialog.getByRole("checkbox").evaluate((input) => {
-        input.closest("label")!.scrollIntoView({ block: "center" });
+      await sourcePage.getByRole("checkbox").evaluate((input) => {
+        const main = input.closest("main")!;
+        main.scrollTop +=
+          input.closest("label")!.getBoundingClientRect().top -
+          main.getBoundingClientRect().top -
+          16;
       });
       const acknowledgementFits = async () =>
-        dialog.getByRole("checkbox").evaluate((input) => {
+        sourcePage.getByRole("checkbox").evaluate((input) => {
           const label = input.closest("label")!,
             box = label.getBoundingClientRect(),
-            field = label
-              .closest(".wizard-field-scroll")!
-              .getBoundingClientRect(),
+            field = label.closest("main")!.getBoundingClientRect(),
             control = input.getBoundingClientRect();
           return (
             box.top >= field.top &&
@@ -2109,11 +2298,11 @@ for (const device of ["desktop", "mobile"])
       expect(reviews).toHaveLength(0);
       await acknowledge.click();
       await expect(
-        dialog.getByText("reviewed · source inspection", { exact: true }),
+        sourcePage.getByText("Source findings reviewed", { exact: true }),
       ).toBeVisible();
       expect(inspections).toHaveLength(1);
       expect(reviews).toHaveLength(1);
-      await expect(dialog.getByRole("alert")).toHaveCount(0);
+      await expect(sourcePage.getByRole("alert")).toHaveCount(0);
     });
 
 // Controlled archive responses demonstrate identity retention, not native PostgreSQL acceptance.
@@ -2318,6 +2507,10 @@ for (const device of ["desktop", "mobile"])
       const posts: Record<string, string>[] = [],
         reads: string[] = [];
       await page.route("**/api/v1/**", async (route) => {
+        if (
+          await mockFactoryDashboard(route, { projects: [], runs: [guideRun] })
+        )
+          return;
         if (await mockIdentity(route)) return;
         const request = route.request(),
           path = new URL(request.url()).pathname;
@@ -2407,9 +2600,7 @@ for (const device of ["desktop", "mobile"])
       });
       const openConversation = async () => {
         await navigate(page, "Factory");
-        await page
-          .getByRole("button", { name: /Fixture inventory decision/ })
-          .click();
+        await openFactoryRun(page, /Fixture inventory decision/);
         await page
           .getByRole("tab", { name: "Agent questions", exact: true })
           .click();
@@ -2792,6 +2983,7 @@ for (const device of ["desktop", "mobile"])
         exactReads: string[] = [];
       const base = `/api/v1/projects/${projectId}/repositories/${repositoryId}/scm-actor-bindings`;
       await page.route("**/api/v1/**", async (route) => {
+        if (await mockFactoryDashboard(route)) return;
         if (await mockIdentity(route)) return;
         const request = route.request(),
           url = new URL(request.url()),
@@ -2971,12 +3163,14 @@ for (const device of ["desktop", "mobile"])
       await dialog
         .getByLabel("Find a registered person", { exact: true })
         .fill("Warehouse");
-      await dialog
-        .getByRole("button", { name: "Find person", exact: true })
-        .click();
-      await dialog
-        .getByLabel("Registered person", { exact: true })
-        .selectOption(nativeUser);
+      await dialog.getByRole("button", { name: "Search", exact: true }).click();
+      await dialog.getByRole("radio", { name: /Warehouse reviewer/ }).click();
+      await expect(
+        dialog.getByRole("group", {
+          name: "Selected registered person",
+          exact: true,
+        }),
+      ).toContainText("Warehouse reviewer");
       await dialog
         .getByRole("checkbox", { name: "Inventory API", exact: true })
         .check();
@@ -2984,9 +3178,8 @@ for (const device of ["desktop", "mobile"])
         .getByRole("checkbox", { name: "Answer agent questions", exact: true })
         .check();
       await dialog
-        .getByLabel("Registered person", { exact: true })
-        .locator("..")
-        .evaluate((node) => node.scrollIntoView({ block: "start" }));
+        .locator(".wizard-field-scroll")
+        .evaluate((node) => (node.scrollTop = 0));
       await shot("scm-delegation-scope", false);
       await dialog
         .getByRole("button", { name: "Review delegation", exact: true })
@@ -3330,6 +3523,10 @@ for (const device of ["desktop", "mobile"])
       await page.reload();
       await navigate(page, "Connections");
       await page
+        .locator(".provider-card")
+        .filter({
+          has: page.getByRole("heading", { name: "Bridge", exact: true }),
+        })
         .getByRole("button", { name: "Configure", exact: true })
         .click();
       await expect(
@@ -3493,6 +3690,10 @@ for (const device of ["desktop", "mobile"])
       };
       let contentReads = 0;
       await page.route("**/api/v1/**", async (route) => {
+        if (
+          await mockFactoryDashboard(route, { projects: [], runs: [selected] })
+        )
+          return;
         if (await mockIdentity(route)) return;
         const url = new URL(route.request().url()),
           path = url.pathname;
@@ -3528,13 +3729,9 @@ for (const device of ["desktop", "mobile"])
       await page
         .getByRole("button", { name: "Save connection", exact: true })
         .click();
-      await expect(
-        page.getByRole("button", { name: "API connected", exact: true }),
-      ).toBeVisible();
+      await expectAuthenticated(page);
       await navigate(page, "Factory");
-      await page
-        .getByRole("button", { name: /Review recorded coding activity/ })
-        .click();
+      await openFactoryRun(page, /Review recorded coding activity/);
       const panel = page.getByRole("tabpanel");
       await expect(
         panel.getByRole("heading", {
@@ -3580,6 +3777,10 @@ for (const device of ["desktop", "mobile"])
       };
       let reads = 0;
       await page.route("**/api/v1/**", async (route) => {
+        if (
+          await mockFactoryDashboard(route, { projects: [], runs: [selected] })
+        )
+          return;
         if (await mockIdentity(route)) return;
         const url = new URL(route.request().url()),
           path = url.pathname;
@@ -3612,9 +3813,7 @@ for (const device of ["desktop", "mobile"])
         .getByRole("button", { name: "Save connection", exact: true })
         .click();
       await navigate(page, "Factory");
-      await page
-        .getByRole("button", { name: /Inspect observed Claude activity/ })
-        .click();
+      await openFactoryRun(page, /Inspect observed Claude activity/);
       const panel = page.getByRole("tabpanel");
       await expect(
         panel.getByRole("heading", {
@@ -3790,6 +3989,10 @@ for (const device of ["desktop", "mobile"])
       };
       let reads = 0;
       await page.route("**/api/v1/**", async (route) => {
+        if (
+          await mockFactoryDashboard(route, { projects: [], runs: [selected] })
+        )
+          return;
         if (await mockIdentity(route)) return;
         const url = new URL(route.request().url()),
           path = url.pathname;
@@ -3822,9 +4025,7 @@ for (const device of ["desktop", "mobile"])
         .getByRole("button", { name: "Save connection", exact: true })
         .click();
       await navigate(page, "Factory");
-      await page
-        .getByRole("button", { name: /Inspect reported MCP activity/ })
-        .click();
+      await openFactoryRun(page, /Inspect reported MCP activity/);
       const result = page
         .getByRole("region", { name: "Archived provider event", exact: true })
         .last();
@@ -4172,3 +4373,116 @@ for (const device of ["desktop", "mobile"])
       });
     });
   }
+
+for (const device of ["desktop", "mobile"])
+  for (const theme of ["light", "dark"])
+    test(`guided fixture journey: personal account ${device} ${theme}`, async ({
+      page,
+    }) => {
+      const projectId = "b".repeat(32);
+      await page.setViewportSize(
+        device === "desktop"
+          ? { width: 1440, height: 1000 }
+          : { width: 390, height: 844 },
+      );
+      await page.route("**/api/v1/**", async (route) => {
+        if (await mockFactoryDashboard(route)) return;
+        const path = new URL(route.request().url()).pathname.replace(
+          "/api/v1",
+          "",
+        );
+        let json: unknown = [];
+        if (path === "/auth/configuration")
+          json = {
+            mode: "oidc",
+            issuer: "https://identity.example/realms/forge",
+          };
+        else if (path === "/auth/session")
+          json = {
+            authenticated: true,
+            user: {
+              id: "f".repeat(32),
+              display_name: "Documentation owner",
+              email: "owner@example.test",
+              authentication_method: "oidc_session",
+            },
+            global_admin: true,
+            memberships: [
+              {
+                project_id: projectId,
+                role: "owner",
+                revision: 1,
+                permissions: ["read", "members"],
+              },
+            ],
+            roles: { owner: ["read", "members"] },
+          };
+        else if (path === "/health")
+          json = {
+            status: "ok",
+            service_role: "api",
+            admission_ready: true,
+            execution_ready: false,
+            execution: { local_enabled: false },
+            detail: "",
+          };
+        else if (path === "/profiles") json = {};
+        else if (path === "/projects")
+          json = [
+            {
+              id: projectId,
+              definition: { name: "Documentation project" },
+              revision: 1,
+            },
+          ];
+        else if (path === "/identity/tokens")
+          json = { items: [], next_cursor: null };
+        await route.fulfill({ json });
+      });
+      await page.goto("/");
+      await page.getByLabel("Appearance", { exact: true }).selectOption(theme);
+      await expectAuthenticated(page);
+      const menu = page.getByRole("button", {
+        name: "Open navigation",
+        exact: true,
+      });
+      if (await menu.isVisible()) await menu.click();
+      await page
+        .getByRole("button", {
+          name: "Signed in as Documentation owner",
+          exact: true,
+        })
+        .click();
+      await capture(page, "account-profile", theme, device, {
+        boundary: "dialog",
+        producer: "studio/tests/docs-walkthrough.spec.ts",
+        actionSelector: ".identity-account-actions button.primary",
+      });
+      await page.screenshot({
+        path: test.info().outputPath("personal-account-short-dialog.png"),
+      });
+      await page
+        .getByRole("button", { name: "Personal API tokens", exact: true })
+        .click();
+      await page
+        .getByRole("button", { name: "New token", exact: true })
+        .click();
+      await page.getByLabel("Token name").fill("Project metrics observer");
+      await page
+        .getByLabel("Expires on")
+        .fill(new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 16));
+      await page.getByLabel("Documentation project", { exact: true }).check();
+      await expect(page.getByLabel("New token secret")).toHaveCount(0);
+      await capture(page, "personal-token-create", theme, device, {
+        boundary: "dialog",
+        producer: "studio/tests/docs-walkthrough.spec.ts",
+        actionSelector: ".token-editor button.primary",
+      });
+      await page
+        .getByRole("button", { name: "Close account", exact: true })
+        .click();
+      await navigate(page, "Administration");
+      await capture(page, "administration-settings", theme, device, {
+        actionSelector: 'button[aria-label="People"]',
+      });
+    });

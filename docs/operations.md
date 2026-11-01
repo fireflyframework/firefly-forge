@@ -40,13 +40,13 @@ Review code from the identified source tree. Command output can be bounded or re
 
 **Changes** groups a text patch by file, with old and new line numbers for additions, removals and context. **Copy patch** copies the retained run diff, including content outside a bounded preview. It does not apply the change to another checkout.
 
-![The Changes tab showing a file patch with original and new line numbers](assets/screenshots/run-changes-fixture-desktop.png)
+![The Changes tab showing a file patch with original and new line numbers](assets/screenshots/evidence-changes-desktop-light.png)
 
 Console presentation using controlled test data. The sample patch demonstrates the review layout; it is not evidence of a successful generated product.
 
 The **Plan** journal cards distinguish intents and recorded outcomes. **Outcome not recorded** leaves the effect uncertain. Expand **Advanced record** to inspect the retained payload and correlate it with the task, attempt and command evidence before resuming.
 
-![A mobile journal card showing an outcome that has not been recorded](assets/screenshots/run-journal-fixture-mobile.png)
+![A mobile journal card showing an outcome that has not been recorded](assets/screenshots/evidence-plan-mobile-light.png)
 
 Console presentation using controlled test data. The sample journal illustrates an uncertain outcome and does not represent live command execution.
 

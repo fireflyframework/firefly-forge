@@ -239,3 +239,76 @@ class ConsumedTerminalReceiptV2(StrictContract):
         ):
             raise ValueError("Consumed terminal receipt differs from its exact reviewed request")
         return self
+
+
+class ConsumedTerminalReconciliationCandidateV1(StrictContract):
+    version: Literal[1]
+    owner_digest: Digest
+    run_id: NativeID
+    request_id: NativeID
+    actor_digest: Digest
+    policy_digest: Digest
+    runtime_contract: Digest
+    profile_digest: Digest
+    run_digest: Digest
+    task_digest: Digest
+    journal_digest: Digest
+    recovery_digest: Digest
+    claim_digest: Digest
+    source_digest: Digest
+    index_digest: Digest
+    same_task_attempt: int = Field(ge=1, strict=True)
+    digest: Digest
+
+    @model_validator(mode="after")
+    def exact_digest(self) -> "ConsumedTerminalReconciliationCandidateV1":
+        if digest(self.model_dump(exclude={"digest"})) != self.digest:
+            raise ValueError("Consumed terminal reconciliation candidate digest differs")
+        return self
+
+
+class ConsumedTerminalReconciliationInputV1(StrictContract):
+    version: Literal[1]
+    candidate_digest: Digest
+    acknowledge_same_claimed_action: Literal[True]
+    acknowledge_no_execution_grant: Literal[True]
+    acknowledge_local_postprocessing: Literal[True]
+
+    @field_validator("version", mode="before")
+    @classmethod
+    def exact_version(cls, value: Any) -> Any:
+        if type(value) is not int or value != 1:
+            raise ValueError("Use the exact reconciliation version")
+        return value
+
+    @field_validator(
+        "acknowledge_same_claimed_action",
+        "acknowledge_no_execution_grant",
+        "acknowledge_local_postprocessing",
+        mode="before",
+    )
+    @classmethod
+    def exact_acknowledgment(cls, value: Any) -> Any:
+        if value is not True:
+            raise ValueError("Acknowledge the same claimed action without another execution grant")
+        return value
+
+
+class ConsumedTerminalReconciliationReceiptV1(StrictContract):
+    version: Literal[1]
+    candidate: ConsumedTerminalReconciliationCandidateV1
+    request: ConsumedTerminalReconciliationInputV1
+    record_digest: Digest
+    settlement: ConsumedTerminalReceiptV2
+
+    @model_validator(mode="after")
+    def exact_receipt(self) -> "ConsumedTerminalReconciliationReceiptV1":
+        if (
+            self.request.candidate_digest != self.candidate.digest
+            or self.settlement.run_id != self.candidate.run_id
+            or self.settlement.request_id != self.candidate.request_id
+            or self.settlement.record_digest != self.candidate.recovery_digest
+            or self.settlement.same_task_attempt != self.candidate.same_task_attempt
+        ):
+            raise ValueError("Consumed terminal reconciliation receipt differs from its same-action authority")
+        return self

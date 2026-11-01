@@ -1,0 +1,122 @@
+/* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
+.workspace-main > main:has(> .source-inspection-page) {
+  background: var(--surface);
+}
+.source-inspection-page {
+  min-width: 0;
+}
+.source-inspection-page .wizard-body,
+.source-inspection-page .wizard-content,
+.source-inspection-page .wizard-form,
+.source-evidence-component {
+  min-width: 0;
+}
+.source-inspection-page .feature-meta {
+  display: block;
+  max-width: 100%;
+  white-space: normal;
+}
+.source-inspection-page p,
+.source-inspection-page dd,
+.source-inspection-page code {
+  overflow-wrap: anywhere;
+}
+.source-inspection-page .feature-actions button {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.source-inspection-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+.source-inspection-page > .page-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.source-inspection-page > .page-heading p {
+  margin: 4px 0 0;
+}
+.source-inspection-page > .page-heading h1 {
+  font-size: 24px;
+  line-height: 1.35;
+  letter-spacing: -0.025em;
+}
+.source-inspection-purpose {
+  max-width: 90ch;
+  margin: 0 0 6px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.source-inspection-explanation {
+  margin: 0 0 24px;
+}
+.source-inspection-explanation summary {
+  width: fit-content;
+  padding: 4px 0;
+  cursor: pointer;
+  font-size: 13px;
+}
+.source-inspection-explanation p {
+  max-width: 90ch;
+  margin: 12px 0 0;
+  line-height: 1.6;
+}
+.source-inspection-refresh {
+  min-width: 0;
+}
+.source-scope-review {
+  padding: 16px 0;
+  border-block: 1px solid var(--line);
+  margin-bottom: 20px;
+}
+@media (max-width: 760px) {
+  .source-inspection-back {
+    margin-bottom: 8px;
+  }
+  .source-inspection-page > .page-heading {
+    margin-bottom: 8px;
+  }
+  .source-inspection-page > .page-heading h1 {
+    font-size: 22px;
+  }
+  .source-inspection-page > .page-heading p {
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .source-inspection-refresh {
+    width: 44px;
+    height: 44px;
+    min-height: 44px;
+    padding: 10px;
+    justify-content: center;
+  }
+  .source-inspection-refresh span {
+    display: none;
+  }
+  .source-inspection-explanation {
+    margin-bottom: 8px;
+  }
+  .source-inspection-explanation summary {
+    padding: 0;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .source-inspection-page .wizard-rail.wizard-frame {
+    gap: 8px;
+  }
+  .source-inspection-page .wizard-mobile-progress {
+    padding-bottom: 8px;
+  }
+  .source-inspection-page .wizard-rail.wizard-frame .wizard-heading {
+    margin-bottom: 8px;
+  }
+  .source-inspection-page .wizard-rail.wizard-frame .wizard-heading h2 {
+    font-size: 18px;
+  }
+}

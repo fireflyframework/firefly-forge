@@ -451,7 +451,7 @@ class ConnectionOAuth:
             "grant_revision": grant.revision,
             "actor_id": grant.actor_id.hex,
             "metadata_digest": digest(json.dumps(grant.data, sort_keys=True, separators=(",", ":"))),
-            "expires_at": grant.expires_at.isoformat(),
+            "expires_at": grant.expires_at.isoformat() if grant.expires_at is not None else None,
         }
 
     def _client_context(self, connection_id: UUID, revision: int, data: Data) -> Data:
@@ -514,6 +514,24 @@ class ConnectionOAuth:
 
     async def provider_directory(self, actor: Principal) -> list[Data]:
         result = self.providers()
+        from firefly_forge.github_projects_oauth import GITHUB_PROJECTS_PROVIDERS
+
+        existing = {row["provider"] for row in result}
+        result.extend(
+            {
+                "provider": name,
+                "status": "registration_available" if self.browser_origin else "prerequisite_required",
+                "reason": "Use a separately consented confidential OAuth App with S256 PKCE. "
+                + (
+                    "Private repository content requires project and repo scopes."
+                    if name.endswith("-private")
+                    else "Public repository content uses project scope."
+                ),
+                "agent_ready": False,
+            }
+            for name in GITHUB_PROJECTS_PROVIDERS
+            if name not in existing
+        )
         if self.policy_directory is not None:
             state = await self.policy_directory(actor)
             rows = state["policies"]
@@ -691,7 +709,7 @@ class ConnectionOAuth:
             result.update(family=grant.family, grant_revision=grant.revision, grant_status=grant.status)
             payload = self._open(grant.encrypted_data, self._grant_context(row, grant))
             result["refresh_available"] = bool(payload.get("refresh_token"))
-            result["grant_expires_at"] = grant.expires_at.isoformat()
+            result["grant_expires_at"] = grant.expires_at.isoformat() if grant.expires_at is not None else None
             result["allowed_actions"]["refresh"] = (
                 not blocked and bool(payload.get("refresh_token")) and grant.actor_id == actor.id
             )
@@ -774,6 +792,12 @@ class ConnectionOAuth:
             policy = binding.provider if binding else None
             if policy is None or policy.prerequisite or not self.browser_origin:
                 raise ValueError("Provider registration prerequisites are not satisfied")
+            from firefly_forge.github_projects_oauth import GITHUB_PROJECTS_PROVIDERS
+
+            if request.provider in GITHUB_PROJECTS_PROVIDERS and (
+                request.public_client or request.authentication != "client_secret_post" or request.project_id is None
+            ):
+                raise ValueError("GitHub Projects requires a project-scoped confidential OAuth App")
             data: Data = {
                 "provider": request.provider,
                 "project_id": request.project_id,
@@ -1061,6 +1085,10 @@ class ConnectionOAuth:
                 "code_challenge": pair.challenge,
                 "code_challenge_method": "S256",
             }
+            from firefly_forge.github_projects_oauth import token_resource
+
+            if token_resource(registration.data["provider"], params["resource"]) is None:
+                params.pop("resource")
             result = OAuthChallenge(
                 registration.data["policy"]["authorization_endpoint"] + "?" + urlencode(params), nonce, attempt_id.hex
             )
@@ -1107,6 +1135,9 @@ class ConnectionOAuth:
             )
             if attempt is None or attempt.consumed or attempt.expires_at <= await self._time(session):
                 raise ValueError("Authorization attempt expired or consumed")
+            from firefly_forge.github_projects_oauth import callback_issuer
+
+            issuer = callback_issuer(registration.data["provider"], issuer, registration.data["policy"]["issuer"])
             if (
                 attempt.actor_id != actor.id
                 or len(browser_nonce) > 128
@@ -1155,7 +1186,7 @@ class ConnectionOAuth:
                     redirect_uri=frozen["callback"],
                     code_verifier=payload["verifier"],
                     authentication=frozen["authentication"],
-                    resource=frozen["policy"]["resource"],
+                    resource=self._token_resource(frozen),
                 )
             return await self._publish(name, effect_id, tokens, actor)
         except BaseException as error:
@@ -1171,6 +1202,12 @@ class ConnectionOAuth:
             max_response_bytes=65536,
             allow_loopback_http=self.loopback,
         )
+
+    @staticmethod
+    def _token_resource(frozen: Data) -> str | None:
+        from firefly_forge.github_projects_oauth import token_resource
+
+        return token_resource(frozen["provider"], frozen["policy"]["resource"])
 
     async def _dispatch_fence(self, name: str, effect_id: UUID, actor: Principal) -> None:
         async with self._locked(name) as session:
@@ -1261,13 +1298,15 @@ class ConnectionOAuth:
                 else:
                     raise OAuthDisposition("scope_missing")
             else:
-                scopes = set(tokens.scope.split())
+                from firefly_forge.github_projects_oauth import granted_scopes
+
+                scopes = granted_scopes(policy["id"], tokens.scope)
             if scopes != expected:
                 raise OAuthDisposition("scope_mismatch")
-            if tokens.token_type.lower() != "bearer" or tokens.expires_in is None or tokens.expires_in > 86400:
-                raise OAuthDisposition("token_contract_invalid")
+            from firefly_forge.github_projects_oauth import token_expiry
+
+            expires_at = token_expiry(policy, tokens, await self._time(session))
             refresh = tokens.refresh_token
-            expires_at = await self._time(session) + timedelta(seconds=tokens.expires_in)
             if effect.kind == "refresh":
                 if (
                     previous is None
@@ -1423,7 +1462,7 @@ class ConnectionOAuth:
                     payload["refresh_token"],
                     scopes=tuple(frozen["policy"]["scopes"]),
                     authentication=frozen["authentication"],
-                    resource=frozen["policy"]["resource"],
+                    resource=self._token_resource(frozen),
                 )
             return await self._publish(name, effect_id, tokens, actor)
         except BaseException as error:
