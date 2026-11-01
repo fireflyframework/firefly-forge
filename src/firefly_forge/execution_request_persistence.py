@@ -75,6 +75,21 @@ class ForgeExecutionRequestRepository(Repository[ForgeExecutionRequestEntity, UU
             )
         )
 
+    async def for_run_page(
+        self, run_id: UUID, kind: str, *, after: UUID | None = None, limit: int = 64
+    ) -> list[ForgeExecutionRequestEntity]:
+        if type(limit) is not int or limit < 1:
+            raise ValueError("Execution-request pages require a positive integer size")
+        statement = select(ForgeExecutionRequestEntity).where(
+            ForgeExecutionRequestEntity.run_id == run_id,
+            ForgeExecutionRequestEntity.kind == kind,
+        )
+        if after is not None:
+            statement = statement.where(ForgeExecutionRequestEntity.id > after)
+        return list(
+            await self._require_session().scalars(statement.order_by(ForgeExecutionRequestEntity.id).limit(limit))
+        )
+
     async def state(
         self, status: str, limit: int = 50, *, kind: str | None = None
     ) -> list[ForgeExecutionRequestEntity]:

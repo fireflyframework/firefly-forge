@@ -68,11 +68,16 @@ async def classify(
         message=message,
     )
     output_spec: Any = PromptedOutput(NaturalDecision) if bridge else NaturalDecision
+    instructions = catalog().text("scm-natural/system", version="1.0.4")
+    if any(
+        candidate.get("current_facts", {}).get("native_verification") for candidate in context.get("candidates", [])
+    ):
+        instructions += "\n" + catalog().text("scm-natural/native-verification-status")
     agent: FireflyAgent[None, NaturalDecision] = FireflyAgent(
         name="forge-natural-task-intent",
         model=model,
         output_type=output_spec,
-        instructions=inject_skills(catalog().text("scm-natural/system", version="1.0.4"), ["humanizer"]),
+        instructions=inject_skills(instructions, ["humanizer"]),
         tools=[],
         retries=0,
         auto_register=False,

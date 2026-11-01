@@ -149,6 +149,39 @@ async def test_ignored_output_creation_does_not_change_selected_source_or_index(
     await c.prepared.revalidate()
 
 
+async def test_preexisting_unignored_vitest_results_are_not_recoverable_as_ignored_outputs(source_case):
+    """The public source excludes this cache; its selected Git bytes still require a hold."""
+    from firefly_forge.source_catalog import SourceCatalogBudget
+    from firefly_forge.verification_dependencies import prepare_public_source_cut
+
+    c = source_case
+    ignore = c.root / ".gitignore"
+    ignore.write_text(ignore.read_text().replace(".cache/\n", ""))
+    result = c.root / ".cache/vite/vitest/fixture-project/results.json"
+    result.parent.mkdir(parents=True)
+    result.write_text('{"files":[],"passed":3}\n')
+    before = await workspace_source_capture(c.store, c.root)
+    c.prepared.source.fence.close()
+    c.prepared.source = before
+    fields = c.prepared.candidate.model_dump(mode="json")
+    fields["source_digest"] = digest(before.cut)
+    fields["digest"] = digest({key: value for key, value in fields.items() if key != "digest"})
+    c.prepared.candidate = LinkedVerificationCandidateV1.model_validate(fields)
+    public = await prepare_public_source_cut(c.root, c.root.parent / "public-cut", SourceCatalogBudget())
+    await c.prepared.revalidate()
+    assert result.relative_to(c.root).as_posix() in git(c.root, "ls-files", "--others", "--exclude-standard")
+    result.write_text('{"files":[],"passed":4}\n')
+    await public.assert_current()
+    # The real worker reaches this only after retaining its exact exit-zero result.
+    with pytest.raises(module._PostResultGuardFailure) as held:
+        await c.prepared.after_result()
+    assert held.value.diagnostic.model_dump() == {
+        "phase": "post_result_source",
+        "cause_code": "selected_source_changed",
+        "exception_type": "ValueError",
+    }
+
+
 @pytest.mark.parametrize("change", ["bytes", "tracked_ignored", "index", "symlink", "new_source"])
 async def test_output_rebinding_cannot_authorize_selected_source_or_index_changes(source_case, change):
     c = source_case

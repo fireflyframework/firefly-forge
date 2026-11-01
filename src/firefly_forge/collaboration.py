@@ -55,6 +55,7 @@ if TYPE_CHECKING:
     from firefly_forge.scm_conversation_models import AddressedStatusV1
     from firefly_forge.scm_functional_address import AddressedFunctionalV1
     from firefly_forge.scm_linked_verification import SCMLinkedVerifications
+    from firefly_forge.scm_native_verification_status import SCMNativeVerificationStatus
     from firefly_forge.scm_product_change_service import SCMProductChangeAuthority
     from firefly_forge.scm_product_intake import SCMProductIntake
     from firefly_forge.scm_product_intake_models import SCMProductIntakeCommandV1
@@ -347,6 +348,7 @@ class Collaboration:
         self.poll_resume_authority: Any = None
         self.poll_functional_authority: Any = None
         self.linked_verification_authority: SCMLinkedVerifications | None = None
+        self.native_verification_status: SCMNativeVerificationStatus | None = None
         self.source_edit_authority: Any = None
         self.product_change_authority: SCMProductChangeAuthority | None = product_change_authority
         self.product_intake_authority: SCMProductIntake | None = product_intake_authority
@@ -2094,7 +2096,22 @@ class Collaboration:
                     else None,
                 )
             verification = getattr(self, "linked_verification_authority", None)
-            linked_input = await verification.communication(data) if verification is not None else None
+            native_reader = getattr(self, "native_verification_status", None)
+            native_status = (
+                natural_status
+                or data.get("natural_turn") is None
+                and (conversation_input is not None or data.get("command", {}).get("action") == "status")
+            )
+            native_input = (
+                await native_reader.for_delivery(data) if native_reader is not None and native_status else None
+            )
+            linked_input = (
+                await verification.communication(data)
+                if verification is not None and (native_input is None or native_input.current_request_id is None)
+                else None
+            )
+            if linked_input is not None:
+                native_input = None
             assistant_input = assistant_communication(data, repository=repo, host=host)
             drafted: Data
             if retained is not None:
@@ -2125,6 +2142,7 @@ class Collaboration:
                     public_text,
                     conversation=conversation_input,
                     status_draft=(data["natural_turn"].get("reply") or None),
+                    native_verification=native_input,
                 )
             elif data.get("natural_turn") is not None:
                 drafted = {
@@ -2156,19 +2174,35 @@ class Collaboration:
             elif conversation_input:
                 if audience_input is not None:
                     drafted = await self.communication_writer.write(
-                        run or None, message, public_text, conversation=conversation_input, audience=audience_input
+                        run or None,
+                        message,
+                        public_text,
+                        conversation=conversation_input,
+                        audience=audience_input,
+                        native_verification=native_input,
                     )
                 else:
                     drafted = await self.communication_writer.write(
-                        run or None, message, public_text, conversation=conversation_input
+                        run or None,
+                        message,
+                        public_text,
+                        conversation=conversation_input,
+                        native_verification=native_input,
                     )
             elif audience_input is not None:
                 drafted = await self.communication_writer.write(run, message, public_text, audience=audience_input)
             else:
-                drafted = await self.communication_writer.write(run, message, public_text)
-            if linked_input is not None and drafted["communication"]["mode"] != "ai":
+                drafted = await self.communication_writer.write(
+                    run, message, public_text, native_verification=native_input
+                )
+            if (linked_input is not None or native_input is not None) and drafted["communication"]["mode"] != "ai":
                 drafted["body"] = ""
-                drafted["communication"].update(mode="held", reason="linked_verification_requires_configured_authoring")
+                drafted["communication"].update(
+                    mode="held",
+                    reason="native_verification_requires_configured_authoring"
+                    if native_input is not None
+                    else "linked_verification_requires_configured_authoring",
+                )
             current_run = await self.store.get_run(data["run_id"]) if data.get("run_id") else run
             current_context = await self._feedback_context(data, current_run)
             current_assistant = (
@@ -2181,6 +2215,11 @@ class Collaboration:
                 if linked_input is not None and verification is not None
                 else None
             )
+            current_native = (
+                await native_reader.for_delivery(data)
+                if native_reader is not None and native_input is not None
+                else None
+            )
             facts = (
                 communication_facts(
                     current_run or None, conversation=conversation_input, linked_verification=current_linked
@@ -2188,9 +2227,14 @@ class Collaboration:
                 if current_linked is not None
                 else communication_facts(current_run or None, assistant=current_assistant)
                 if assistant_input
-                else communication_facts(current_run or None, conversation=conversation_input, audience=audience_input)
+                else communication_facts(
+                    current_run or None,
+                    conversation=conversation_input,
+                    audience=audience_input,
+                    native_verification=current_native,
+                )
                 if conversation_input
-                else communication_facts(current_run, audience=audience_input)
+                else communication_facts(current_run, audience=audience_input, native_verification=current_native)
             )
             state_changed = (
                 linked_input is None
@@ -2293,6 +2337,23 @@ class Collaboration:
                         != intent["communication"]["facts_sha256"]
                     ):
                         raise AccessDenied("The confirmed assistant outcome changed before publication")
+                if native_input is not None and native_reader is not None:
+                    latest_run = await self.store.get_run(data["run_id"])
+                    latest_native = await native_reader.for_delivery(data)
+                    if (
+                        latest_native is None
+                        or latest_native.digest != native_input.digest
+                        or content_digest(
+                            communication_facts(
+                                latest_run,
+                                conversation=conversation_input,
+                                audience=audience_input,
+                                native_verification=latest_native,
+                            )
+                        )
+                        != intent["communication"]["facts_sha256"]
+                    ):
+                        raise AccessDenied("The native verification ledger changed before publication")
                 self.store.reject_credentials(public_values)
                 self.communication_writer.assert_current(intent["communication"])
 

@@ -40,6 +40,9 @@ def natural_policy_digest() -> str:
         "communication.py",
         "communication_diagnostics.py",
         "scm_linked_verification_records.py",
+        "scm_native_verification_status.py",
+        "scm_native_verification_status_models.py",
+        "resources/prompts/scm-natural-v1/native-verification-status.yaml",
         "resources/prompts/scm-natural-v1/system-1.0.4.yaml",
         "resources/prompts/scm-natural-v1/verification-review.yaml",
         "resources/prompts/scm-natural-v1/verification-communication.yaml",
@@ -223,12 +226,14 @@ class SCMNaturalTasks:
             except (AccessDenied, ValueError):
                 projection = {}
             question = projection.get("question")
+            reader = getattr(self.collaboration, "native_verification_status", None)
+            native = await reader.read(delivery, scopes[0], reference) if reader is not None else None
             candidates.append(
                 {
                     **scope,
                     "run_id": run["id"],
                     "run_status": run["status"],
-                    "current_facts": communication_facts(run),
+                    "current_facts": communication_facts(run, native_verification=native),
                     "delivery": await current_delivery_facts(self.store, journal, run),
                     "question_id": question.id if question else None,
                     "question_digest": projection.get("question_digest"),

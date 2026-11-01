@@ -427,6 +427,8 @@ def admission_contract_digest() -> str:
                 "scm_linked_verification.py",
                 "scm_linked_verification_models.py",
                 "scm_linked_verification_records.py",
+                "scm_native_verification_status.py",
+                "scm_native_verification_status_models.py",
                 "object_storage.py",
                 "runner_artifact_publications.py",
                 "runner_object_artifacts.py",

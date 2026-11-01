@@ -50,18 +50,6 @@ def original_git_consent(monkeypatch, component_exists_before_fictional_history_
 
 @pytest.fixture
 async def scm_git(scm_case, monkeypatch):
-    from firefly_forge import (
-        agentic_checkpoint_invocation,
-        configuration,
-        git_linked_verification,
-        linked_verifications,
-    )
-    from firefly_forge.git_delivery_policy import GitDeliveryPolicies
-    from firefly_forge.git_diff_artifacts import retain_git_diff
-    from firefly_forge.git_diff_models import GitDiffBudget
-    from firefly_forge.identity_persistence import ForgeIdentityUserRepository
-    from firefly_forge.project_persistence import ForgeProjectRepository
-    from firefly_forge.source_snapshot import SourceDiffSnapshotV1, diff_artifact_root
 
     s, c = scm_case, scm_case.case
     env = c.env
@@ -79,6 +67,24 @@ async def scm_git(scm_case, monkeypatch):
     finally:
         CURRENT_PRINCIPAL.reset(token)
     assert result["status"] == "completed", result
+    return await linked_git_case(c, result, monkeypatch, s=s)
+
+
+async def linked_git_case(c, result, monkeypatch, *, s=None):
+    from firefly_forge import (
+        agentic_checkpoint_invocation,
+        configuration,
+        git_linked_verification,
+        linked_verifications,
+    )
+    from firefly_forge.git_delivery_policy import GitDeliveryPolicies
+    from firefly_forge.git_diff_artifacts import retain_git_diff
+    from firefly_forge.git_diff_models import GitDiffBudget
+    from firefly_forge.identity_persistence import ForgeIdentityUserRepository
+    from firefly_forge.project_persistence import ForgeProjectRepository
+    from firefly_forge.source_snapshot import SourceDiffSnapshotV1, diff_artifact_root
+
+    env = c.env
     scalar = {key: result["candidate"][key] for key in ("runtime_contract", "policy_digest", "profile_digest")}
     monkeypatch.setattr(agentic_checkpoint_invocation, "_runtime_material_digest", lambda: scalar["runtime_contract"])
     monkeypatch.setattr(linked_verifications, "_policy_material_digest", lambda: scalar["policy_digest"])

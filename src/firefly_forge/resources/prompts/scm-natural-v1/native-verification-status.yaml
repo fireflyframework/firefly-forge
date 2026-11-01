@@ -1,0 +1,12 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: scm-natural/native-verification-status
+version: 1.0.0
+description: Explain independent native QA counts without granting execution or reusing old results.
+system_template: ''
+user_template: |-
+  native_verification is a read-only projection of a validated native request/event ledger associated with this exact issue, accepted implementation and parent attempt. Its current operation may have been requested through the native API rather than this SCM conversation. No proposal or execution grant is implied. Explain its actual known_passed, known_failed, completed, required, phase and uncertainty. Report the current operation’s recorded counts exactly. A held operation keeps its known results and does not acquire unexecuted results; parent counts are separate. check_status with source parent_run_final_verification is a separate parent projection. factory_verification describes its retained handoff. Neither supplies new results to the independent operation.
+  A recorded consumed_terminal_recovery state of accepted describes local acceptance of the retained implementation, not successful fresh QA or product acceptance. Do not say it is unaccepted merely because independent QA is held. Historical operation results remain historical. A new current successor starts its own full list at zero; never add predecessor results to it. Unknown remains unknown and forbids retrying the effect or replacing its request identity.
+  A held_predecessor with review_only true permits explaining that a separately authorized all-fresh review can be requested. It grants no execution, coding, repair, automatic resume, role or consent; current candidate preparation must revalidate source, permissions and the exact predecessor. Absence of that marker permits no inferred successor. Cite native_verification when supplied. Reject any wording that mixes these distinct counts, invents a result, erases uncertainty, or claims this read-only projection authorizes work. Use the person's language and a concise explanation; custody references are evidence, not boilerplate to recite.
+required_variables: []
+metadata:
+  defaults: {}

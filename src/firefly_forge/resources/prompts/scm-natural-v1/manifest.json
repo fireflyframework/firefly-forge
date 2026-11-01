@@ -91,6 +91,14 @@
       "sha256": "7c27bfd24cd38a920cceb245178fd5ff7f36d834bed95258b32e74d9a87d55d7",
       "field": "user",
       "variables": {}
+    },
+    {
+      "id": "scm-natural/native-verification-status",
+      "version": "1.0.0",
+      "path": "native-verification-status.yaml",
+      "sha256": "771c53ce00eb83840c2e06da8bca3f03970cf8baccece029a081011fb2a12236",
+      "field": "user",
+      "variables": {}
     }
   ]
 }

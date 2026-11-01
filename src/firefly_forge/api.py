@@ -247,6 +247,7 @@ from firefly_forge.scm_actor_authority_controllers import SCMActorAuthorityContr
 from firefly_forge.scm_connections import SCMConnections
 from firefly_forge.scm_linked_verification import SCMLinkedVerifications
 from firefly_forge.scm_maintain_ticket_controllers import MaintainTicketController
+from firefly_forge.scm_native_verification_status import SCMNativeVerificationStatus
 from firefly_forge.scm_natural_controllers import SCMNaturalController
 from firefly_forge.scm_poll_controllers import SCMPollController
 from firefly_forge.scm_poll_functional import SCMPollFunctionalAuthority
@@ -864,6 +865,14 @@ class FactoryConfiguration:
         requests.linked_verifications = verifications
         engine.linked_verifications = verifications
         return verifications
+
+    @bean
+    def scm_native_verification_status(
+        self, collaboration: Collaboration, verifications: LinkedVerifications
+    ) -> SCMNativeVerificationStatus:
+        reader = SCMNativeVerificationStatus(collaboration, verifications)
+        collaboration.native_verification_status = reader
+        return reader
 
     @bean
     def scm_linked_verification_authority(

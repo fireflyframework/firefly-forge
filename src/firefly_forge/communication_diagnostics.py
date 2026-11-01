@@ -89,7 +89,7 @@ def check_diagnostics(run: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
-def claimed_recovery(run: dict[str, Any]) -> dict[str, Any] | None:
+def recorded_recovery(run: dict[str, Any]) -> dict[str, Any] | None:
     marker = run.get("consumed_terminal_recovery")
     if (
         run.get("status") not in ("paused", "needs_reconciliation")
@@ -97,7 +97,10 @@ def claimed_recovery(run: dict[str, Any]) -> dict[str, Any] | None:
         or set(marker) != {"version", "state", "request_id", "record_digest", "claim_digest"}
         or type(marker["version"]) is not int
         or marker["version"] != 2
-        or marker["state"] != "claimed"
+        or not isinstance(marker["state"], str)
+        or marker["state"] not in {"claimed", "accepted"}
+        or marker["state"] == "accepted"
+        and run.get("implementation_pending") is not False
         or any(
             not isinstance(marker[key], str) or re.fullmatch(pattern, marker[key]) is None
             for key, pattern in (
@@ -112,8 +115,15 @@ def claimed_recovery(run: dict[str, Any]) -> dict[str, Any] | None:
         **marker,
         "source": "recorded_run_projection_not_admission",
         "execution_grant": False,
-        "next_native_action": "reconcile_same_claim_without_new_execution",
+        "next_native_action": "reconcile_same_claim_without_new_execution"
+        if marker["state"] == "claimed"
+        else "inspect_independent_verification_without_repeating_recovery",
     }
+
+
+def claimed_recovery(run: dict[str, Any]) -> dict[str, Any] | None:
+    value = recorded_recovery(run)
+    return value if value and value["state"] == "claimed" else None
 
 
 def recorded_error(run: dict[str, Any]) -> dict[str, Any] | None:
