@@ -621,16 +621,27 @@ Progress in the [repository workflow](repository-workflow.md) comes from durable
 
 An accepted implementation may need fresh checks after its runtime or dependency inputs change. `LinkedVerifications` provides a separate verification operation for that case. It preserves the original implementation claim, held handoff, usage and sandbox counters. Its own allowance is the length of the complete effective check list, including required policy and framework checks.
 
+<div class="forge-flow forge-flow--dependencies" role="region" aria-label="Fresh verification after an accepted recovery" tabindex="0" markdown="1">
+
 ```mermaid
+---
+config:
+  flowchart:
+    wrappingWidth: 96
+---
 flowchart LR
-    A[Accepted implementation] --> B[Review current source and checks]
-    B --> C[Record explicit verification consent]
-    C --> D[Run checks through the qualified backend]
-    D --> E{Confirmed outcome}
-    E -->|All checks pass| F[Settle parent verification]
-    E -->|Check fails| G[Retain failed command evidence]
-    E -->|Outcome uncertain| H[Hold for readback]
+    A[Accepted source] --> B[Review and consent]
+    B --> C[Fresh checks and receipts]
+    C -->|All pass| D[Parent verification]
 ```
+
+</div>
+
+| Outcome | Continuation |
+| --- | --- |
+| Every check passes | Revalidate the source and receipts, then settle parent verification. Git delivery retains its own gates. |
+| A check fails | Retain the failed command and output preview for review. Further coding needs separate authorization. |
+| A result is uncertain | Hold the operation and read its original records. An unfinished intent cannot be replayed. |
 
 The owning execution leader prepares the candidate. Admission rechecks the current operator, project access and host-administrator permission, then records a queued request through the native execution-request repositories. The HTTP request executes no project commands. Status reads inspect the retained operation under current authority.
 
