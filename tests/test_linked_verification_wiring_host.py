@@ -21,6 +21,17 @@ def test_native_configuration_connects_one_verification_service_to_engine_and_ow
     assert engine.linked_verifications is requests.linked_verifications is service
 
 
+def test_native_configuration_connects_scm_consent_to_the_same_worker_and_conversation():
+    store, polling, verifications = (SimpleNamespace() for _ in range(3))
+    collaboration = SimpleNamespace(store=store, polling=polling)
+    config = object.__new__(FactoryConfiguration)
+    authority = config.scm_linked_verification_authority(store, collaboration, verifications)
+    assert authority.store is store and authority.polling is polling
+    assert authority.verifications is verifications
+    assert authority.conversations.collaboration is collaboration
+    assert store.scm_linked_verification_authority is collaboration.linked_verification_authority is authority
+
+
 async def test_native_event_query_keeps_full_finite_ledger_above100_and_rejects_overflow(monkeypatch):
     queries = []
     rows = [object() for _ in range(104)]

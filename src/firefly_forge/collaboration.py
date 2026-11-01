@@ -54,6 +54,7 @@ if TYPE_CHECKING:
     from firefly_forge.channel_actions import ChannelCommand
     from firefly_forge.scm_conversation_models import AddressedStatusV1
     from firefly_forge.scm_functional_address import AddressedFunctionalV1
+    from firefly_forge.scm_linked_verification import SCMLinkedVerifications
     from firefly_forge.scm_product_change_service import SCMProductChangeAuthority
     from firefly_forge.scm_product_intake import SCMProductIntake
     from firefly_forge.scm_product_intake_models import SCMProductIntakeCommandV1
@@ -345,6 +346,7 @@ class Collaboration:
         self.resume_authority = resume_authority
         self.poll_resume_authority: Any = None
         self.poll_functional_authority: Any = None
+        self.linked_verification_authority: SCMLinkedVerifications | None = None
         self.source_edit_authority: Any = None
         self.product_change_authority: SCMProductChangeAuthority | None = product_change_authority
         self.product_intake_authority: SCMProductIntake | None = product_intake_authority

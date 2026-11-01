@@ -245,6 +245,7 @@ from firefly_forge.sandbox_persistence import ForgeSandboxRepository
 from firefly_forge.scm_actor_authority import SCMActorAuthority
 from firefly_forge.scm_actor_authority_controllers import SCMActorAuthorityController
 from firefly_forge.scm_connections import SCMConnections
+from firefly_forge.scm_linked_verification import SCMLinkedVerifications
 from firefly_forge.scm_maintain_ticket_controllers import MaintainTicketController
 from firefly_forge.scm_natural_controllers import SCMNaturalController
 from firefly_forge.scm_poll_controllers import SCMPollController
@@ -863,6 +864,15 @@ class FactoryConfiguration:
         requests.linked_verifications = verifications
         engine.linked_verifications = verifications
         return verifications
+
+    @bean
+    def scm_linked_verification_authority(
+        self, store: Store, collaboration: Collaboration, verifications: LinkedVerifications
+    ) -> SCMLinkedVerifications:
+        authority = SCMLinkedVerifications(collaboration, verifications)
+        store.scm_linked_verification_authority = authority
+        collaboration.linked_verification_authority = authority
+        return authority
 
     @bean
     def provider_recoveries(self, store: Store, journal: Journal, engine: Engine) -> ProviderRecoveries:
