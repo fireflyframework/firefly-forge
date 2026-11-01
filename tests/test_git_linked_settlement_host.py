@@ -24,7 +24,9 @@ async def test_complete_git_settlement_revalidates_inputs_then_fences_exact_nati
     )
     monkeypatch.setattr(linked_verifications, "_policy_material_digest", lambda: result["candidate"]["policy_digest"])
     monkeypatch.setattr(linked_verifications, "profile_digest", lambda: result["candidate"]["profile_digest"])
-    deliveries = SimpleNamespace(store=env.store, journal=env.journal, engine=env.engine)
+    deliveries = SimpleNamespace(
+        store=env.store, journal=env.journal, engine=env.engine, workspace=lambda _: env.workspace
+    )
     prepared = await assert_linked_git_closed(deliveries, env.run_id)
     assert prepared is not None
     before = copy.deepcopy((await env.store.get_run(env.run_id), await env.journal.entries(env.run_id)))
