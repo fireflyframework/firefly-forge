@@ -98,6 +98,22 @@ class LinkedVerificationSettlementV1(BaseModel):
     checks_count: int = Field(ge=1)
 
 
+class LinkedVerificationFailureV1(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True, hide_input_in_errors=True)
+    ordinal: int = Field(ge=1)
+    command_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+    exit_code: int
+    output_preview: str
+    output_truncated: bool
+    event_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+    @model_validator(mode="after")
+    def actual_failure(self) -> LinkedVerificationFailureV1:
+        if self.exit_code == 0 or len(self.output_preview.encode()) > 2000:
+            raise ValueError("Failure evidence requires a nonzero result and bounded retained-output preview")
+        return self
+
+
 class LinkedVerificationReceiptV1(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, frozen=True, hide_input_in_errors=True)
     version: Literal[1] = 1
@@ -113,6 +129,7 @@ class LinkedVerificationReceiptV1(BaseModel):
     no_coding_grant: Literal[True] = True
     original_budget_preserved: Literal[True] = True
     settlement: LinkedVerificationSettlementV1 | None = Field(default=None, exclude_if=lambda value: value is None)
+    last_failure: LinkedVerificationFailureV1 | None = Field(default=None, exclude_if=lambda value: value is None)
     detail: str = Field(default="", max_length=4000)
 
     @field_validator("version", mode="before")
@@ -140,6 +157,10 @@ class LinkedVerificationReceiptV1(BaseModel):
             and (self.progress.unknown or self.progress.completed == 0)
         ):
             raise ValueError("Linked verification receipt differs from its exact admission")
+        if self.last_failure is not None and (
+            not self.progress.failed or self.last_failure.ordinal != self.progress.completed
+        ):
+            raise ValueError("Failure preview must describe the last known failed result")
         if self.status == "queued" and self.progress != VerificationProgress(
             started=0, completed=0, next_ordinal=None, unknown=False, failed=False, ready_to_settle=False
         ):
@@ -175,7 +196,7 @@ def verification_progress(operation: Data, events: list[Data]) -> VerificationPr
         or type(budget) is not int
         or budget < 1
         or budget != len(commands)
-        or operation["commands_digest"] != digest({"commands": commands})
+        or operation["commands_digest"] != native_digest({"commands": commands})
         or not events
         or len(events) > 2 * budget + 5
         or not ExecutionRequests.verify_chain(events)
@@ -186,6 +207,8 @@ def verification_progress(operation: Data, events: list[Data]) -> VerificationPr
     pending: str | None = None
     failed = claimed = finished = False
     for index, event in enumerate(events):
+        if finished:
+            raise ValueError("A closed verification ledger cannot admit another event")
         kind, evidence = event["kind"], event["evidence"]
         if index == 0:
             if kind != "linked_verification_admitted" or evidence != {"request_digest": operation["request_digest"]}:
@@ -200,7 +223,7 @@ def verification_progress(operation: Data, events: list[Data]) -> VerificationPr
             ordinal = evidence.get("ordinal")
             if type(ordinal) is not int or evidence != {
                 "ordinal": started + 1,
-                "command_digest": digest(commands[started]),
+                "command_digest": native_digest(commands[started]),
                 "inputs_digest": operation["inputs_digest"],
             }:
                 raise ValueError("Verification effect differs from its exact declared command or inputs")
@@ -226,6 +249,20 @@ def verification_progress(operation: Data, events: list[Data]) -> VerificationPr
                 raise ValueError("Parent verification requires all independent fresh checks to succeed")
             if evidence != {"inputs_digest": operation["inputs_digest"], "completed": budget}:
                 raise ValueError("Linked verification completion changed its input or effect count")
+            finished = True
+        elif kind == "linked_verification_held":
+            if (
+                finished
+                or set(evidence) != {"reason"}
+                or evidence["reason"]
+                not in {
+                    "check_failed",
+                    "inputs_changed",
+                    "unknown",
+                    "shutdown",
+                }
+            ):
+                raise ValueError("Verification hold cannot replace a closed native outcome")
             finished = True
         else:
             raise ValueError("Unrecognized activity cannot extend a verification-only operation")

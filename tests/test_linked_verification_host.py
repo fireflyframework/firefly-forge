@@ -216,3 +216,80 @@ def test_receipt_refuses_status_and_progress_contradictions(status, change):
     value["progress"].update(change)
     with pytest.raises(ValueError):
         LinkedVerificationReceiptV1.model_validate(value)
+
+
+def test_unicode_declared_commands_use_native_digest_without_changing_event_hashes():
+    from firefly_forge.journal import digest as native_digest
+    from firefly_forge.linked_verification_models import verification_progress
+
+    value, events = operation(1), admission()
+    value["commands"][0]["argv"].append("inventário–日本語")
+    value["commands_digest"] = native_digest({"commands": value["commands"]})
+    append(
+        events,
+        "linked_verification_command_intent",
+        {
+            "ordinal": 1,
+            "command_digest": native_digest(value["commands"][0]),
+            "inputs_digest": value["inputs_digest"],
+        },
+    )
+    progress = verification_progress(value, events)
+    assert progress.started == 1 and progress.unknown and progress.next_ordinal is None
+
+
+@pytest.mark.parametrize("change", [{}, {"exit_code": 0}, {"output_preview": "é" * 1001}])
+def test_failed_status_accepts_only_bounded_actual_nonzero_result_preview(change):
+    from linked_verification_fixtures import receipt
+
+    from firefly_forge.linked_verification_models import LinkedVerificationReceiptV1
+
+    value = receipt(status="failed")
+    value["last_failure"] = {
+        "ordinal": 1,
+        "command_digest": "1" * 64,
+        "exit_code": 2,
+        "output_preview": "Controlled assertion failed",
+        "output_truncated": False,
+        "event_digest": "2" * 64,
+        **change,
+    }
+    if change:
+        with pytest.raises(ValueError):
+            LinkedVerificationReceiptV1.model_validate(value)
+    else:
+        parsed = LinkedVerificationReceiptV1.model_validate(value)
+        assert parsed.last_failure.exit_code == 2
+        value["progress"]["failed"] = False
+        value["status"] = "needs_reconciliation"
+        with pytest.raises(ValueError):
+            LinkedVerificationReceiptV1.model_validate(value)
+
+
+def test_closed_unknown_ledger_cannot_accept_a_late_unadmitted_result():
+    from firefly_forge.linked_verification_models import verification_progress
+
+    value, events = operation(1), admission()
+    intent = append(
+        events,
+        "linked_verification_command_intent",
+        {
+            "ordinal": 1,
+            "command_digest": digest(value["commands"][0]),
+            "inputs_digest": value["inputs_digest"],
+        },
+    )
+    append(events, "linked_verification_held", {"reason": "unknown"})
+    assert verification_progress(value, events).unknown
+    append(
+        events,
+        "linked_verification_command_result",
+        {
+            "ordinal": 1,
+            "intent_digest": intent["digest"],
+            "exit_code": 0,
+            "output": "Unadmitted late result",
+        },
+    )
+    with pytest.raises(ValueError):
+        verification_progress(value, events)
