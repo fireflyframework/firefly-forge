@@ -135,8 +135,30 @@ class EngineActivity:
                         self.scopes[(run_id, key)] = LocalStage(row, run_id, key, task, ownership)
                 if row is not None and (self.poller is None or self.poller.done()):
                     self.poller = asyncio.create_task(self._poll(), context=Context())
-        except Exception:
-            log.warning("Engine stage observation unavailable; recorded task state remains unchanged")
+        except Exception as error:
+            kind = type(error).__name__
+            if kind not in {
+                "TimeoutError",
+                "RuntimeError",
+                "ValueError",
+                "KeyError",
+                "OSError",
+                "AccessDenied",
+                "SQLAlchemyError",
+                "DBAPIError",
+                "OperationalError",
+                "IntegrityError",
+                "InterfaceError",
+                "ProgrammingError",
+                "InvalidRequestError",
+                "MissingGreenlet",
+                "PendingRollbackError",
+                "ResourceClosedError",
+            }:
+                kind = "Exception"
+            log.warning(
+                "Engine stage observation unavailable; recorded task state remains unchanged; exception_kind=%s", kind
+            )
 
     async def end(self, run_id: str, key: str | None = None) -> None:
         async with self.lock:

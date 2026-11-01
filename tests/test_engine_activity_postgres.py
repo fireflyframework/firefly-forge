@@ -11,7 +11,7 @@ from sqlalchemy.orm import aliased
 
 from firefly_forge.access_persistence import ForgeMembershipEntity, ForgeMembershipRepository
 from firefly_forge.engine import Engine
-from firefly_forge.engine_activity import EngineActivity
+from firefly_forge.engine_activity import EngineActivity, EngineActivitySettings
 from firefly_forge.engine_activity_persistence import (
     ForgeEngineActivityEntity,
     ForgeEngineActivityRepository,
@@ -74,7 +74,8 @@ async def stage(store, tmp_path):
             ForgeTaskEntity(run_id=run, plan_id=plan, task_id="implement", status="queued", attempt=1, data={})
         )
     await store.acquire_ownership()
-    activity = EngineActivity(store, ForgeEngineActivityRepository())
+    # SQL custody predicates have an explicit sampling budget; timeout behavior is tested separately on the host.
+    activity = EngineActivity(store, ForgeEngineActivityRepository(), EngineActivitySettings(sample_timeout_seconds=10))
     engine = Engine(store, tmp_path / "workspaces", journal=Journal(store), stage_activity=activity)
     engine.enforce_ownership = True
     value = SimpleNamespace(
