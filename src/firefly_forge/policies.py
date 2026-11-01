@@ -15,14 +15,34 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from pyfly.container import service
 
 from firefly_forge.configuration import ConfigurationStore
-from firefly_forge.models import Command, RepositoryInput
+from firefly_forge.models import Command, NewWorkCommand, RepositoryInput
 from firefly_forge.process import checked
 from firefly_forge.prompts import prompt_text
+from firefly_forge.quality_gate_models import QualityGateContractV1
 from firefly_forge.skills import SKILLS
 
 
-class PolicyCommand(Command):
-    backends: list[Literal["pyfly", "larafly", "java", "rust", "dotnet"]] = Field(min_length=1, max_length=5)
+class PolicyCommand(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    argv: list[str]
+    timeout: int | None = 300
+    backends: list[Literal["none", "pyfly", "larafly", "java", "rust", "dotnet"]] = Field(min_length=1, max_length=6)
+    quality: QualityGateContractV1 | None = Field(default=None, exclude_if=lambda value: value is None)
+
+    @model_validator(mode="before")
+    @classmethod
+    def command_contract(cls, value: Any) -> Any:
+        if isinstance(value, dict):
+            fields = {"argv": value.get("argv")}
+            if "timeout" in value:
+                fields["timeout"] = value["timeout"]
+            command = (
+                NewWorkCommand.model_validate(fields)
+                if value.get("quality") is not None
+                else Command.model_validate(fields)
+            )
+            return {**value, **command.model_dump()}
+        return value
 
 
 class SkillProvenance(BaseModel):
@@ -230,11 +250,34 @@ def inject_policy_snapshot(brief: str, snapshot: dict[str, Any]) -> str:
     )
 
 
-def policy_commands(snapshot: dict[str, Any], backend: str) -> list[Command]:
-    commands = []
+def policy_commands(snapshot: dict[str, Any], backend: str) -> list[Command | NewWorkCommand]:
+    from firefly_forge.quality_policies import QualityCommand
+
+    commands: list[Command | NewWorkCommand] = []
     for skill in snapshot.get("skills", []):
         if skill["kind"] == "quality_gate":
-            for command in skill["commands"]:
+            for index, command in enumerate(skill["commands"]):
                 if backend in command["backends"]:
-                    commands.append(Command(argv=command["argv"], timeout=command["timeout"]))
+                    if command.get("quality") is None:
+                        commands.append(Command(argv=command["argv"], timeout=command["timeout"]))
+                    else:
+                        contract = QualityGateContractV1.model_validate(command["quality"])
+                        commands.extend(
+                            [
+                                QualityCommand(
+                                    argv=list(contract.tool.probe.argv),
+                                    timeout=contract.tool.probe.timeout,
+                                    gate_id=f"{skill['id']}:{index}",
+                                    quality_contract=contract,
+                                    phase="prerequisite",
+                                ),
+                                QualityCommand(
+                                    argv=list(command["argv"]),
+                                    timeout=command["timeout"],
+                                    phase="check",
+                                    gate_id=f"{skill['id']}:{index}",
+                                    quality_contract=contract,
+                                ),
+                            ]
+                        )
     return commands

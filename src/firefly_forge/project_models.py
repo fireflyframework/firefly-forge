@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from firefly_forge.agent_roles import ProjectRoles
 from firefly_forge.models import Backend, Command, Frontend
+from firefly_forge.quality_policies import ProjectQualityPolicyV1
 
 
 def component_path(value: str) -> str:
@@ -60,6 +61,7 @@ class ProjectDefinition(BaseModel):
     components: list[ProjectComponent] = Field(min_length=1)
     owners: list[str] = Field(min_length=1)
     roles: ProjectRoles | None = None
+    quality_policy: ProjectQualityPolicyV1 | None = Field(default=None, exclude_if=lambda value: value is None)
 
     @model_validator(mode="after")
     def coherent_topology(self) -> ProjectDefinition:

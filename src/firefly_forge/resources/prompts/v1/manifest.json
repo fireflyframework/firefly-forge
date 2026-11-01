@@ -3209,6 +3209,18 @@
       "sha256": "e61adbba0a3c2621daa1405b6c637f7a0f87f690eb857e8679f0f5b5b4a3bbaa",
       "field": "user",
       "variables": {}
+    },
+    {
+      "id": "skills/quality-gate",
+      "version": "1.0.0",
+      "path": "skills/quality-gate.yaml",
+      "sha256": "fac330ae8151e87bc67d578327e20f0421a61cb6153781e119287c55e3f66c8f",
+      "field": "user",
+      "variables": {
+        "tool": "string",
+        "category": "string",
+        "configuration_files": "string"
+      }
     }
   ]
 }
