@@ -114,6 +114,48 @@ class LinkedVerificationFailureV1(BaseModel):
         return self
 
 
+VerificationHoldPhase = Literal[
+    "prepare",
+    "admission",
+    "command_inputs",
+    "dispatch",
+    "result_retention",
+    "post_result_inputs",
+    "post_result_source",
+    "post_result_recapture",
+    "post_result_authority",
+    "settlement",
+]
+
+
+class LinkedVerificationHoldDiagnosticV1(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True, hide_input_in_errors=True)
+    phase: VerificationHoldPhase
+    cause_code: Literal[
+        "preparation_refused",
+        "admission_refused",
+        "input_scope_changed",
+        "transport_error",
+        "result_retention_refused",
+        "selected_source_changed",
+        "source_capture_refused",
+        "authority_refused",
+        "settlement_refused",
+    ]
+    exception_type: Literal[
+        "ValueError",
+        "RuntimeError",
+        "TimeoutError",
+        "OSError",
+        "PermissionError",
+        "FileNotFoundError",
+        "TypeError",
+        "AssertionError",
+        "AccessDenied",
+        "Exception",
+    ]
+
+
 class LinkedVerificationReceiptV1(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, frozen=True, hide_input_in_errors=True)
     version: Literal[1] = 1
@@ -130,6 +172,9 @@ class LinkedVerificationReceiptV1(BaseModel):
     original_budget_preserved: Literal[True] = True
     settlement: LinkedVerificationSettlementV1 | None = Field(default=None, exclude_if=lambda value: value is None)
     last_failure: LinkedVerificationFailureV1 | None = Field(default=None, exclude_if=lambda value: value is None)
+    hold_diagnostic: LinkedVerificationHoldDiagnosticV1 | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     detail: str = Field(default="", max_length=4000)
 
     @field_validator("version", mode="before")
@@ -161,6 +206,8 @@ class LinkedVerificationReceiptV1(BaseModel):
             not self.progress.failed or self.last_failure.ordinal != self.progress.completed
         ):
             raise ValueError("Failure preview must describe the last known failed result")
+        if self.hold_diagnostic is not None and self.status not in {"failed", "needs_reconciliation"}:
+            raise ValueError("Hold diagnostics require their actual closed operation")
         if self.status == "queued" and self.progress != VerificationProgress(
             started=0, completed=0, next_ordinal=None, unknown=False, failed=False, ready_to_settle=False
         ):
@@ -253,7 +300,7 @@ def verification_progress(operation: Data, events: list[Data]) -> VerificationPr
         elif kind == "linked_verification_held":
             if (
                 finished
-                or set(evidence) != {"reason"}
+                or set(evidence) not in ({"reason"}, {"reason", "diagnostic"})
                 or evidence["reason"]
                 not in {
                     "check_failed",
@@ -263,6 +310,8 @@ def verification_progress(operation: Data, events: list[Data]) -> VerificationPr
                 }
             ):
                 raise ValueError("Verification hold cannot replace a closed native outcome")
+            if "diagnostic" in evidence:
+                LinkedVerificationHoldDiagnosticV1.model_validate(evidence["diagnostic"])
             finished = True
         else:
             raise ValueError("Unrecognized activity cannot extend a verification-only operation")
