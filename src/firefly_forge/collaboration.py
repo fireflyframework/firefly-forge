@@ -2096,7 +2096,6 @@ class Collaboration:
                     else None,
                 )
             verification = getattr(self, "linked_verification_authority", None)
-            linked_input = await verification.communication(data) if verification is not None else None
             native_reader = getattr(self, "native_verification_status", None)
             native_status = (
                 natural_status
@@ -2104,10 +2103,15 @@ class Collaboration:
                 and (conversation_input is not None or data.get("command", {}).get("action") == "status")
             )
             native_input = (
-                await native_reader.for_delivery(data)
-                if native_reader is not None and linked_input is None and native_status
+                await native_reader.for_delivery(data) if native_reader is not None and native_status else None
+            )
+            linked_input = (
+                await verification.communication(data)
+                if verification is not None and (native_input is None or native_input.current_request_id is None)
                 else None
             )
+            if linked_input is not None:
+                native_input = None
             assistant_input = assistant_communication(data, repository=repo, host=host)
             drafted: Data
             if retained is not None:

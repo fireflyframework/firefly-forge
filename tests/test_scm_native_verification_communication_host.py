@@ -65,7 +65,17 @@ async def test_classifier_current_facts_include_native_progress_without_a_fake_s
 
 @pytest.mark.parametrize(
     "outcome",
-    ["sent", "unknown", "progress_during_draft", "progress_before_write", "revoked", "unconfigured", "lost_response"],
+    [
+        "sent",
+        "unknown",
+        "progress_during_draft",
+        "progress_before_write",
+        "revoked",
+        "unconfigured",
+        "lost_response",
+        "old_scm_proposal",
+        "revoked_scm_proposal",
+    ],
 )
 async def test_native_status_feedback_is_reviewed_fresh_and_never_reposted(delegated_feedback, tmp_path, outcome):
     service, row, run, sent, state = delegated_feedback
@@ -94,6 +104,17 @@ async def test_native_status_feedback_is_reviewed_fresh_and_never_reposted(deleg
         return read_state["view"]
 
     service.native_verification_status = SimpleNamespace(for_delivery=current)
+    if outcome in {"old_scm_proposal", "revoked_scm_proposal"}:
+        from firefly_forge.scm_linked_verification_records import SCMVerificationCommunicationV1
+
+        async def old_proposal(data):
+            if outcome == "revoked_scm_proposal":
+                raise AccessDenied(
+                    "Old SCM proposal execute/admin consent was revoked; current ticket read remains valid"
+                )
+            return SCMVerificationCommunicationV1(phase="held", hold_reason="native_review_unconfirmed")
+
+        service.linked_verification_authority = SimpleNamespace(communication=old_proposal)
     if outcome != "unconfigured":
         service.store.task_router = (await configured_store(tmp_path)).task_router
     facts = communication_facts(
