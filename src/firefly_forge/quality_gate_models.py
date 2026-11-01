@@ -116,6 +116,9 @@ class QualityBindingV1(BaseModel):
     lock_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
     configuration_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
     framework_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+    execution_scope_digest: str | None = Field(
+        default=None, pattern=r"^[a-f0-9]{64}$", exclude_if=lambda value: value is None
+    )
 
 
 class QualityStepDescriptorV1(BaseModel):

@@ -126,3 +126,14 @@ def test_quality_reason_codes_cannot_be_replaced_with_untrusted_error_text():
     value["digest"] = digest({k: v for k, v in value.items() if k != "digest"})
     with pytest.raises(ValueError):
         QualityObservationV1.model_validate(value)
+
+
+def test_execution_scope_binding_is_optional_for_pure_contracts_but_strict_when_present():
+    from firefly_forge.quality_gate_models import QualityBindingV1
+
+    value = observe().binding.model_dump(mode="json")
+    assert "execution_scope_digest" not in value
+    bound = QualityBindingV1.model_validate({**value, "execution_scope_digest": "a" * 64})
+    assert bound.execution_scope_digest == "a" * 64
+    with pytest.raises(ValueError):
+        QualityBindingV1.model_validate({**value, "execution_scope_digest": True})
