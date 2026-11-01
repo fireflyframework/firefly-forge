@@ -5,6 +5,7 @@ from uuid import UUID, uuid4
 
 import httpx
 import pytest
+from native_role_fixture import postgres_schema as postgres_schema
 from sqlalchemy import text
 from test_run_creation_scopes_native import nonadministrator
 

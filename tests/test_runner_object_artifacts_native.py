@@ -8,6 +8,7 @@ from dataclasses import replace
 
 import httpx
 import pytest
+from native_role_fixture import postgres_schema as postgres_schema
 from sqlalchemy import text
 from test_runner_controller import controller_schema as controller_schema
 from test_runner_controller import settings as controller_settings
