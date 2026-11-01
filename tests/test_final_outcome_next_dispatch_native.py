@@ -1,6 +1,7 @@
 # Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
 """Fictional native final acceptance followed by an ordinary verified worker dispatch."""
 
+import asyncio
 import copy
 import json
 from functools import wraps
@@ -16,6 +17,7 @@ from test_final_outcome_continuation_native import (
 
 from firefly_forge.agent_checkpoints import AgentCheckpoints
 from firefly_forge.journal import Journal
+from firefly_forge.project_access import CURRENT_PRINCIPAL
 from firefly_forge.workspace_tools import WorkspaceTools
 
 pytest_plugins = ["test_invalid_read_continuity_native"]
@@ -53,6 +55,7 @@ async def test_native_known_final_verification_queues_a_real_next_dispatch_witho
     if scenario == "source_edit":
         (workspace / "existing.py").write_text("VALUE = 99\n")
     admit = c.store.admit_credentials
+    actor_id = c.actor.id
 
     async def late_change(value):
         await admit(value)
@@ -62,10 +65,9 @@ async def test_native_known_final_verification_queues_a_real_next_dispatch_witho
             and value.get("summary") == "Fresh worker accepted the retained verification evidence"
         ):
             from firefly_forge.identity_persistence import ForgeIdentityUserRepository
-            from firefly_forge.project_access import CURRENT_PRINCIPAL
 
             async with c.store._unit():
-                row = await ForgeIdentityUserRepository().find_by_id(CURRENT_PRINCIPAL.get().id)
+                row = await ForgeIdentityUserRepository().find_by_id(actor_id)
                 assert row is not None and row.enabled
                 row.enabled = False
                 await ForgeIdentityUserRepository().save(row)
@@ -131,8 +133,18 @@ async def test_native_known_final_verification_queues_a_real_next_dispatch_witho
     monkeypatch.setattr(WorkspaceTools, "read_file", refuse_callback(WorkspaceTools.read_file))
     monkeypatch.setattr(WorkspaceTools, "write_file", refuse_callback(WorkspaceTools.write_file))
     monkeypatch.setattr(model.client._client, "_transport", httpx2.MockTransport(transport))
-    with mock_model_requests(model):
+
+    async def background_worker():
+        assert CURRENT_PRINCIPAL.get() is None
         await c.engine.execute_run(c.run_id)
+        assert CURRENT_PRINCIPAL.get() is None
+
+    reader = CURRENT_PRINCIPAL.set(None)
+    try:
+        with mock_model_requests(model):
+            await asyncio.create_task(background_worker())
+    finally:
+        CURRENT_PRINCIPAL.reset(reader)
     final = await c.store.get_run(c.run_id)
     if scenario == "actor_revoked":
         from firefly_forge.known_worker_completions import _entries

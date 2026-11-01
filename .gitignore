@@ -9,7 +9,7 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
-node_modules/
+node_modules
 dist/
 build/
 site/

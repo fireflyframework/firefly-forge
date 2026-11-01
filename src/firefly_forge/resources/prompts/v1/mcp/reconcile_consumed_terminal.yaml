@@ -1,0 +1,13 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/reconcile_consumed_terminal
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Submit the reviewed reconciliation digest and three explicit acknowledgments
+  for this same claimed request once. Append native reconciliation authority and continue
+  only local postprocessing of known output in the same task attempt, then pause.
+  No model, tool, verification, QA or publication dispatch is granted. After uncertain
+  delivery read reconciliation status; do not repeat POST or choose another identity.
+required_variables: []
+metadata:
+  defaults: {}

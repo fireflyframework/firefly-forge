@@ -358,7 +358,10 @@ test("actor and API address changes clear selection and loaded plan", async ({
   await expectOverview(page);
   await selectB(page);
   await navigate(page, "Connections");
-  await page.getByRole("button", { name: "Workspace", exact: true }).click();
+  await page
+    .getByRole("list", { name: "Setup progress" })
+    .getByRole("button", { name: /Workspace/ })
+    .click();
   const base = new URL("/second/api/v1", page.url()).href;
   await page.getByLabel("API address", { exact: true }).fill(base);
   await page

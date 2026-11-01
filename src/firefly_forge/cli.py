@@ -40,6 +40,168 @@ def main() -> None:
 main.add_command(native_locations)
 
 
+@main.group("consumed-terminal-completions")
+def consumed_terminal_completions() -> None:
+    """Review saved terminal output and request local postprocessing without a new execution grant."""
+
+
+@consumed_terminal_completions.command("candidate")
+@click.argument("run_id")
+def consumed_terminal_candidate(run_id: str) -> None:
+    with client() as connection:
+        display(connection.consumed_terminal_candidate(run_id))
+
+
+@consumed_terminal_completions.command("request")
+@click.argument("run_id")
+@click.argument("request_id")
+@click.option("--candidate-digest", required=True, help="Exact digest of the reviewed version-2 candidate.")
+@click.option("--policy-digest", required=True, help="Policy digest from that candidate.")
+@click.option("--expected-run-digest", required=True, help="Run digest from that candidate.")
+@click.option("--journal-digest", required=True, help="Journal digest from that candidate.")
+@click.option("--proof-digest", required=True, help="Proof digest from that candidate.")
+@click.option(
+    "--acknowledge-known-worker-output",
+    is_flag=True,
+    required=True,
+    help="Confirm that the saved worker output is known.",
+)
+@click.option(
+    "--acknowledge-no-execution-grant",
+    is_flag=True,
+    required=True,
+    help="Confirm that this request grants no execution authority.",
+)
+@click.option(
+    "--acknowledge-local-postprocessing",
+    is_flag=True,
+    required=True,
+    help="Allow only the reviewed local postprocessing, then pause before QA.",
+)
+def request_consumed_terminal(
+    run_id: str,
+    request_id: str,
+    candidate_digest: str,
+    policy_digest: str,
+    expected_run_digest: str,
+    journal_digest: str,
+    proof_digest: str,
+    acknowledge_known_worker_output: bool,
+    acknowledge_no_execution_grant: bool,
+    acknowledge_local_postprocessing: bool,
+) -> None:
+    request = dict(
+        version=2,
+        candidate_digest=candidate_digest,
+        policy_digest=policy_digest,
+        expected_run_digest=expected_run_digest,
+        journal_digest=journal_digest,
+        proof_digest=proof_digest,
+        acknowledge_known_worker_output=acknowledge_known_worker_output,
+        acknowledge_no_execution_grant=acknowledge_no_execution_grant,
+        acknowledge_local_postprocessing=acknowledge_local_postprocessing,
+    )
+    with client() as connection:
+        display(connection.request_consumed_terminal(run_id, request_id, request))
+
+
+@consumed_terminal_completions.command("status")
+@click.argument("run_id")
+@click.argument("request_id")
+def consumed_terminal_status(run_id: str, request_id: str) -> None:
+    with client() as connection:
+        display(connection.consumed_terminal_status(run_id, request_id))
+
+
+@consumed_terminal_completions.command("reconciliation-candidate")
+@click.argument("run_id")
+@click.argument("request_id")
+def consumed_terminal_reconciliation_candidate(run_id: str, request_id: str) -> None:
+    with client() as connection:
+        display(connection.consumed_terminal_reconciliation_candidate(run_id, request_id))
+
+
+@consumed_terminal_completions.command("reconciliation-status")
+@click.argument("run_id")
+@click.argument("request_id")
+def consumed_terminal_reconciliation_status(run_id: str, request_id: str) -> None:
+    with client() as connection:
+        display(connection.consumed_terminal_reconciliation_status(run_id, request_id))
+
+
+@consumed_terminal_completions.command("reconcile")
+@click.argument("run_id")
+@click.argument("request_id")
+@click.option("--candidate-digest", required=True)
+@click.option("--acknowledge-same-claimed-action", is_flag=True, required=True)
+@click.option("--acknowledge-no-execution-grant", is_flag=True, required=True)
+@click.option("--acknowledge-local-postprocessing", is_flag=True, required=True)
+def reconcile_consumed_terminal(
+    run_id: str,
+    request_id: str,
+    candidate_digest: str,
+    acknowledge_same_claimed_action: bool,
+    acknowledge_no_execution_grant: bool,
+    acknowledge_local_postprocessing: bool,
+) -> None:
+    request = dict(
+        version=1,
+        candidate_digest=candidate_digest,
+        acknowledge_same_claimed_action=acknowledge_same_claimed_action,
+        acknowledge_no_execution_grant=acknowledge_no_execution_grant,
+        acknowledge_local_postprocessing=acknowledge_local_postprocessing,
+    )
+    with client() as connection:
+        display(connection.reconcile_consumed_terminal(run_id, request_id, request))
+
+
+@main.group("linked-verifications")
+def linked_verifications() -> None:
+    """Review and explicitly admit one independent set of fresh checks, without coding."""
+
+
+@linked_verifications.command("candidate")
+@click.argument("run_id")
+def linked_verification_candidate(run_id: str) -> None:
+    with client() as connection:
+        display(connection.linked_verification_candidate(run_id))
+
+
+@linked_verifications.command("request")
+@click.argument("run_id")
+@click.option("--request-id", required=True)
+@click.option("--candidate-digest", required=True)
+@click.option("--acknowledge-all-fresh-checks", is_flag=True, required=True)
+@click.option("--acknowledge-no-coding-or-repair", is_flag=True, required=True)
+@click.option("--acknowledge-original-history-and-budget-preserved", is_flag=True, required=True)
+def request_linked_verification(
+    run_id: str,
+    request_id: str,
+    candidate_digest: str,
+    acknowledge_all_fresh_checks: bool,
+    acknowledge_no_coding_or_repair: bool,
+    acknowledge_original_history_and_budget_preserved: bool,
+) -> None:
+    request = dict(
+        version=1,
+        request_id=request_id,
+        candidate_digest=candidate_digest,
+        acknowledge_all_fresh_checks=acknowledge_all_fresh_checks,
+        acknowledge_no_coding_or_repair=acknowledge_no_coding_or_repair,
+        acknowledge_original_history_and_budget_preserved=acknowledge_original_history_and_budget_preserved,
+    )
+    with client() as connection:
+        display(connection.request_linked_verification(run_id, request))
+
+
+@linked_verifications.command("status")
+@click.argument("run_id")
+@click.argument("request_id")
+def linked_verification_status(run_id: str, request_id: str) -> None:
+    with client() as connection:
+        display(connection.linked_verification_status(run_id, request_id))
+
+
 @main.group("final-outcome-continuations")
 def final_outcome_continuations() -> None:
     """Review a final result that was already consumed and keep its original request."""
@@ -498,6 +660,106 @@ def json_document(path: Path) -> dict[str, Any]:
 @main.group()
 def project() -> None:
     """Manage logical products and inspect their existing source."""
+
+
+@project.group("github-projects")
+def github_projects() -> None:
+    """Connect a separately authorized GitHub board and inspect retained outcomes."""
+
+
+@github_projects.command("create")
+@click.argument("project_id")
+@click.argument("repository_id")
+@click.argument("document", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def github_projects_create(project_id: str, repository_id: str, document: Path) -> None:
+    """Create one private personal board through an explicitly connected OAuth user."""
+    with client() as connection:
+        display(
+            connection.create_github_projects(project_id, repository_id, json_document(document)).model_dump(
+                mode="json"
+            )
+        )
+
+
+@github_projects.command("creation")
+@click.argument("project_id")
+@click.argument("repository_id")
+@click.argument("request_id")
+def github_projects_creation(project_id: str, repository_id: str, request_id: str) -> None:
+    """Read creation custody; an unknown result never authorizes another create."""
+    with client() as connection:
+        display(connection.github_projects_creation(project_id, repository_id, request_id).model_dump(mode="json"))
+
+
+@github_projects.command("show")
+@click.argument("project_id")
+@click.argument("repository_id")
+def github_projects_show(project_id: str, repository_id: str) -> None:
+    with client() as connection:
+        display(connection.github_projects_connection(project_id, repository_id).model_dump(mode="json"))
+
+
+@github_projects.command("discover")
+@click.argument("project_id")
+@click.argument("repository_id")
+@click.argument("document", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def github_projects_discover(project_id: str, repository_id: str, document: Path) -> None:
+    with client() as connection:
+        display(
+            connection.discover_github_projects(project_id, repository_id, json_document(document)).model_dump(
+                mode="json"
+            )
+        )
+
+
+@github_projects.command("configure")
+@click.argument("project_id")
+@click.argument("repository_id")
+@click.argument("document", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def github_projects_configure(project_id: str, repository_id: str, document: Path) -> None:
+    with client() as connection:
+        display(
+            connection.configure_github_projects(project_id, repository_id, json_document(document)).model_dump(
+                mode="json"
+            )
+        )
+
+
+@github_projects.command("sync")
+@click.argument("project_id")
+@click.argument("repository_id")
+@click.argument("run_id")
+@click.argument("document", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def github_projects_sync(project_id: str, repository_id: str, run_id: str, document: Path) -> None:
+    with client() as connection:
+        display(
+            connection.sync_github_projects(project_id, repository_id, run_id, json_document(document)).model_dump(
+                mode="json"
+            )
+        )
+
+
+@github_projects.command("receipt")
+@click.argument("project_id")
+@click.argument("repository_id")
+@click.argument("request_id")
+def github_projects_receipt(project_id: str, repository_id: str, request_id: str) -> None:
+    with client() as connection:
+        display(connection.github_projects_request(project_id, repository_id, request_id).model_dump(mode="json"))
+
+
+@github_projects.command("observe")
+@click.argument("project_id")
+@click.argument("repository_id")
+@click.argument("request_id")
+@click.argument("document", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def github_projects_observe(project_id: str, repository_id: str, request_id: str, document: Path) -> None:
+    with client() as connection:
+        display(
+            connection.observe_github_projects(
+                project_id, repository_id, request_id, json_document(document)
+            ).model_dump(mode="json")
+        )
 
 
 @project.command("list")

@@ -1,0 +1,13 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/request_consumed_terminal
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Submit the exact reviewed version-2 candidate hashes and all three
+  explicit acknowledgments under one saved request identity. This queues local postprocessing
+  of known consumed output only, then pauses before QA; it grants no model, tool,
+  verification, publication, or execution authority. After uncertain delivery, read
+  the same request status rather than submitting again.
+required_variables: []
+metadata:
+  defaults: {}

@@ -329,6 +329,14 @@ async def test_natural_status_wording_uses_the_configured_typed_route_instead_of
 ):  # noqa: F811
     async with poll_case() as c:
         service, _ = await prepared(c, monkeypatch, intent="status")
+        current_questions = []
+        write = c.collaboration.communication_writer.write
+
+        async def observe_question(*args, **kwargs):
+            current_questions.append(kwargs["conversation"].question)
+            return await write(*args, **kwargs)
+
+        monkeypatch.setattr(c.collaboration.communication_writer, "write", observe_question)
         c.state["clock"] += 3600
         c.state["comments"].append(c.comment(111, "@forge, what is the status?"))
         for _ in range(3):
@@ -338,6 +346,7 @@ async def test_natural_status_wording_uses_the_configured_typed_route_instead_of
         assert result.get("natural_turn"), "Status wording bypassed the configured typed natural route"
         assert result["natural_turn"]["resolution"]["state"] == "status"
         assert c.state["natural_calls"] == 1 and result["feedback_status"] == "sent"
+        assert current_questions == ["what is the status?"]
 
 
 async def test_old_pending_product_question_is_not_lost_behind_two_hundred_later_ticket_receipts(

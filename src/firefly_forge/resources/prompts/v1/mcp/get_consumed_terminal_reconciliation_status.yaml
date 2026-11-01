@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/get_consumed_terminal_reconciliation_status
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Read the same consumed-terminal reconciliation receipt after submission
+  or uncertain delivery. This read never retries continuation or queues another claim.
+required_variables: []
+metadata:
+  defaults: {}

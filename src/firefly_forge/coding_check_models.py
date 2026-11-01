@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from firefly_forge.models import Command
 
-CheckIndex = Annotated[int, Field(ge=0, le=19, strict=True)]
+CheckIndex = Annotated[int, Field(ge=0, strict=True)]
 
 
 class ConfiguredCheckRequest(BaseModel):
@@ -24,8 +24,8 @@ class CodingCheckGrantInput(BaseModel):
     recovery_request_id: str = Field(pattern=r"^[a-f0-9]{32}$")
     candidate_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
     expected_revision: int = Field(ge=0)
-    command_indices: list[CheckIndex] = Field(min_length=1, max_length=20)
-    call_limit: int = Field(ge=1, le=20)
+    command_indices: list[CheckIndex] = Field(min_length=1)
+    call_limit: int = Field(ge=1)
     valid_seconds: int = Field(ge=30, le=3600)
     bind_port: int = Field(default=0, ge=0, le=65535)
     reason: str = Field(min_length=1, max_length=2000)

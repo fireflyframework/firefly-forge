@@ -205,7 +205,6 @@ export function ExternalToolPrerequisites({
     <div ref={view} className="external-prerequisite-frame">
       <Wizard
         className="external-tools-wizard external-prerequisites"
-        minimumFieldHeight={64}
         progressMode="visited"
         steps={[
           "Requirements",

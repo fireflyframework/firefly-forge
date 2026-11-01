@@ -19,6 +19,25 @@ from firefly_forge.original_selection_proof import prepare_selection_readmission
 REASON = "Worker stopped without a durable receipt; inspect the retained source and external target"
 
 
+@pytest.mark.parametrize("provider", ["api", "bridge", "codex", "configured-worker-provider"])
+async def test_predispatch_failure_gets_a_restart_witness_without_provider_specific_rules(
+    mode_case, monkeypatch, provider
+):
+    c = mode_case
+    c.store.run.data["agent"] = provider
+
+    async def pending():
+        return [row for row in c.store.tasks.rows if row.status in {"running", "needs_reconciliation"}]
+
+    monkeypatch.setattr(c.journal.tasks, "find_pending_recovery", pending, raising=False)
+    before = copy.deepcopy(await c.store.get_run(c.run_id))
+    assert not any(row.kind == "bridge_request_intent" for row in c.store.records.rows)
+    assert await c.journal.recover() == 1
+    assert (await c.journal.entries(c.run_id))[-1]["kind"] == "recovery"
+    assert await c.store.get_run(c.run_id) == before
+    assert await c.journal.recover() == 0
+
+
 @pytest.fixture
 async def recovery_case(mode_case, monkeypatch):
     c = mode_case

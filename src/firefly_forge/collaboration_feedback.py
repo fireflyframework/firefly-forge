@@ -115,9 +115,10 @@ def verification_handoff(run: Data) -> Data:
         and value.get("status") in {"pending", "running"}
         or value.get("status") not in {"pending", "running", "completed", "held"}
         or any(
-            type(value.get(key, 0)) is not int or not 0 <= value.get(key, 0) <= 20
+            type(value.get(key, 0)) is not int or value.get(key, 0) < 0
             for key in ("commands_count", "completed_commands", "failed_commands")
         )
+        or not value.get("failed_commands", 0) <= value.get("completed_commands", 0) <= value.get("commands_count", 0)
     ):
         return {}
     return {
@@ -482,6 +483,19 @@ def communication_controls(data: Data, run: Data, repository: Data, host: str, s
         if url:
             safe(url)
             sections.append(prompt_text(template, url=url))
+    turn = data.get("natural_turn") or {}
+    if (turn.get("resolution") or {}).get("state") == "status" and isinstance(turn.get("reply"), str):
+        from firefly_forge.scm_natural_links import delivery_links
+
+        references = [
+            f"- [{link.kind}]({link.href}) · Run: `{link.run_id}` · Revision: `{link.checkpoint_revision}`"
+            for link in delivery_links(data, repository, host)
+            if link.href in turn["reply"] and link.href not in {review, reference_url} and safe(link.href) == link.href
+        ]
+        if references:
+            sections.append(
+                prompt_text("collaboration/communication-delivery-references", references="\n".join(references))
+            )
     if receipt_id:
         safe(receipt_id)
         run_reference = ""

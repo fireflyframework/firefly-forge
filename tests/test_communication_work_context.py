@@ -311,7 +311,7 @@ async def test_false_no_remote_action_draft_requires_semantic_repair_from_exact_
     assert result["communication"]["repair_attempted"] is True
     assert "No remote action" not in result["body"]
     assert "13 changed files" in result["body"]
-    assert "backend/orbit_crm/service.py" in result["body"]
+    assert r"backend/orbit\_crm/service.py" in result["body"]
     wire = json.dumps([(str(messages), str(info)) for _, messages, info in calls])
     assert "requested_not_confirmed" in wire
     assert "changed_files_preview_truncated" in wire

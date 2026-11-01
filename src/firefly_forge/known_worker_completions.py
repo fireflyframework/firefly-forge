@@ -13,7 +13,12 @@ from pyfly.container import service
 
 from firefly_forge.bridge_completions import BridgeCompletions, _outside_unit
 from firefly_forge.journal import Journal, digest
-from firefly_forge.known_worker_completion_models import WorkerCompletionCandidateV1, WorkerCompletionInputV1
+from firefly_forge.known_worker_completion_models import (
+    ConsumedTerminalInputV2,
+    ConsumedTerminalReconciliationInputV1,
+    WorkerCompletionCandidateV1,
+    WorkerCompletionInputV1,
+)
 from firefly_forge.known_worker_completion_proof import (
     SETTLEMENT,
     prepare_worker_completion,
@@ -27,6 +32,11 @@ Data = dict[str, Any]
 
 def policy_digest() -> str:
     _outside_unit()
+    return _policy_material_digest()
+
+
+def _policy_material_digest() -> str:
+    """Bounded local policy fingerprint for a prepared native commit fence."""
     root = Path(__file__).parent
     return digest(
         {
@@ -35,6 +45,8 @@ def policy_digest() -> str:
                 "known_worker_completions.py",
                 "known_worker_completion_models.py",
                 "known_worker_completion_proof.py",
+                "consumed_terminal_completions.py",
+                "consumed_terminal_reconciliations.py",
             )
         }
     )
@@ -78,8 +90,9 @@ def _task(row: Any) -> Data:
 
 @service
 class KnownWorkerCompletions:
-    def __init__(self, store: Store, journal: Journal) -> None:
+    def __init__(self, store: Store, journal: Journal, engine: Any = None) -> None:
         self.store, self.journal = store, journal
+        self.engine = engine
         self.completions = BridgeCompletions(store, journal)
 
     async def _access(self, run_id: str, actor: Any) -> Data:
@@ -140,6 +153,11 @@ class KnownWorkerCompletions:
     async def candidate(self, run_id: str) -> Data:
         _outside_unit()
         with prepared_credential_rejection(self.store):
+            current = await self.store.get_run(identifier(run_id).hex)
+            if current.get("status") == "failed":
+                from firefly_forge.consumed_terminal_completions import prepare
+
+                return (await prepare(self, identifier(run_id).hex)).candidate
             return (await self._prepare(identifier(run_id).hex))[0]
 
     @staticmethod
@@ -165,8 +183,14 @@ class KnownWorkerCompletions:
             raise AccessDenied("Worker completion identity belongs to another input or operator")
         return copy.deepcopy(matches[0])
 
-    async def request(self, run_id: str, request_id: str, request: WorkerCompletionInputV1) -> Data:
+    async def request(
+        self, run_id: str, request_id: str, request: WorkerCompletionInputV1 | ConsumedTerminalInputV2
+    ) -> Data:
         _outside_unit()
+        if isinstance(request, ConsumedTerminalInputV2):
+            from firefly_forge.consumed_terminal_completions import request as consumed_request
+
+            return await consumed_request(self, run_id, request_id, request)
         if identifier(request_id).hex != request_id:
             raise ValueError("Use an exact lowercase native completion request identity")
         run_id = identifier(run_id).hex
@@ -279,6 +303,10 @@ class KnownWorkerCompletions:
         await self.completions._reader(run_id, actor)
         async with self.store._unit():
             entries = _entries(await self.journal.records.find_for_run(identifier(run_id)), run_id)
+        from firefly_forge.consumed_terminal_completions import find_witness, readback
+
+        if find_witness(entries, request_id) is not None:
+            return await readback(self, run_id, request_id)
         matches = [
             e for e in entries if e["kind"] == SETTLEMENT and e["idempotency_key"] == "worker-completion:" + request_id
         ]
@@ -320,3 +348,18 @@ class KnownWorkerCompletions:
                     raise AccessDenied("Known worker receipt or reader changed during admission")
                 self.store.reject_credentials(record)
             return copy.deepcopy(record)
+
+    async def reconciliation_candidate(self, run_id: str, request_id: str) -> Data:
+        from firefly_forge.consumed_terminal_reconciliations import candidate
+
+        return await candidate(self, run_id, request_id)
+
+    async def reconcile(self, run_id: str, request_id: str, request: ConsumedTerminalReconciliationInputV1) -> Data:
+        from firefly_forge.consumed_terminal_reconciliations import reconcile
+
+        return await reconcile(self, run_id, request_id, request)
+
+    async def reconciliation_status(self, run_id: str, request_id: str) -> Data:
+        from firefly_forge.consumed_terminal_reconciliations import readback
+
+        return await readback(self, run_id, request_id)

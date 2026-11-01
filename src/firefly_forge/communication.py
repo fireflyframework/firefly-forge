@@ -19,6 +19,8 @@ from firefly_forge.community_skills import community_catalog
 from firefly_forge.product_provenance import content_digest
 from firefly_forge.prompts import prompt_text
 from firefly_forge.scm_authority_models import StrictContract
+from firefly_forge.scm_conversation_models import SCM_SOURCE_QUESTION_LIMIT
+from firefly_forge.scm_linked_verification_records import SCMVerificationCommunicationV1
 from firefly_forge.skills import inject_skills
 
 Data = dict[str, Any]
@@ -28,11 +30,14 @@ class CommunicationParagraph(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, str_strip_whitespace=True)
     text: str = Field(min_length=1, max_length=600)
     fact_ids: list[str] = Field(min_length=1, max_length=4)
+    heading: str | None = Field(default=None, min_length=1, max_length=100)
+    format: Literal["paragraph", "bullet"] = "paragraph"
+    diagnostic_id: str | None = Field(default=None, pattern=r"^(?:check-[1-9][0-9]*-(?:command|output)|run-error)$")
 
 
 class CommunicationDraft(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
-    paragraphs: list[CommunicationParagraph] = Field(min_length=1, max_length=3)
+    paragraphs: list[CommunicationParagraph] = Field(min_length=1, max_length=6)
 
 
 class CommunicationDecision(BaseModel):
@@ -47,9 +52,19 @@ class CommunicationCard(CommunicationDraft):
     decision: CommunicationDecision | None = None
 
 
+class CommunicationReaderChecks(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    answers_question: bool = Field(description="Directly answers the current human question.")
+    relevant_detail: bool = Field(description="Includes useful context and omits irrelevant recaps or counters.")
+    no_redundancy: bool = Field(description="Does not repeat the title, result, check provenance or caveats.")
+    plain_language: bool = Field(description="Reads as an ordinary teammate reply rather than an internal audit.")
+    useful_excerpts: bool = Field(description="Any selected excerpts help answer the question; none are decorative.")
+
+
 class CommunicationReview(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, str_strip_whitespace=True)
     verdict: Literal["supported", "unsupported", "uncertain"]
+    reader_checks: CommunicationReaderChecks
     issues: list[
         Literal[
             "unsupported_claim",
@@ -58,6 +73,8 @@ class CommunicationReview(BaseModel):
             "unrecorded_action",
             "changed_decision",
             "insufficient_context",
+            "unclear_language",
+            "poor_structure",
             "uncertain",
         ]
     ] = Field(max_length=8)
@@ -71,9 +88,15 @@ class CommunicationConversationV1(StrictContract):
     selection: Literal["run", "missing", "ambiguous", "clarify"]
     language: Literal["en", "es"]
     linked_runs: int = Field(ge=0, le=200)
+    question: str | None = Field(default=None, min_length=1, max_length=SCM_SOURCE_QUESTION_LIMIT)
+    question_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
 
     @model_validator(mode="after")
     def consistent_selection(self) -> CommunicationConversationV1:
+        if (self.question is None) != (self.question_sha256 is None) or (
+            self.question is not None and hashlib.sha256(self.question.encode()).hexdigest() != self.question_sha256
+        ):
+            raise ValueError("Conversation question requires its exact source digest")
         expected = 1 if self.selection == "run" else 0
         if (self.selection == "ambiguous" and self.linked_runs < 2) or (
             self.selection != "ambiguous" and self.linked_runs != expected
@@ -298,6 +321,7 @@ def _factory_verification(run: Data, handoff: Data) -> Data:
         "request_id": requested.id,
         "reason": requested.question,
         "context": requested.context,
+        "request_basis": "recorded_request_not_current_results_or_authority",
         "handoff_status": state,
         "checks": {
             "source": "recorded_handoff" if handoff else "not_recorded",
@@ -354,6 +378,84 @@ def _reused_verification(check: Data) -> bool | None:
     return True
 
 
+def _linked_verification_facts(
+    value: SCMVerificationCommunicationV1, conversation: CommunicationConversationV1
+) -> Data:
+    import shlex
+
+    from firefly_forge.communication_diagnostics import _public_excerpt
+
+    candidate, receipt = value.candidate, value.receipt
+    if value.phase == "held":
+        return {
+            "state": {"status": "held"},
+            "conversation": conversation.model_dump(exclude={"version", "question"}, exclude_none=True),
+            "linked_verification": {
+                "phase": "held",
+                "reason": value.hold_reason,
+                "execution_outcome": "not_asserted",
+                "request_not_retried": True,
+                "next_action": "ask_which_linked_verification_operation"
+                if value.hold_reason == "operation_selection_ambiguous"
+                else "wait_for_same_native_review"
+                if value.hold_reason == "native_review_unconfirmed"
+                else "inspect_same_native_request_and_current_authority",
+            },
+        }
+    assert candidate is not None
+    facts: Data = {
+        "state": {"status": receipt.status if receipt else "review" if value.phase == "review" else "unknown"},
+        "conversation": conversation.model_dump(exclude={"version", "question"}, exclude_none=True),
+        "linked_verification": {
+            "phase": value.phase,
+            "parent_run_id": candidate.run_id,
+            "source_tree": candidate.source_tree,
+            "all_fresh_checks": candidate.effect_budget,
+            "no_coding_or_repair": True,
+            "original_history_preserved": True,
+            "original_effect_budget": candidate.original_effect_budget,
+            "original_effect_count": candidate.original_effect_count,
+            "request_id": receipt.request_id if receipt else value.request_id,
+            "unknown_admission_action": "read_same_request_without_post_retry" if value.phase == "unknown" else None,
+        },
+    }
+    if value.question:
+        facts["linked_verification"]["review_to_publish"] = value.question
+    if receipt:
+        facts["linked_verification"]["progress"] = receipt.progress.model_dump()
+        facts["linked_verification"]["detail"] = receipt.detail
+        if receipt.last_failure:
+            failure = receipt.last_failure
+            facts["linked_failure"] = failure.model_dump(exclude={"output_preview"})
+            diagnostics = {}
+            output = _public_excerpt(failure.output_preview, tail=True)
+            if output:
+                diagnostics[f"check-{failure.ordinal}-output"] = dict(
+                    source="linked_verification_command_result",
+                    kind="output",
+                    check_index=failure.ordinal,
+                    exit_code=failure.exit_code,
+                    provenance="current",
+                    text=output[0],
+                    truncated=output[1] or failure.output_truncated,
+                )
+            if value.failure_command:
+                command = _public_excerpt(shlex.join(value.failure_command.argv), tail=False)
+                if command:
+                    diagnostics[f"check-{failure.ordinal}-command"] = dict(
+                        source="linked_verification_command_result",
+                        kind="command",
+                        check_index=failure.ordinal,
+                        exit_code=failure.exit_code,
+                        provenance="current",
+                        text=command[0],
+                        truncated=command[1],
+                    )
+            if diagnostics:
+                facts["check_diagnostics"] = diagnostics
+    return facts
+
+
 def communication_facts(
     run: Data | None,
     *,
@@ -362,7 +464,12 @@ def communication_facts(
     assistant: CommunicationAssistantV1 | None = None,
     git_delivery: CommunicationGitDeliveryV1 | None = None,
     audience: CommunicationAudienceV1 | None = None,
+    linked_verification: SCMVerificationCommunicationV1 | None = None,
 ) -> Data:
+    if linked_verification is not None:
+        if assistant or publication or git_delivery or audience or conversation is None:
+            raise ValueError("Linked verification facts need their own current conversation")
+        return _linked_verification_facts(linked_verification, conversation)
     if assistant is not None:
         if run or conversation or publication or git_delivery or audience:
             raise ValueError("Assistant feedback is separate from execution and publication facts")
@@ -375,7 +482,7 @@ def communication_facts(
         if (conversation.selection == "run") != (run is not None):
             raise ValueError("Conversation selection requires its actual selected execution or no execution")
         conversation_facts = {
-            **conversation.model_dump(exclude={"version"}),
+            **conversation.model_dump(exclude={"version", "question"}, exclude_none=True),
             "next_step": {
                 "run": "explain_selected_execution",
                 "missing": "ask_for_ticket_execution_link",
@@ -476,7 +583,8 @@ def communication_facts(
     if conversation_facts:
         facts["conversation"] = conversation_facts
     status = facts["state"]["status"]
-    if status in {"failed", "needs_reconciliation"} and run.get("error") == (
+    error = run.get("error") if isinstance(run.get("error"), str) else None
+    if status in {"failed", "needs_reconciliation"} and error == (
         "Generated changes contain private credentials or worker metadata; inspect the workspace"
     ):
         facts["blocker"] = {
@@ -485,7 +593,7 @@ def communication_facts(
             "credential_exposure": "not_established",
             "next_step": "inspect_workspace_and_recorded_checks",
         }
-    elif status in {"failed", "needs_reconciliation"} and run.get("error") in {
+    elif status in {"failed", "needs_reconciliation"} and error in {
         "Checkpoint source changed during final admission",
         "Checkpoint source selection changed during final admission",
         "Checkpoint source directory identity changed during final admission",
@@ -497,7 +605,7 @@ def communication_facts(
             "cause": "not_established",
             "next_step": "inspect_source_and_checkpoint_evidence",
         }
-    elif status in {"failed", "needs_reconciliation"} and run.get("error") in {
+    elif status in {"failed", "needs_reconciliation"} and error in {
         "native_agentic_checkpoint_wal_required",
         "bridge_completion_wal_required",
     }:
@@ -505,10 +613,32 @@ def communication_facts(
             "kind": "native_durability_mode_guard",
             "basis": "recorded_error",
             "requirement": "agentic_checkpoint_wal"
-            if run["error"] == "native_agentic_checkpoint_wal_required"
+            if error == "native_agentic_checkpoint_wal_required"
             else "bridge_completion_wal",
             "cause": "not_established",
             "next_step": "review_native_configuration_and_scoped_adoption",
+        }
+    elif status in {"failed", "needs_reconciliation"} and error == (
+        "Original selection, configuration or reviewed policy epoch changed"
+    ):
+        facts["blocker"] = {
+            "kind": "execution_selection_guard",
+            "basis": "recorded_error",
+            "cause": "not_established",
+            "next_step": "review_execution_configuration_before_continuation",
+            "recorded_condition": "execution_selection_configuration_or_reviewed_policy_no_longer_matches",
+            "review_scope": ["execution_selection", "execution_configuration", "reviewed_policy"],
+        }
+    elif status in {"failed", "needs_reconciliation"} and error == (
+        "Retained verified source requires its current authenticated worker"
+    ):
+        facts["blocker"] = {
+            "kind": "worker_identity_guard",
+            "basis": "recorded_error",
+            "phase": "retained_verification_result_admission",
+            "recorded_condition": "current_worker_identity_unavailable_for_retained_result",
+            "cause": "not_established",
+            "next_step": "inspect_worker_identity_and_recorded_terminal_result",
         }
     handoff = (
         verification_handoff(run)
@@ -519,7 +649,7 @@ def communication_facts(
         facts["factory_verification"] = factory_verification
     if (
         handoff.get("status") == "completed"
-        and 1 <= handoff["commands_count"] <= 20
+        and handoff["commands_count"] >= 1
         and 0 <= handoff["failed_commands"] <= handoff["completed_commands"] <= handoff["commands_count"]
     ):
         facts["check_batch"] = {
@@ -632,40 +762,70 @@ def communication_facts(
             "recorded": current,
             "provenance": "unknown" if current is None else "current" if current else "not_recorded",
         }
+    from firefly_forge.communication_diagnostics import check_diagnostics, claimed_recovery, recorded_error
+
+    if claim := claimed_recovery(run):
+        facts["consumed_terminal_recovery"] = claim
+        if facts.get("factory_verification", {}).get("handoff_status") == "held":
+            facts["factory_verification"]["next_native_action"] = claim["next_native_action"]
+    if diagnostics := check_diagnostics(run):
+        facts["check_diagnostics"] = diagnostics
+    if detail := recorded_error(run):
+        facts["recorded_error"] = detail
     return facts
 
 
 def _validate_draft(draft: CommunicationDraft, facts: Data) -> str:
     """Validate framing and references; the separate model review evaluates meaning."""
     paragraphs = [draft.title, *draft.paragraphs] if isinstance(draft, CommunicationCard) else draft.paragraphs
+    if isinstance(draft, CommunicationCard) and (
+        draft.title.heading or draft.title.format != "paragraph" or draft.title.diagnostic_id
+    ):
+        raise ValueError("Communication title cannot contain a section or excerpt")
     for paragraph in paragraphs:
         if len(set(paragraph.fact_ids)) != len(paragraph.fact_ids) or set(paragraph.fact_ids) - facts.keys():
             raise ValueError("Communication contains an unknown fact reference")
-        prose = paragraph.text
+        if paragraph.diagnostic_id:
+            if paragraph.diagnostic_id == "run-error":
+                valid = "recorded_error" in paragraph.fact_ids and "recorded_error" in facts
+            else:
+                valid = "check_diagnostics" in paragraph.fact_ids and paragraph.diagnostic_id in facts.get(
+                    "check_diagnostics", {}
+                )
+            if not valid:
+                raise ValueError("Communication excerpt must identify its recorded diagnostic evidence")
+        prose = paragraph.text + (paragraph.heading or "")
         for path in sorted((facts.get("git_delivery") or {}).get("changed_files", []), key=len, reverse=True):
             if re.fullmatch(r"[\w./ -]+", path):
                 prose = prose.replace(path, "SOURCEPATH")
-        if re.search(r"[\x00-\x1f\x7f@<>`\[\]{}\\*_#|]|https?://|www\.|\b\w+://|%", prose):
+        if re.search(r"[\x00-\x1f\x7f@<>`\[\]{}\\*#|]|https?://|www\.|\b\w+://|%", prose):
             raise ValueError("Communication must be plain, bounded prose without destinations or code")
     cited = {key for paragraph in paragraphs for key in paragraph.fact_ids}
-    if (
-        {
-            "blocker",
-            "check_batch",
-            "factory_verification",
-            "conversation",
-            "publication",
-            "assistant",
-            "git_delivery",
-            "git_checkpoint",
-            "work",
-            "requested_work",
-            "product",
-            "audience",
-            "check_status",
-        }
-        & facts.keys()
-    ) - cited:
+    required = {
+        "blocker",
+        "recorded_error",
+        "check_batch",
+        "factory_verification",
+        "conversation",
+        "publication",
+        "assistant",
+        "git_delivery",
+        "git_checkpoint",
+        "work",
+        "requested_work",
+        "product",
+        "audience",
+        "check_status",
+        "consumed_terminal_recovery",
+        "linked_verification",
+        "linked_failure",
+    } & facts.keys()
+    if facts.get("conversation", {}).get("question_sha256"):
+        required -= {"work", "requested_work", "product", "audience"}
+    if "blocker" in facts:
+        # The existing guard citation already covers the same recorded condition.
+        required.discard("recorded_error")
+    if required - cited:
         raise ValueError("Communication omits the recorded blocker or check context")
     return "\n\n".join(paragraph.text for paragraph in paragraphs)
 
@@ -748,7 +908,23 @@ def _render_card(
     elif draft.decision is not None:
         raise ValueError("Communication cannot invent a human decision")
     reject(narrative)
-    title, narrative = safe(narrative).split("\n\n", 1)
+    title = safe(draft.title.text).replace("_", r"\_")
+    from firefly_forge.communication_diagnostics import render_excerpt
+
+    blocks = []
+    for paragraph in draft.paragraphs:
+        parts = ["#### " + safe(paragraph.heading).replace("_", r"\_")] if paragraph.heading else []
+        parts.append(("- " if paragraph.format == "bullet" else "") + safe(paragraph.text).replace("_", r"\_"))
+        if paragraph.diagnostic_id:
+            excerpt = (
+                facts["recorded_error"]
+                if paragraph.diagnostic_id == "run-error"
+                else facts["check_diagnostics"][paragraph.diagnostic_id]
+            )
+            reject(excerpt["text"])
+            parts.append(render_excerpt({**excerpt, "text": safe(excerpt["text"])}))
+        blocks.append("\n\n".join(parts))
+    narrative = "\n\n".join(blocks)
     decision_body = ""
     if draft.decision:
         decision_body = prompt_text(
@@ -804,6 +980,8 @@ class CommunicationWriter:
         assistant: CommunicationAssistantV1 | None = None,
         git_delivery: CommunicationGitDeliveryV1 | None = None,
         audience: CommunicationAudienceV1 | None = None,
+        status_draft: str | None = None,
+        linked_verification: SCMVerificationCommunicationV1 | None = None,
     ) -> Data:
         facts = communication_facts(
             run,
@@ -812,8 +990,23 @@ class CommunicationWriter:
             assistant=assistant,
             git_delivery=git_delivery,
             audience=audience,
+            linked_verification=linked_verification,
         )
-        context: Data = {}
+        context: Data = {"fact_packet_sha256": content_digest(facts)}
+        if status_draft is not None:
+            if not isinstance(status_draft, str) or not status_draft.strip() or conversation is None:
+                raise ValueError("A classifier draft requires nonempty text and conversation context")
+            context["classifier_draft"] = {
+                "quotation": status_draft,
+                "source_sha256": hashlib.sha256(status_draft.encode()).hexdigest(),
+                "basis": "classifier_draft_not_evidence_or_authority",
+            }
+        if conversation and conversation.question is not None:
+            context["conversation_question"] = {
+                "quotation": conversation.question,
+                "source_sha256": conversation.question_sha256,
+                "basis": "current_human_message_not_execution_authority",
+            }
         if "requested_work" in facts:
             assert run is not None
             context["requested_work"] = {**facts["requested_work"], "quotation": run["brief"]}
@@ -832,6 +1025,8 @@ class CommunicationWriter:
             "facts_sha256": content_digest(facts),
             "context_sha256": content_digest(context),
         }
+        canonical_facts = json.dumps(facts, sort_keys=True)
+        canonical_context = json.dumps(context, sort_keys=True, ensure_ascii=False)
         if assistant is not None:
             copy = json.loads(prompt_text("collaboration/copy", version="1.0.1"))
             assistant_references = [
@@ -889,15 +1084,15 @@ class CommunicationWriter:
             evidence["timeout_seconds"] = timeout
             prompt = prompt_text(
                 "collaboration/publication-request" if publication else "collaboration/communication-request",
-                version="1.0.0" if publication else "1.0.2",
-                facts=json.dumps(facts, sort_keys=True),
+                version="1.0.0" if publication else "1.0.3",
+                facts=canonical_facts,
                 fact_ids=json.dumps(sorted(facts)),
-                **({"context": json.dumps(context, sort_keys=True, ensure_ascii=False)} if not publication else {}),
+                **({"context": canonical_context} if not publication else {}),
             )
             instructions = inject_skills(
-                prompt_text("collaboration/publication-system")
+                prompt_text("collaboration/publication-system", version="1.0.1")
                 if publication
-                else prompt_text("collaboration/communication-system", version="1.0.5"),
+                else prompt_text("collaboration/communication-system", version="1.0.10"),
                 ["humanizer"],
             )
             language_instructions = (
@@ -907,6 +1102,10 @@ class CommunicationWriter:
                 if conversation or audience
                 else {}
             )
+            if linked_verification is not None:
+                from firefly_forge.scm_natural_runtime import catalog
+
+                instructions += "\n" + catalog().text("scm-natural/verification-communication")
             if language_instructions:
                 instructions += "\n" + language_instructions["draft"]
             skill = next(item for item in community_catalog() if item["id"] == "humanizer")
@@ -922,6 +1121,7 @@ class CommunicationWriter:
             from fireflyframework_agentic.agents import FireflyAgent
             from fireflyframework_agentic.config import FireflyAgenticConfig
             from pydantic_ai import PromptedOutput
+            from pydantic_ai.exceptions import UnexpectedModelBehavior
             from pydantic_ai.usage import UsageLimits
 
             from firefly_forge.providers import APIProvider, BridgeProvider
@@ -962,17 +1162,17 @@ class CommunicationWriter:
                     "collaboration/publication-review-system"
                     if publication
                     else "collaboration/communication-review-system",
-                    version="1.0.0" if publication else "1.0.2",
+                    version="1.0.1" if publication else "1.0.7",
                 )
                 if language_instructions:
                     review_instructions += "\n" + language_instructions["review"]
                 review_prompt = prompt_text(
                     "collaboration/communication-review-request",
                     version="1.0.1",
-                    facts=json.dumps(facts, sort_keys=True),
+                    facts=canonical_facts,
                     candidate=draft.model_dump_json(),
                     fact_ids=json.dumps(sorted(facts)),
-                    context=json.dumps(context, sort_keys=True, ensure_ascii=False),
+                    context=canonical_context,
                 )
                 self.store.reject_credentials([review_instructions, review_prompt])
                 evidence["review_prompt_sha256"] = hashlib.sha256(
@@ -995,42 +1195,52 @@ class CommunicationWriter:
                 when = deadline.when()
                 assert when is not None
                 remaining = max(0.001, when - asyncio.get_running_loop().time())
-                reviewed = await reviewer.run(
-                    review_prompt,
-                    timeout=remaining,
-                    usage_limits=UsageLimits(request_limit=1, tool_calls_limit=0, output_tokens_limit=700),
-                )
                 try:
+                    reviewed = await reviewer.run(
+                        review_prompt,
+                        timeout=remaining,
+                        usage_limits=UsageLimits(request_limit=1, tool_calls_limit=0, output_tokens_limit=700),
+                    )
                     review = CommunicationReview.model_validate(reviewed.output)
+                    reader_approved = all(review.reader_checks.model_dump().values())
                     references = set(review.fact_ids)
                     cited = {key for paragraph in [draft.title, *draft.paragraphs] for key in paragraph.fact_ids}
                     if (
                         len(references) != len(review.fact_ids)
                         or references - facts.keys()
                         or cited - references
-                        or (review.verdict == "supported" and review.issues)
+                        or (
+                            review.verdict == "supported"
+                            and review.issues
+                            and (
+                                reader_approved
+                                or set(review.issues) - {"insufficient_context", "unclear_language", "poor_structure"}
+                            )
+                        )
                         or (review.verdict != "supported" and not review.issues)
                     ):
                         raise ValueError("Communication review must bind the whole candidate to known facts")
                     self.store.reject_credentials(review.model_dump())
-                except (ValueError, TypeError):
+                except (ValueError, TypeError, UnexpectedModelBehavior):
                     evidence["reason"] = "invalid_review"
                     return result
                 evidence["review"] = review.model_dump()
+                evidence["review_facts_sha256"] = evidence["facts_sha256"]
                 evidence["review_candidate_sha256"] = evidence["candidate_sha256"]
                 evidence["review_applies_to"] = "original_candidate"
-                if review.verdict != "supported":
+                if review.verdict != "supported" or not reader_approved:
                     repair_prompt = prompt_text(
                         "collaboration/communication-repair-request",
-                        version="1.0.1",
-                        facts=json.dumps(facts, sort_keys=True),
+                        version="1.0.2",
+                        facts=canonical_facts,
                         candidate=draft.model_dump_json(),
                         review=review.model_dump_json(),
                         fact_ids=json.dumps(sorted(facts)),
-                        context=json.dumps(context, sort_keys=True, ensure_ascii=False),
+                        context=canonical_context,
                     )
                     self.store.reject_credentials(repair_prompt)
                     evidence["repair_attempted"] = True
+                    evidence["repair_facts_sha256"] = evidence["facts_sha256"]
                     evidence["repair_prompt_sha256"] = hashlib.sha256(repair_prompt.encode()).hexdigest()
                     corrected = await agent.run(
                         repair_prompt,

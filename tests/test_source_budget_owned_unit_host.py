@@ -22,8 +22,15 @@ def context(monkeypatch):
     session = SimpleNamespace(connection=AsyncMock(return_value=connection), scalar=AsyncMock(return_value=True))
     unit = UnitOfWork(SimpleNamespace(), "primary", session)
     store._ownership_connection, store._ownership_pid = connection, 271
+    store._ownership_backend_start = "2026-10-31 00:00:00+00"
     cut = SimpleNamespace(
-        store=store, task=asyncio.current_task(), unit=unit, session=session, connection=connection, pid=271
+        store=store,
+        task=asyncio.current_task(),
+        unit=unit,
+        session=session,
+        connection=connection,
+        pid=271,
+        backend_start=store._ownership_backend_start,
     )
     variable = getattr(
         module, "_source_budget_admission", ContextVar("controlled_source_budget_admission", default=None)
@@ -84,13 +91,17 @@ async def test_copied_child_task_cannot_check_or_join_the_lease_unit(monkeypatch
     cut.session.scalar.assert_not_awaited()
 
 
-@pytest.mark.parametrize("changed", ["drain", "pid", "connection", "closed", "invalidated", "physical", "lease"])
+@pytest.mark.parametrize(
+    "changed", ["drain", "pid", "backend_start", "connection", "closed", "invalidated", "physical", "lease"]
+)
 async def test_lost_exact_lease_is_rejected(monkeypatch, changed):
     store, cut, _ = context(monkeypatch)
     if changed == "drain":
         store.execution_stopping = True
     elif changed == "pid":
         store._ownership_pid += 1
+    elif changed == "backend_start":
+        store._ownership_backend_start = "1900-01-01 00:00:00+00"
     elif changed == "connection":
         store._ownership_connection = object()
     elif changed in {"closed", "invalidated"}:
@@ -104,7 +115,7 @@ async def test_lost_exact_lease_is_rejected(monkeypatch, changed):
     cut.connection.commit.assert_not_awaited()
 
 
-@pytest.mark.parametrize("changed", ["drain", "pid", "connection"])
+@pytest.mark.parametrize("changed", ["drain", "pid", "backend_start", "connection"])
 async def test_authority_is_rechecked_after_ownership_query(monkeypatch, changed):
     store, cut, _ = context(monkeypatch)
 
@@ -113,6 +124,8 @@ async def test_authority_is_rechecked_after_ownership_query(monkeypatch, changed
             store.execution_stopping = True
         elif changed == "pid":
             store._ownership_pid += 1
+        elif changed == "backend_start":
+            store._ownership_backend_start = "1900-01-01 00:00:00+00"
         else:
             store._ownership_connection = object()
         return True
@@ -140,6 +153,7 @@ async def test_cancellation_keeps_cut_and_lock_until_shielded_settlement_finishe
     store.schema = "public_fixture"
     store._engine = object()
     store._ownership_pid = 271
+    store._ownership_backend_start = "2026-10-31 00:00:00+00"
     connection = SimpleNamespace(sync_connection=object(), closed=False, invalidated=False)
     store._ownership_connection = connection
     store._assert_ownership = AsyncMock()

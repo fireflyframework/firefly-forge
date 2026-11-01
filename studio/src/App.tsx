@@ -78,13 +78,17 @@ import {
   TimelineEventView,
 } from "./ExecutionPresentation";
 import { GitDiffBrowser } from "./GitDiffBrowser";
+import { SourceExplorer } from "./SourceExplorer";
 import { RunVerification } from "./RunVerification";
 import { ProviderActivityView } from "./ProviderActivityView";
 import { DeliverySetup, RunDelivery } from "./Delivery";
 import { Operations } from "./Operations";
 import { Projects } from "./Projects";
 import { MobileNavigation } from "./MobileNavigation";
+import { WorkspaceNavigationItems } from "./WorkspaceNavigationItems";
+import type { ReviewedSourceContext } from "./SourceAnalysisContext";
 import { FactoryWelcome } from "./FactoryWelcome";
+import { FactoryProcessGuide } from "./FactoryProcessGuide";
 import {
   type ProductDraftBook,
   useProductDraftBook,
@@ -285,6 +289,10 @@ export default function App() {
   const [productProject, setProductProject] = useState<ProjectSnapshot | null>(
     null,
   );
+  const [reviewedSource, setReviewedSource] = useState<{
+    identityScope: string;
+    value: ReviewedSourceContext;
+  } | null>(null);
   const [accessUser, setAccessUser] = useState<string>();
   const [connection, setConnection] = useState<Connection>({
     base: "/api/v1",
@@ -390,6 +398,8 @@ export default function App() {
       setDetailError("");
       setBusy(false);
       setNotice("");
+      setProductProject(null);
+      setReviewedSource(null);
     }
     currentScope.current = readScope;
     currentIdentityScope.current = identityScope;
@@ -650,8 +660,12 @@ export default function App() {
   function navigate(next: Page) {
     setPage(next);
     setError("");
-    if (next === "product") setProductProject(null);
     if (next === "settings") setSetupStep(null);
+  }
+  function startNewProduct() {
+    setProductProject(null);
+    setReviewedSource(null);
+    navigate("product");
   }
   function startStandalone(repository: string) {
     selectStandaloneRunSource(runDrafts, repository);
@@ -662,28 +676,88 @@ export default function App() {
   const repositoryName = (id: string) =>
     repositories.find((repository) => repository.id === id)?.name ?? id;
   const nav = [
-    { page: "overview" as const, icon: Layers3, label: "Factory" },
-    { page: "new" as const, icon: Hammer, label: "Start a run" },
-    { page: "projects" as const, icon: Box, label: "Product projects" },
-    { page: "product" as const, icon: Layers3, label: "Product definition" },
-    { page: "repositories" as const, icon: FolderGit2, label: "Repositories" },
-    { page: "delivery" as const, icon: Box, label: "Deployment" },
-    { page: "operations" as const, icon: Activity, label: "Applications" },
-    { page: "knowledge" as const, icon: BookOpen, label: "Knowledge" },
+    {
+      page: "overview" as const,
+      icon: Layers3,
+      label: "Factory",
+      group: "Plan and build",
+    },
+    {
+      page: "projects" as const,
+      icon: Box,
+      label: "Product projects",
+      group: "Plan and build",
+    },
+    {
+      page: "product" as const,
+      icon: Layers3,
+      label: "Product definition",
+      group: "Plan and build",
+    },
+    {
+      page: "new" as const,
+      icon: Hammer,
+      label: "Start a run",
+      group: "Plan and build",
+    },
+    {
+      page: "delivery" as const,
+      icon: Box,
+      label: "Deployment",
+      group: "Deliver and support",
+    },
+    {
+      page: "operations" as const,
+      icon: Activity,
+      label: "Applications",
+      group: "Deliver and support",
+    },
+    {
+      page: "repositories" as const,
+      icon: FolderGit2,
+      label: "Repositories",
+      group: "Resources and settings",
+    },
+    {
+      page: "knowledge" as const,
+      icon: BookOpen,
+      label: "Knowledge",
+      group: "Resources and settings",
+    },
     ...(identity.session
       ? [
-          { page: "workflow" as const, icon: Bot, label: "Agents & skills" },
+          {
+            page: "workflow" as const,
+            icon: Bot,
+            label: "Agents & skills",
+            group: "Resources and settings",
+          },
           {
             page: "analytics" as const,
             icon: Database,
             label: "Structured analytics",
+            group: "Resources and settings",
           },
         ]
       : []),
     ...(identity.session?.global_admin
-      ? [{ page: "admin" as const, icon: Settings2, label: "Administration" }]
+      ? [
+          {
+            page: "admin" as const,
+            icon: Settings2,
+            label: "Administration",
+            group: "Resources and settings",
+          },
+        ]
       : []),
   ];
+  const navigationItems = nav.map((item) => ({
+    id: item.page,
+    label: item.label,
+    icon: item.icon,
+    group: item.group,
+    ...(item.page === "repositories" ? { count: repositories.length } : {}),
+  }));
   const administrationLabels: Partial<Record<Page, string>> = {
     settings: "Connections",
     workflow: "Agents & skills",
@@ -729,14 +803,7 @@ export default function App() {
           <img src={`/assets/forge-lockup-${theme}.svg`} alt="Firefly forge" />
         </a>
         <MobileNavigation
-          items={nav.map((item) => ({
-            id: item.page,
-            label: item.label,
-            icon: item.icon,
-            ...(item.page === "repositories"
-              ? { count: repositories.length }
-              : {}),
-          }))}
+          items={navigationItems}
           current={navigationPage}
           onNavigate={(id) => navigate(id as Page)}
           account={
@@ -758,20 +825,11 @@ export default function App() {
           </div>
         </div>
         <nav ref={navigation} aria-label="Main navigation">
-          {nav.map((item) => (
-            <button
-              key={item.page}
-              className={navigationPage === item.page ? "active" : ""}
-              onClick={() => navigate(item.page)}
-              aria-current={navigationPage === item.page ? "page" : undefined}
-            >
-              <item.icon size={20} />
-              <span>{item.label}</span>
-              {item.page === "repositories" && (
-                <small>{repositories.length}</small>
-              )}
-            </button>
-          ))}
+          <WorkspaceNavigationItems
+            items={navigationItems}
+            current={navigationPage}
+            onNavigate={(id) => navigate(id as Page)}
+          />
         </nav>
         <div className="sidebar-bottom">
           {identity.session && (
@@ -885,6 +943,8 @@ export default function App() {
                     navigate("settings");
                   }}
                   onProduct={() => {
+                    setProductProject(null);
+                    setReviewedSource(null);
                     setSetupGoal("product");
                     navigate("settings");
                   }}
@@ -896,14 +956,20 @@ export default function App() {
                     <div>
                       <h1>Factory</h1>
                     </div>
-                    <button
-                      className="primary"
-                      onClick={() => navigate("product")}
-                    >
+                    <button className="primary" onClick={startNewProduct}>
                       <Plus size={17} />
                       New product
                     </button>
                   </div>
+                  <FactoryProcessGuide
+                    canConfigure={
+                      !requiresFactoryAdministrator(
+                        "settings",
+                        identity.session,
+                      )
+                    }
+                    onNavigate={navigate}
+                  />
                   <FactoryFloor
                     key={floorScope}
                     connection={connection}
@@ -917,15 +983,21 @@ export default function App() {
               )}
               {page === "projects" && (
                 <Projects
+                  onAccounts={() => navigate("browser-connections")}
                   session={identity.session}
                   connection={connection}
                   connected={connected}
                   repositories={repositories}
                   onOpen={(run) => void openRun(run)}
-                  onProduct={(id, project) => {
+                  onProduct={(id, project, source) => {
                     setRunProject(id);
-                    navigate("product");
                     setProductProject(project);
+                    setReviewedSource(
+                      source?.project_id === project.id && identityScope
+                        ? { identityScope, value: source }
+                        : null,
+                    );
+                    navigate("product");
                   }}
                   onStart={(context) => {
                     setRunProject(context.component.repository_id);
@@ -940,6 +1012,12 @@ export default function App() {
                   drafts={productDrafts}
                   onRepositoryChange={setRunProject}
                   logicalProject={productProject}
+                  reviewedSource={
+                    reviewedSource?.identityScope === identityScope &&
+                    reviewedSource.value.project_id === productProject?.id
+                      ? reviewedSource.value
+                      : undefined
+                  }
                   onConfigure={() => {
                     navigate("settings");
                     setSetupStep(1);
@@ -1910,7 +1988,6 @@ export function NewProduct({
       <Wizard
         locked={busy}
         className="run-wizard"
-        minimumFieldHeight={creation ? 480 : 160}
         steps={["Brief", "Foundation", "Checks", "Review"]}
         active={step}
         onStep={setStep}
@@ -2440,6 +2517,7 @@ function Connections({
   const { theme } = useAppearance();
   const [chosenStep, setStep] = useState<number | null>(initialStep);
   const [providerId, setProviderId] = useState("codex");
+  const [providerEditing, setProviderEditing] = useState(false);
   const step = connected ? (chosenStep ?? 1) : 0;
   const providerRecords = records(
     providers && typeof providers === "object" && "providers" in providers
@@ -2451,14 +2529,16 @@ function Connections({
     providerRecords[0];
   const apiForm = signin;
   return (
-    <>
-      <div className="page-heading">
+    <section className="connections-page">
+      <div className="page-heading connections-heading">
         <div>
-          <h1>Connect the factory</h1>
-          <p>
-            Set up the workspace, coding providers, repository access and
-            project knowledge.
-          </p>
+          <h1>{connected ? "Connections" : "Connect the factory"}</h1>
+          {!connected && (
+            <p>
+              Set up the workspace, coding providers, repository access and
+              project knowledge.
+            </p>
+          )}
         </div>
         <Badge status={connected ? "connected" : "disconnected"} />
       </div>
@@ -2489,82 +2569,89 @@ function Connections({
         </section>
       ) : (
         <Wizard
+          variant="rail"
+          stepDescriptions={[
+            "Factory identity and access",
+            "Models and credentials",
+            "Source control connections",
+            "Cited project references",
+          ]}
           steps={["Workspace", "Coding AI", "Repositories", "Knowledge"]}
+          locked={providerEditing}
           active={step}
           onStep={setStep}
           title={
-            [
-              "Factory connection",
-              "Choose your coding provider",
-              "Grant repository access",
-              "Add project knowledge",
-            ][step]
+            providerEditing && chosenProvider
+              ? `Configure ${String(chosenProvider[1].name ?? chosenProvider[0])}`
+              : [
+                  "Factory connection",
+                  "Choose your coding provider",
+                  "Grant repository access",
+                  "Add project knowledge",
+                ][step]
           }
           description={
-            [
-              "Your server session determines identity and project access. Change servers or sign in explicitly.",
-              "Use a local Codex or Claude Code subscription, a private bridge, or an API-backed agent.",
-              "Create and authorize an application in GitHub, GitLab or Bitbucket, then choose granted repositories.",
-              "Connect flycanon for cited framework guidance, project source and verified run memory.",
-            ][step]
+            providerEditing
+              ? "Save these settings or cancel before continuing to repository access."
+              : [
+                  "Your server session determines identity and project access. Change servers or sign in explicitly.",
+                  "Use a local Codex or Claude Code subscription, a private bridge, or an API-backed agent.",
+                  "Create and authorize an application in GitHub, GitLab or Bitbucket, then choose granted repositories.",
+                  "Connect framework guidance, project sources and verified run memory.",
+                ][step]
           }
         >
           {step === 0 && apiForm}
           {step === 1 && (
             <div className="provider-panel">
-              <div
-                className="integration-provider-choice"
-                aria-label="Coding provider"
-              >
-                {providerRecords.map(([name, item]) => (
-                  <button
-                    type="button"
-                    key={name}
-                    className="secondary"
-                    aria-pressed={chosenProvider?.[0] === name}
-                    onClick={() => setProviderId(String(item.id ?? name))}
-                  >
-                    {String(item.name ?? name)}
-                  </button>
-                ))}
-              </div>
               {loading && !providerRecords.length ? (
                 <Loading />
-              ) : chosenProvider ? (
-                chosenProvider[1].fields ? (
-                  <ProviderConfiguration
-                    key={chosenProvider[0]}
-                    provider={chosenProvider[1] as unknown as CodingProvider}
-                    connection={current}
-                    onUpdated={onUpdated}
-                  />
-                ) : (
-                  <div className="integration-card">
-                    <h3>
-                      {String(chosenProvider[1].name ?? chosenProvider[0])}
-                    </h3>
-                    <p>
-                      {String(
-                        chosenProvider[1].detail ?? "Readiness not reported",
-                      )}
-                    </p>
-                    <Badge
-                      status={
-                        chosenProvider[1].ready ? "configured" : "unavailable"
-                      }
-                    />
-                  </div>
-                )
+              ) : providerRecords.length ? (
+                <section
+                  className="coding-provider-list"
+                  aria-label="Coding providers"
+                >
+                  {providerRecords
+                    .filter(
+                      ([, item]) => !providerEditing || item.id === providerId,
+                    )
+                    .map(([name, item]) =>
+                      item.fields ? (
+                        <ProviderConfiguration
+                          key={name}
+                          provider={item as unknown as CodingProvider}
+                          connection={current}
+                          onEditingChange={(editing) => {
+                            setProviderId(String(item.id ?? name));
+                            setProviderEditing(editing);
+                          }}
+                          onUpdated={onUpdated}
+                        />
+                      ) : (
+                        <article className="provider-card" key={name}>
+                          <h3>{String(item.name ?? name)}</h3>
+                          <p className="provider-detail">
+                            {String(item.detail ?? "Readiness not reported")}
+                          </p>
+                          <Badge
+                            status={item.ready ? "configured" : "unavailable"}
+                          />
+                        </article>
+                      ),
+                    )}
+                </section>
               ) : (
                 <Empty
                   title="No provider details returned"
                   body="Check your factory connection and server configuration."
                 />
               )}
-              <CommunicationSettings
-                connection={current}
-                canConfigure={canConfigure}
-              />
+              {!providerEditing && (
+                <CommunicationSettings
+                  connection={current}
+                  canConfigure={canConfigure}
+                />
+              )}
             </div>
           )}
           {step === 2 && (
@@ -2573,9 +2660,13 @@ function Connections({
           {step === 3 && (
             <Knowledge connection={current} repositories={repositories} />
           )}
-          <div className="wizard-actions">
+          <div className="wizard-actions" hidden={providerEditing}>
             {step > 0 ? (
-              <button className="secondary" onClick={() => setStep(step - 1)}>
+              <button
+                className="secondary"
+                disabled={providerEditing}
+                onClick={() => setStep(step - 1)}
+              >
                 <ArrowLeft size={16} />
                 Back
               </button>
@@ -2584,6 +2675,7 @@ function Connections({
             )}
             <button
               className="primary"
+              disabled={providerEditing}
               onClick={() => (step === 3 ? onDone() : setStep(step + 1))}
             >
               {step === 3
@@ -2596,10 +2688,10 @@ function Connections({
           </div>
         </Wizard>
       )}
-      {connected && (
+      {connected && !providerEditing && (
         <ContinuityPolicySettings connection={current} session={session} />
       )}
-    </>
+    </section>
   );
 }
 function RepositoryDialog({
@@ -2748,6 +2840,7 @@ function RunDetail({
   const [tab, setTab] = useState<
     | "timeline"
     | "diff"
+    | "source"
     | "verification"
     | "artifacts"
     | "plan"
@@ -2763,6 +2856,9 @@ function RunDetail({
     { id: "plan" as const, icon: BookOpen, label: "Plan" },
     { id: "questions" as const, icon: MessageSquare, label: "Agent questions" },
     { id: "diff" as const, icon: FileDiff, label: "Changes" },
+    ...(session
+      ? [{ id: "source" as const, icon: FolderGit2, label: "Code" }]
+      : []),
     { id: "verification" as const, icon: ShieldCheck, label: "Verification" },
     { id: "review" as const, icon: ShieldCheck, label: "Independent review" },
     { id: "artifacts" as const, icon: Box, label: "Artifacts" },
@@ -2970,6 +3066,20 @@ function RunDetail({
               )}
             </>
           ))}
+        {tab === "source" && session && (
+          <SourceExplorer
+            key={JSON.stringify([
+              run.id,
+              connection.base,
+              connection.token,
+              session.user.id,
+              session.global_admin,
+              session.memberships,
+            ])}
+            connection={connection}
+            runId={run.id}
+          />
+        )}
         {tab === "verification" && (
           <RunVerification
             key={JSON.stringify([

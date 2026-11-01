@@ -479,10 +479,15 @@ for (const device of ["desktop", "mobile"])
       await page
         .getByRole("button", { name: "Save connection", exact: true })
         .click();
-      await page
-        .getByRole("list", { name: "Setup progress" })
-        .getByRole("button", { name: /Workspace$/ })
-        .click();
+      if (device === "mobile")
+        await page
+          .getByRole("combobox", { name: "Setup step" })
+          .selectOption("0");
+      else
+        await page
+          .getByRole("list", { name: "Setup progress" })
+          .getByRole("button", { name: /Workspace/ })
+          .click();
       for (const [index, stage] of [
         "workspace",
         "coding-ai",
@@ -618,6 +623,16 @@ for (const device of ["desktop", "mobile"])
         .click();
       await navigate(page, "Factory");
       await page.evaluate(() => document.fonts.ready);
+      const processGuide = page.locator(".factory-process-guide");
+      await processGuide.locator("summary").click();
+      await expect(processGuide.locator("ol > li")).toHaveCount(5);
+      await capture(page, "factory-process-guide", theme, device, {
+        actionSelector: ".factory-process-guide > summary",
+      });
+      await processGuide.locator("summary").click();
+      await page.locator(".workspace-main > main").evaluate((node) => {
+        node.scrollTop = 0;
+      });
       const floorBounds = await page
         .locator(".factory-live-viewport")
         .evaluate((node) => {
@@ -1358,6 +1373,19 @@ for (const device of ["desktop", "mobile"])
       await expect(
         page.getByLabel("Existing source identifier", { exact: true }),
       ).toHaveValue(source);
+      const sourceDialog = page.getByRole("dialog", {
+        name: "Verify existing source",
+        exact: true,
+      });
+      await expect(sourceDialog.locator(".wizard")).toHaveAttribute(
+        "data-layout",
+        "flow",
+      );
+      await expect(sourceDialog).toHaveCSS("overflow-y", "auto");
+      await expect(sourceDialog.locator(".wizard-field-scroll")).toHaveCSS(
+        "overflow-y",
+        "visible",
+      );
       const assertDialogHeading = async () => {
         await expect
           .poll(() =>
@@ -1377,6 +1405,9 @@ for (const device of ["desktop", "mobile"])
           .toBe(true);
       };
       await capture(page, "learning-observation-source", theme, device);
+      await page.screenshot({
+        path: test.info().outputPath("existing-source-flow.png"),
+      });
       await assertDialogHeading();
       await page
         .getByRole("button", { name: "Review source", exact: true })
@@ -1979,7 +2010,13 @@ for (const device of ["desktop", "mobile"])
         if (path.endsWith("/analyses")) {
           if (request.method() === "POST") {
             inspections.push(request.postDataJSON());
-            expect(inspections).toEqual([{ component_ids: ["api", "portal"] }]);
+            expect(inspections).toEqual([
+              {
+                component_ids: ["api", "portal"],
+                expected_project_revision: project.revision,
+                expected_project_digest: project.digest,
+              },
+            ]);
             report = {
               id: "a".repeat(32),
               project_id: project.id,
@@ -1988,6 +2025,7 @@ for (const device of ["desktop", "mobile"])
               method: "source_inspection",
               digest: "e".repeat(64),
               created_at: project.created_at,
+              project_snapshot: structuredClone(project),
               components: project.definition.components.map(
                 (component, index) => ({
                   ...component,
@@ -2048,23 +2086,44 @@ for (const device of ["desktop", "mobile"])
       await page
         .getByRole("button", { name: "Open source inspection", exact: true })
         .click();
-      const dialog = page.getByRole("dialog", {
-        name: "Source inspection review",
+      const sourcePage = page.getByRole("region", {
+        name: "Source inspection",
         exact: true,
       });
       const shot = async (stage: string) => {
         await capture(page, stage, theme, device, {
           resetFields: stage !== "source-analysis-review",
         });
-        await expect(dialog.locator(".wizard-heading")).toBeInViewport();
-        const controlsFit = await dialog.evaluate((element) => {
-          const box = element.getBoundingClientRect();
+        await expect(sourcePage.locator(".wizard")).toHaveAttribute(
+          "data-layout",
+          "flow",
+        );
+        await expect(sourcePage.locator(".wizard-field-scroll")).toHaveCSS(
+          "overflow-y",
+          "visible",
+        );
+        expect(
+          await page
+            .locator(".workspace-main > main")
+            .evaluate(
+              (node) =>
+                node.scrollWidth <= node.clientWidth + 1 &&
+                node.scrollLeft === 0,
+            ),
+        ).toBe(true);
+        const controlsFit = await sourcePage.evaluate((element) => {
+          const header = document
+            .querySelector(".workspace-main > header")!
+            .getBoundingClientRect();
+          const footer = document
+            .querySelector(".workspace-main > footer")!
+            .getBoundingClientRect();
           return [...element.querySelectorAll(".wizard-actions button")].every(
             (button) => {
               const control = button.getBoundingClientRect();
               return (
-                control.top >= box.top &&
-                control.bottom <= Math.min(box.bottom, innerHeight) &&
+                control.top >= header.bottom &&
+                control.bottom <= footer.top &&
                 button.contains(
                   document.elementFromPoint(
                     control.x + control.width / 2,
@@ -2075,7 +2134,40 @@ for (const device of ["desktop", "mobile"])
             },
           );
         });
-        expect(controlsFit).toBe(true);
+        expect(
+          controlsFit,
+          await sourcePage.locator(".wizard-actions").evaluate((element) => {
+            const box = element.getBoundingClientRect();
+            const header = document
+              .querySelector(".workspace-main > header")!
+              .getBoundingClientRect();
+            const footer = document
+              .querySelector(".workspace-main > footer")!
+              .getBoundingClientRect();
+            return JSON.stringify({
+              stage: element.closest(".wizard")?.getAttribute("aria-label"),
+              box: { top: box.top, bottom: box.bottom },
+              header: header.bottom,
+              footer: footer.top,
+              buttons: Array.from(element.querySelectorAll("button")).map(
+                (button) => {
+                  const rect = button.getBoundingClientRect();
+                  return {
+                    label: button.textContent,
+                    top: rect.top,
+                    bottom: rect.bottom,
+                    hit: document
+                      .elementFromPoint(
+                        rect.x + rect.width / 2,
+                        rect.y + rect.height / 2,
+                      )
+                      ?.outerHTML.slice(0, 160),
+                  };
+                },
+              ),
+            });
+          }),
+        ).toBe(true);
         const path = testInfo.outputPath(`${stage}.png`);
         await page.screenshot({ path });
         await testInfo.attach(stage, {
@@ -2083,91 +2175,113 @@ for (const device of ["desktop", "mobile"])
           contentType: "image/png",
         });
       };
-      await expect(dialog.getByRole("checkbox")).toHaveCount(2);
+      await expect(
+        sourcePage
+          .getByRole("list", { name: "Component results" })
+          .getByRole("checkbox"),
+      ).toHaveCount(2);
       for (const name of [
         "Inventory API · apps/api",
         "Customer portal · apps/portal",
       ])
         await expect(
-          dialog.getByRole("checkbox", { name, exact: true }),
+          sourcePage.getByRole("checkbox", { name, exact: true }),
         ).toBeChecked();
       await shot("source-analysis-scope");
       expect(inspections).toHaveLength(0);
-      await dialog
-        .getByRole("button", { name: "Inspect configured source", exact: true })
+      await sourcePage
+        .getByRole("button", { name: /^Inspect \d+ components?$/, exact: true })
         .click();
       await expect(
-        dialog.getByText("2 inspected components · 2 observed declarations", {
-          exact: true,
-        }),
+        sourcePage.getByText(
+          "2 inspected components · 2 observed declarations",
+          {
+            exact: true,
+          },
+        ),
       ).toBeVisible();
       await expect(
-        dialog.getByText("ready for review · source inspection", {
+        sourcePage.getByText("ready for review · source inspection", {
           exact: true,
         }),
       ).toBeVisible();
       await shot("source-analysis-receipt");
-      await dialog
+      await sourcePage
         .getByRole("button", { name: "Continue", exact: true })
         .click();
       for (const declaration of declarations) {
         await expect(
-          dialog
+          sourcePage
             .locator(".source-fact > p")
             .filter({ hasText: declaration.value }),
         ).toHaveText(declaration.value);
         await expect(
-          dialog.getByText(`${declaration.path}:${declaration.line}`, {
+          sourcePage.getByText(`${declaration.path}:${declaration.line}`, {
             exact: true,
           }),
         ).toBeAttached();
       }
       await expect(
-        dialog
+        sourcePage
           .locator(".source-evidence-component > p code")
           .filter({ hasText: commit }),
       ).toHaveCount(2);
       await expect(
-        dialog.getByText(
+        sourcePage.getByText(
           "1 observed declaration · 2 skipped files · source only",
           { exact: true },
         ),
       ).toHaveCount(2);
-      await expect(dialog.getByText("apps/api", { exact: true })).toBeVisible();
       await expect(
-        dialog.getByText("apps/portal", { exact: true }),
+        sourcePage.getByText("apps/api", { exact: true }),
+      ).toBeVisible();
+      await expect(
+        sourcePage.getByText("apps/portal", { exact: true }),
       ).toBeAttached();
+      await sourcePage
+        .getByText("Exact source excerpt", { exact: true })
+        .first()
+        .click();
+      const sourceSnippet = sourcePage
+        .locator(".source-fact .code-snippet")
+        .first();
+      await expect(sourceSnippet).toHaveAttribute("data-highlight", "grammar");
+      expect(await sourceSnippet.locator("pre code").textContent()).toBe(
+        declarations[0].excerpt,
+      );
       await shot("source-analysis-evidence");
-      await dialog
+      await sourcePage
         .getByRole("button", { name: "Continue", exact: true })
         .click();
-      const acknowledge = dialog.getByRole("button", {
-        name: "Acknowledge this report digest",
+      const acknowledge = sourcePage.getByRole("button", {
+        name: "Confirm source review",
         exact: true,
       });
       await expect(acknowledge).toBeDisabled();
       await expect(
-        dialog.getByText("Which customer roles may reserve stock?", {
+        sourcePage.getByText("Which customer roles may reserve stock?", {
           exact: true,
         }),
       ).toBeVisible();
-      await dialog
+      await sourcePage
         .getByRole("checkbox", {
-          name: "I reviewed the source evidence and open questions. This does not claim observed runtime behavior.",
+          name: "I reviewed the source findings and open questions. Runtime behavior still needs testing.",
           exact: true,
         })
         .check();
       await expect(acknowledge).toBeEnabled();
-      await dialog.getByRole("checkbox").evaluate((input) => {
-        input.closest("label")!.scrollIntoView({ block: "center" });
+      await sourcePage.getByRole("checkbox").evaluate((input) => {
+        const main = input.closest("main")!;
+        main.scrollTop +=
+          input.closest("label")!.getBoundingClientRect().top -
+          main.getBoundingClientRect().top -
+          16;
       });
       const acknowledgementFits = async () =>
-        dialog.getByRole("checkbox").evaluate((input) => {
+        sourcePage.getByRole("checkbox").evaluate((input) => {
           const label = input.closest("label")!,
             box = label.getBoundingClientRect(),
-            field = label
-              .closest(".wizard-field-scroll")!
-              .getBoundingClientRect(),
+            field = label.closest("main")!.getBoundingClientRect(),
             control = input.getBoundingClientRect();
           return (
             box.top >= field.top &&
@@ -2184,11 +2298,11 @@ for (const device of ["desktop", "mobile"])
       expect(reviews).toHaveLength(0);
       await acknowledge.click();
       await expect(
-        dialog.getByText("reviewed · source inspection", { exact: true }),
+        sourcePage.getByText("Source findings reviewed", { exact: true }),
       ).toBeVisible();
       expect(inspections).toHaveLength(1);
       expect(reviews).toHaveLength(1);
-      await expect(dialog.getByRole("alert")).toHaveCount(0);
+      await expect(sourcePage.getByRole("alert")).toHaveCount(0);
     });
 
 // Controlled archive responses demonstrate identity retention, not native PostgreSQL acceptance.
@@ -3049,12 +3163,14 @@ for (const device of ["desktop", "mobile"])
       await dialog
         .getByLabel("Find a registered person", { exact: true })
         .fill("Warehouse");
-      await dialog
-        .getByRole("button", { name: "Find person", exact: true })
-        .click();
-      await dialog
-        .getByLabel("Registered person", { exact: true })
-        .selectOption(nativeUser);
+      await dialog.getByRole("button", { name: "Search", exact: true }).click();
+      await dialog.getByRole("radio", { name: /Warehouse reviewer/ }).click();
+      await expect(
+        dialog.getByRole("group", {
+          name: "Selected registered person",
+          exact: true,
+        }),
+      ).toContainText("Warehouse reviewer");
       await dialog
         .getByRole("checkbox", { name: "Inventory API", exact: true })
         .check();
@@ -3062,9 +3178,8 @@ for (const device of ["desktop", "mobile"])
         .getByRole("checkbox", { name: "Answer agent questions", exact: true })
         .check();
       await dialog
-        .getByLabel("Registered person", { exact: true })
-        .locator("..")
-        .evaluate((node) => node.scrollIntoView({ block: "start" }));
+        .locator(".wizard-field-scroll")
+        .evaluate((node) => (node.scrollTop = 0));
       await shot("scm-delegation-scope", false);
       await dialog
         .getByRole("button", { name: "Review delegation", exact: true })
@@ -3408,6 +3523,10 @@ for (const device of ["desktop", "mobile"])
       await page.reload();
       await navigate(page, "Connections");
       await page
+        .locator(".provider-card")
+        .filter({
+          has: page.getByRole("heading", { name: "Bridge", exact: true }),
+        })
         .getByRole("button", { name: "Configure", exact: true })
         .click();
       await expect(
@@ -4338,6 +4457,9 @@ for (const device of ["desktop", "mobile"])
         boundary: "dialog",
         producer: "studio/tests/docs-walkthrough.spec.ts",
         actionSelector: ".identity-account-actions button.primary",
+      });
+      await page.screenshot({
+        path: test.info().outputPath("personal-account-short-dialog.png"),
       });
       await page
         .getByRole("button", { name: "Personal API tokens", exact: true })

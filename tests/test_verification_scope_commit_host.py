@@ -2,6 +2,7 @@
 """Real filesystem and scalar fences remain usable at the final native writer boundary."""
 
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -116,3 +117,22 @@ async def test_prepared_build_scope_rejects_late_input_change_at_commit(build_sc
         c.configuration.settings_generation = object()
     with pytest.raises(ValueError):
         await prepared.fence()
+
+
+async def test_new_linked_scope_preserves_historical_scratch_and_uses_sealed_fresh_namespace(build_scope_case):
+    from firefly_forge import verification_scope_attestation as scope
+
+    c = build_scope_case
+    args = (c.store, c.journal, c.engine, c.run, c.intent, dict(digest="7" * 64), c.current)
+    original = await scope.prepare_build_scope(*args)
+    assert original is not None
+    historical = Path(original.witness.scratch) / "1" / "home" / "retained.txt"
+    historical.write_text("Historical scratch must remain untouched")
+    with pytest.raises(ValueError, match="scratch"):
+        await scope.prepare_build_scope(*args, scratch_identity="../foreign")
+    current = await scope.prepare_build_scope(*args, scratch_identity="8" * 64)
+    assert current is not None and current.witness.scratch != original.witness.scratch
+    assert historical.read_text() == "Historical scratch must remain untouched"
+    assert not list((Path(current.witness.scratch) / "1" / "home").iterdir())
+    again = await scope.prepare_build_scope(*args, scratch_identity="8" * 64)
+    assert again is not None and again.witness == current.witness

@@ -33,12 +33,14 @@ The exact owner-reviewed evidence becomes frozen assistant context. The dashed f
 
 ## Follow source inspection in Studio
 
-Select the product in **Product projects**, then choose **Open source inspection**. Its wizard has four steps. This walkthrough uses controlled responses for a monorepo with two distinct component roots, the same source commit and numeric skipped-file counts. It demonstrates presentation and explicit review; it runs no source inspection, model, provider or test command.
+Select the product in **Product projects**, then choose **Open source inspection**. The dedicated project page has four steps and one native page scrollbar; **Back to project** returns to the overview. This walkthrough uses controlled responses for a monorepo with two distinct component roots, the same source commit and numeric skipped-file counts. It demonstrates presentation and explicit review; it runs no source inspection, model, provider or test command.
 
-1. In **Scope**, select the configured roots to inspect, then choose **Inspect configured source**. On your factory this starts source inspection; simply opening the wizard does not.
-2. In **Receipt**, select the returned report and inspect its recorded state, component/declaration counts and digest. **Refresh reports** reads retained reports. Continue to its evidence.
-3. In **Evidence**, check each component's root, source commit, declarations and skipped-file count. Expand **Exact source excerpt** to inspect a declaration's line and blob reference. Missing declarations require a coverage check before you infer anything about the product.
-4. In **Review**, read the open questions and download the source documents if needed. Acknowledge the source evidence explicitly, then choose **Acknowledge this report digest**. This confirms that report's source review; it leaves customer journeys and runtime behavior unconfirmed. **Done** closes the wizard.
+1. In **Scope**, search or filter the configured roots and review the selection count, then choose **Inspect N components**. Bulk actions apply to all matching results across pages and preserve selections outside the filter. On your factory this starts source inspection; simply opening or filtering the wizard does not.
+2. In **Report**, select the returned report and inspect its recorded state, component/declaration counts and digest. **Refresh reports** reads retained reports. A historical report does not validate a new selection or mark the scope complete.
+3. In **Source findings**, check each component's root, source commit, declarations and skipped-file count. Expand **Exact source excerpt** to inspect its exact text, line and blob reference. Missing declarations require a coverage check before you infer anything about the product.
+4. In **Review**, read the open questions and download the source documents if needed. Choose **Confirm source review** only after reviewing that source evidence. **Continue to product definition** passes the reviewed report's ID, digest and actual component IDs as draft context; it starts no conversation or model and accepts no definition. An earlier or missing project snapshot holds that handoff until the current source is inspected and reviewed. **Done** returns to the overview.
+
+Studio preserves the component selection and filters between steps. Added components are not selected automatically, removed components leave the request, and changed selected roots or contracts require explicit scope review. An unsuccessful inspection keeps the draft and error; reading reports does not automatically retry it.
 
 <figure class="forge-shot" markdown="1">
 
@@ -49,16 +51,16 @@ Select the product in **Product projects**, then choose **Open source inspection
 
 <figure class="forge-shot" markdown="1">
 
-![Receipt step with a retained inspection report, counts and digest.](assets/screenshots/source-analysis-receipt-desktop-light.png)
+![Report step with a retained inspection report, counts and digest.](assets/screenshots/source-analysis-receipt-desktop-light.png)
 
-<figcaption>Receipt: the controlled report is ready for review. Its identity and digest remain separate from an approved product definition.</figcaption>
+<figcaption>Report: the controlled inspection is ready for review. Its identity and digest remain separate from an approved product definition.</figcaption>
 </figure>
 
 <figure class="forge-shot" markdown="1">
 
-![Evidence step showing component roots, source commits and declaration references.](assets/screenshots/source-analysis-evidence-desktop-light.png)
+![Source findings showing component roots, commits and declaration references.](assets/screenshots/source-analysis-evidence-desktop-light.png)
 
-<figcaption>Evidence: inspect the source boundary and omitted-file count for each component. The fixture uses the same commit for both monorepo roots; it does not prove that their services integrate correctly.</figcaption>
+<figcaption>Source findings: inspect the source boundary and omitted-file count for each component. The fixture uses the same commit for both monorepo roots; it does not prove that their services integrate correctly.</figcaption>
 </figure>
 
 <figure class="forge-shot" markdown="1">
@@ -75,7 +77,7 @@ Select the product in **Product projects**, then choose **Open source inspection
 
 ![Source declarations and component references within the phone evidence step.](assets/screenshots/source-analysis-evidence-mobile-light.png)
 
-<figcaption>Evidence: scroll the declaration content while retaining the wizard controls. Expand the exact source excerpt when checking a citation.</figcaption>
+<figcaption>Source findings: scroll the complete page to read declarations and reach its actions. Expand the exact source excerpt when checking a citation; no nested field viewport clips the source.</figcaption>
 </figure>
 
 <figure class="forge-shot forge-shot--phone" markdown="1">
@@ -118,6 +120,8 @@ The assistant receives at most 40 KB of reviewed source context. Its `included_f
 
 Create an inspection through `POST /api/v1/projects/{project_id}/analyses`. An empty body selects the project's configured components; `component_ids` narrows the selection. Inspect the returned source observations, skipped-file counts and open questions.
 
+The optional API guards `expected_project_revision` (integer at least 1) and `expected_project_digest` (64 lowercase hexadecimal characters) bind admission to the reviewed project snapshot. Studio sends both with explicit, nonempty component IDs. A mismatch returns `409` before creating a report or cloning source; refresh and review the scope before another explicit inspection. Legacy callers may omit the guards. Each analysis retains the admitted `project_snapshot`; the existing file, byte, fact and execution boundaries above remain unchanged.
+
 A ready analysis has status `ready_for_review`. Review that exact result through:
 
 ```http
@@ -132,6 +136,8 @@ Content-Type: application/json
 Review confirms the source evidence. It leaves business journeys, expected behavior and live operation unconfirmed. If the logical project's definition changes, inspect and review its current scope before starting a new conversation.
 
 ## Start a conversation with the reviewed facts
+
+In Studio, **Continue to product definition** offers the reviewed source to a new draft. **Create conversation with reviewed source** explicitly creates the conversation with that context; it sends no message and starts no model. Existing conversation history keeps its recorded source snapshot. Review the included and omitted facts and source references before requesting a proposal.
 
 Create a conversation on the logical project's product repository:
 

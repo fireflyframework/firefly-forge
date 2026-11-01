@@ -5,9 +5,17 @@ description: Review firefly forge release changes, runtime requirements and the 
 <!-- Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 -->
 # firefly forge release notes
 
-## Unreleased
+## 0.2.50
 
 The factory runtime pins the verified official pyfly `26.10.22` wheel. Its web dependencies resolve to Starlette `1.10.0`, and the lock includes pyfly's required timezone data. The standalone Agentic `26.10.1` and Pydantic AI `2.55.0` dependencies remain unchanged; the upgrade does not enable pyfly's optional Agentic or Kubernetes sandbox extras. Existing runs retain their recorded runtime and require the documented compatibility checks before recovery.
+
+A saved implementation result can continue local postprocessing when its QA mode is `not_requested` and contains no findings or evidence. Recovery retains that original report without treating it as successful QA. Actual visual or DOM evidence still requires its existing verification path. The operation preserves the original attempt, command outcomes and remaining allowances; it does not ask the model to repeat completed work.
+
+Historical recovery validates the checkpoint's native compatibility fields separately from the installed runtime dependencies. The original runtime contract and measured profile must still match. This corrects a refusal of otherwise eligible saved output; it grants no replacement provider execution.
+
+Source-control comments keep their delivery identity separate from their conversation identity. Signed repository webhooks can use the configured repository connection without an invented application installation. The dispatcher checks for ready work every second while retaining each provider's retry and backoff settings.
+
+The 0.2.50 candidate includes Studio 0.2.50 and its same-result recovery panel. Local postprocessing grants no new AI or tool execution. Runtime qualification and source-control checks do not establish that a generated product has passed acceptance or reached a pull request.
 
 ## 0.2.49
 

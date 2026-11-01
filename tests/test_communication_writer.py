@@ -316,6 +316,13 @@ async def test_bridge_request_explains_exact_current_fact_ids(tmp_path, run, all
                     TextPart(
                         json.dumps(
                             {
+                                "reader_checks": {
+                                    "answers_question": True,
+                                    "relevant_detail": True,
+                                    "no_redundancy": True,
+                                    "plain_language": True,
+                                    "useful_excerpts": True,
+                                },
                                 "verdict": "supported",
                                 "issues": [],
                                 "fact_ids": ["state"],

@@ -460,24 +460,31 @@ test("new conversation task selection leaves recorded dialogue and edited draft 
   await expect(page.locator(".assistant-conversation-context")).toContainText(
     "recorded-text-model",
   );
-  await page
-    .getByLabel("Task for next conversation", { exact: true })
-    .selectOption("functions");
-  await expect(page.locator(".assistant-conversation-context")).toContainText(
-    "Product definition",
-  );
   expect(writes).toEqual([]);
   await page
     .getByRole("button", { name: "New conversation", exact: true })
+    .click();
+  await page
+    .getByLabel("Task for next conversation", { exact: true })
+    .selectOption("functions");
+  expect(writes).toEqual([]);
+  await page.getByRole("button", { name: "Files", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Close conversation files", exact: true })
     .click();
   await expect(page.locator(".assistant-conversation-context")).toContainText(
     "Features and journeys",
   );
   expect(writes).toEqual([{ task: "functions" }]);
   await page
+    .getByRole("button", { name: "New conversation", exact: true })
+    .click();
+  await page
     .getByLabel("Task for next conversation", { exact: true })
     .selectOption("architecture");
-  await page.getByText("History", { exact: true }).click();
+  await page
+    .getByRole("button", { name: "Conversation history", exact: true })
+    .click();
   await page
     .getByLabel("Recorded conversation", { exact: true })
     .selectOption(previous);

@@ -51,7 +51,7 @@ class Projects:
             if project_id and row is None:
                 raise KeyError("Product project not found")
             data: Data = {
-                "id": project_id or uuid.uuid4().hex,
+                "id": row.id.hex if row else uuid.uuid4().hex,
                 "revision": row.data["revision"] + 1 if row else 1,
                 "definition": definition.model_dump(),
                 "updated_at": now(),

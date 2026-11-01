@@ -54,6 +54,7 @@ if TYPE_CHECKING:
     from firefly_forge.channel_actions import ChannelCommand
     from firefly_forge.scm_conversation_models import AddressedStatusV1
     from firefly_forge.scm_functional_address import AddressedFunctionalV1
+    from firefly_forge.scm_linked_verification import SCMLinkedVerifications
     from firefly_forge.scm_product_change_service import SCMProductChangeAuthority
     from firefly_forge.scm_product_intake import SCMProductIntake
     from firefly_forge.scm_product_intake_models import SCMProductIntakeCommandV1
@@ -345,6 +346,7 @@ class Collaboration:
         self.resume_authority = resume_authority
         self.poll_resume_authority: Any = None
         self.poll_functional_authority: Any = None
+        self.linked_verification_authority: SCMLinkedVerifications | None = None
         self.source_edit_authority: Any = None
         self.product_change_authority: SCMProductChangeAuthority | None = product_change_authority
         self.product_intake_authority: SCMProductIntake | None = product_intake_authority
@@ -673,7 +675,12 @@ class Collaboration:
 
                     try:
                         scope = self.scm.delegation_scope(repo)
-                        installation = body.get("installation", {}).get("id") if provider == "github" else None
+                        installation_data = body.get("installation")
+                        installation = (
+                            installation_data.get("id")
+                            if provider == "github" and isinstance(installation_data, dict)
+                            else None
+                        )
                         if provider == "github" and type(installation) is not int:
                             raise ValueError("A GitHub App installation identifier is required")
                         verified_reference = VerifiedSCMReferenceV1.model_validate(
@@ -703,19 +710,41 @@ class Collaboration:
                     self.store.reject_credentials(event)
                 reason = self._allowed(repo, settings, event, provider)
                 if not reason:
-                    command = RepositoryCommand.parse(
-                        event.pop("text"),
-                        bot_addresses=getattr(self.scm, "bot_addresses", lambda _: ("forge",))(provider),
+                    text = event.pop("text")
+                    observation_wake = provider == "github" and not text.lstrip().startswith("/")
+                    command = (
+                        None
+                        if observation_wake
+                        else RepositoryCommand.parse(
+                            text, bot_addresses=getattr(self.scm, "bot_addresses", lambda _: ("forge",))(provider)
+                        )
                     )
-                    event["command"] = command.model_dump(exclude_none=True)
-                    if getattr(command, "adapter", None) in {"addressed_status_v1", "retained_question_reply_v1"}:
+                    event["command"] = command.model_dump(exclude_none=True) if command is not None else None
+                    if observation_wake or getattr(command, "adapter", None) in {
+                        "addressed_status_v1",
+                        "retained_question_reply_v1",
+                    }:
                         from firefly_forge.journal import digest as source_digest
                         from firefly_forge.scm_comment_source import github_comment_source
                         from firefly_forge.scm_conversation_models import SignedAddressedSourceV1
 
-                        if provider != "github" or verified_reference is None:
-                            raise ValueError("Addressed status requires a qualified GitHub App signature")
+                        if provider != "github":
+                            raise ValueError("Addressed status requires a qualified GitHub source")
                         source = github_comment_source(body["comment"], repo, self.scm._api("github"))
+                        if verified_reference is None and "installation" not in body and key_revision:
+                            from firefly_forge.scm_conversation_models import GitHubRepositoryWebhookReferenceV1
+
+                            verified_reference = GitHubRepositoryWebhookReferenceV1.model_validate(
+                                {
+                                    "connection": self.scm.delegation_scope(repo),
+                                    "external_actor_id": event["actor"],
+                                    "webhook_key_revision": key_revision,
+                                    "payload_digest": digest,
+                                    "source_digest": source_digest(source),
+                                }
+                            ).model_dump(mode="json")
+                        if verified_reference is None:
+                            raise ValueError("Addressed status requires a qualified GitHub signature")
                         if (
                             source["author_type"] != "User"
                             or body["sender"].get("type") != "User"
@@ -732,31 +761,35 @@ class Collaboration:
                             external_actor_id=source["author_id"],
                             comment_id=source["comment_id"],
                         ).model_dump(mode="json")
-                    versioned_resume = (
-                        isinstance(command, SCMResumeCommandV2)
-                        and verified_reference is not None
-                        and self.resume_authority is not None
-                    )
-                    product_edit = (
-                        isinstance(command, SCMProductChangeCommandV1)
-                        and verified_reference is not None
-                        and self.product_change_authority is not None
-                    )
-                    if (
-                        not versioned_resume
-                        and not product_edit
-                        and not (
-                            command.action == "intake"
+                    if observation_wake:
+                        event["api_observation"] = {"version": 1, "state": "pending", "source_key": event["source_key"]}
+                    else:
+                        assert command is not None
+                        versioned_resume = (
+                            isinstance(command, SCMResumeCommandV2)
                             and verified_reference is not None
-                            and self.product_intake_authority is not None
+                            and self.resume_authority is not None
                         )
-                        and command.action
-                        not in [
-                            *settings["allowed_commands"],
-                            *settings.get("channel_commands", []),
-                        ]
-                    ):
-                        reason = "command_disabled"
+                        product_edit = (
+                            isinstance(command, SCMProductChangeCommandV1)
+                            and verified_reference is not None
+                            and self.product_change_authority is not None
+                        )
+                        if (
+                            not versioned_resume
+                            and not product_edit
+                            and not (
+                                command.action == "intake"
+                                and verified_reference is not None
+                                and self.product_intake_authority is not None
+                            )
+                            and command.action
+                            not in [
+                                *settings["allowed_commands"],
+                                *settings.get("channel_commands", []),
+                            ]
+                        ):
+                            reason = "command_disabled"
             except (ValueError, KeyError, TypeError):
                 event.pop("text", None)
                 event.pop("command", None)
@@ -814,9 +847,15 @@ class Collaboration:
 
                 authority = SCMActorAuthority(self.store, self.scm)
                 current_scope = self.scm.delegation_scope(current_repository)
-                if current_scope != {
-                    key: verified_reference[key] for key in current_scope
-                } or not authority._key_current(repository_id, verified_reference):
+                if verified_reference.get("transport") == "github_repository_webhook_v1":
+                    from firefly_forge.scm_conversation_models import GitHubRepositoryWebhookReferenceV1
+
+                    proof_scope = GitHubRepositoryWebhookReferenceV1.model_validate(
+                        verified_reference
+                    ).connection.scope()
+                else:
+                    proof_scope = {key: verified_reference[key] for key in current_scope}
+                if current_scope != proof_scope or not authority._key_current(repository_id, verified_reference):
                     reason = "verification_scope_changed"
                     verified_reference = None
             previous = await self.inbox.find_delivery(identifier(repository_id), provider, delivery_key)
@@ -825,7 +864,11 @@ class Collaboration:
                     raise ValueError("Provider delivery identifier was reused with different bytes")
                 return copy.deepcopy(previous.data)
             source_key = (
-                str(event["source_key"])
+                (
+                    "webhook:" + hashlib.sha256(delivery_key.encode()).hexdigest()
+                    if "api_observation" in event
+                    else str(event["source_key"])
+                )
                 if reason is None
                 else "denied:" + hashlib.sha256(delivery_key.encode()).hexdigest()
             )
@@ -853,6 +896,8 @@ class Collaboration:
                 data["remote_id"] = event["remote_id"]
             if verified_reference is not None:
                 data["verification"] = verified_reference
+            if not reason and "api_observation" in event:
+                data["api_observation"] = event["api_observation"]
             if not reason and "addressed_source" in event:
                 data["source_snapshot"] = event["source_snapshot"]
                 data["addressed_source"] = event["addressed_source"]
@@ -903,6 +948,10 @@ class Collaboration:
     async def process(self, receipt_id: str) -> Data:
         settings_generation = self.store.configuration.settings_generation
         initial = await self.receipt(receipt_id)
+        if initial.get("api_observation") is not None:
+            if self.polling is None:
+                return initial
+            return dict(await self.polling.wake_observation(receipt_id))
         if (initial.get("command") or {}).get("adapter") in {"addressed_status_v1", "retained_question_reply_v1"}:
             from firefly_forge.scm_conversations import SCMConversations
 
@@ -2014,22 +2063,38 @@ class Collaboration:
                     source_sha256=hashlib.sha256(quotation.encode()).hexdigest(),
                 )
 
+            current_question = (data.get("source_snapshot") or {}).get("body")
             conversation_input = (
                 CommunicationConversationV1(
                     selection=conversation["selection"],
                     language=data["command"]["language"],
                     linked_runs=len(conversation["candidate_ids"]),
+                    question=current_question
+                    if isinstance(current_question, str) and current_question.strip()
+                    else None,
+                    question_sha256=hashlib.sha256(current_question.encode()).hexdigest()
+                    if isinstance(current_question, str) and current_question.strip()
+                    else None,
                 )
                 if conversation
                 else None
             )
             if data.get("natural_turn") is not None:
+                current_question = data["natural_turn"].get("human_message")
                 conversation_input = CommunicationConversationV1(
                     selection="run" if run else "clarify",
                     language=(data["natural_turn"].get("decision") or {}).get("language")
                     or data["command"].get("language", "en"),
                     linked_runs=1 if run else 0,
+                    question=current_question
+                    if isinstance(current_question, str) and current_question.strip()
+                    else None,
+                    question_sha256=hashlib.sha256(current_question.encode()).hexdigest()
+                    if isinstance(current_question, str) and current_question.strip()
+                    else None,
                 )
+            verification = getattr(self, "linked_verification_authority", None)
+            linked_input = await verification.communication(data) if verification is not None else None
             assistant_input = assistant_communication(data, repository=repo, host=host)
             drafted: Data
             if retained is not None:
@@ -2044,9 +2109,22 @@ class Collaboration:
                 except ValueError:
                     raise DeferredFeedbackChanged("The deferred feedback communication route changed") from None
                 drafted = {"body": retained["body"], "communication": retained["communication"]}
+            elif linked_input is not None:
+                drafted = await self.communication_writer.write(
+                    run or None,
+                    "",
+                    public_text,
+                    conversation=conversation_input,
+                    status_draft=data["natural_turn"].get("reply") or None,
+                    linked_verification=linked_input,
+                )
             elif natural_status:
                 drafted = await self.communication_writer.write(
-                    run, message, public_text, conversation=conversation_input
+                    run,
+                    message,
+                    public_text,
+                    conversation=conversation_input,
+                    status_draft=(data["natural_turn"].get("reply") or None),
                 )
             elif data.get("natural_turn") is not None:
                 drafted = {
@@ -2088,6 +2166,9 @@ class Collaboration:
                 drafted = await self.communication_writer.write(run, message, public_text, audience=audience_input)
             else:
                 drafted = await self.communication_writer.write(run, message, public_text)
+            if linked_input is not None and drafted["communication"]["mode"] != "ai":
+                drafted["body"] = ""
+                drafted["communication"].update(mode="held", reason="linked_verification_requires_configured_authoring")
             current_run = await self.store.get_run(data["run_id"]) if data.get("run_id") else run
             current_context = await self._feedback_context(data, current_run)
             current_assistant = (
@@ -2095,15 +2176,25 @@ class Collaboration:
                 if assistant_input
                 else None
             )
+            current_linked = (
+                await verification.communication(await self.receipt(receipt_id))
+                if linked_input is not None and verification is not None
+                else None
+            )
             facts = (
-                communication_facts(current_run or None, assistant=current_assistant)
+                communication_facts(
+                    current_run or None, conversation=conversation_input, linked_verification=current_linked
+                )
+                if current_linked is not None
+                else communication_facts(current_run or None, assistant=current_assistant)
                 if assistant_input
                 else communication_facts(current_run or None, conversation=conversation_input, audience=audience_input)
                 if conversation_input
                 else communication_facts(current_run, audience=audience_input)
             )
             state_changed = (
-                milestone_key(current_run) != milestone_key(run)
+                linked_input is None
+                and milestone_key(current_run) != milestone_key(run)
                 or content_digest(facts) != drafted["communication"]["facts_sha256"]
             )
             channel_changed = any(data.get(key) != value for key, value in current_context.items())
@@ -2121,7 +2212,7 @@ class Collaboration:
                         "discarded_generation": drafted["communication"],
                     },
                 }
-            if natural_status and retained is None:
+            if natural_status and retained is None and linked_input is None:
                 drafted["communication"]["natural_reply_source"] = "current_execution_facts"
             message = "" if drafted["communication"]["mode"] == "held" else drafted["body"]
             if retained is None and (
@@ -2135,6 +2226,9 @@ class Collaboration:
                 from firefly_forge.collaboration_feedback import communication_controls
 
                 controls = communication_controls(data, run, repo, host, public_text)
+                if linked_input is not None and linked_input.phase == "review":
+                    assert linked_input.question is not None
+                    controls = "\n\n".join(filter(None, [public_text(linked_input.question), controls]))
                 if controls:
                     message = message.rstrip() + "\n\n" + controls
             if len(message) > 6000:

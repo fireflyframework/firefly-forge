@@ -402,6 +402,11 @@ class SCMActorAuthority:
         for event_id, value, payload_digest in rows:
             if not isinstance(event_id, UUID):
                 raise ValueError("SCM candidate row identity is invalid")
+            if isinstance(value, dict) and value.get("transport") == "github_repository_webhook_v1":
+                from firefly_forge.scm_conversation_models import GitHubRepositoryWebhookReferenceV1
+
+                GitHubRepositoryWebhookReferenceV1.model_validate(value)
+                continue
             reference = VerifiedSCMReferenceV1.model_validate(value).model_dump(mode="json")
             if reference["payload_digest"] != payload_digest:
                 raise ValueError("The candidate does not bind its retained delivery")
@@ -672,6 +677,12 @@ class SCMActorAuthority:
             if resume is None:
                 raise AccessDenied("The separately consented native resume authority is unavailable")
             await resume.authorize_snapshot(actor, project_id, permission)
+            return
+        if isinstance(context, dict) and context.get("transport") == "github_rest_poll_linked_verification_v1":
+            verification = getattr(self.store, "scm_linked_verification_authority", None)
+            if verification is None:
+                raise AccessDenied("The separately consented linked verification authority is unavailable")
+            await verification.authorize_snapshot(actor, project_id, permission)
             return
         if isinstance(context, dict) and context.get("transport") == "github_rest_poll_functional_v1":
             functional = getattr(self.store, "scm_poll_functional", None)

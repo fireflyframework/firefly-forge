@@ -195,3 +195,147 @@ The automatic producer changes the protected runtime and admission closure.
 Historical registered profiles remain unchanged; a fresh source-qualified
 profile and native transaction proof are required before adopting this source.
 The existing bulk-journal retention boundaries remain unchanged.
+
+
+## Recover a consumed terminal result after failure
+
+A failed run may already hold its complete final model output. Version 2 of the
+worker-completion settlement contract lets an authorized operator review that
+saved result and request its remaining local postprocessing. It does not ask the
+provider to produce the result again. The version-1 known-worker settlement
+contract above remains available for its original eligible runs.
+
+The shared candidate endpoint returns the contract supported by that run:
+`GET /api/v1/runs/{run_id}/worker-completion-settlements/candidate`. The V2 SDK,
+CLI and MCP adapters require a version-2 response. They refuse a version-1
+candidate instead of treating it as permission for this recovery.
+
+1. Review the candidate's run, task attempt, source and complete custody hashes.
+   The response contains references and digests, not the terminal report or
+   provider output.
+2. Choose and retain one request identifier. Submit the candidate, policy, run,
+   journal and proof digests with all three explicit acknowledgments to
+   `POST /api/v1/runs/{run_id}/worker-completion-settlements/{request_id}`.
+3. Read that same request path to follow `queued`, `claimed` and `accepted`.
+   If the submission response is lost, use this readback; do not select a new
+   identifier or automatically repeat the POST.
+
+The worker performs only the admitted local postprocessing of the known output,
+keeping the same task attempt. It then pauses before QA. An accepted receipt
+means that this recovery was accepted; it does not establish that the product
+passed verification or was released. Current authorization and the reviewed
+source, journal and custody bindings still apply. The request grants no new
+model calls, tools, verification, publication or execution authority.
+
+This local phase owns its dispatch. A completed automatic verification handoff
+remains evidence and cannot dispatch again while the consumed-terminal marker
+owns the run. The worker admits only its exact native runner-attestation event;
+foreign, reordered or replaced activity still holds the phase. After a completed
+receipt, an ordinary explicit native resume can review the remaining stages.
+An already-claimed action that stopped requires separate authenticated
+reconciliation; installing a fix does not authorize retrying that action.
+
+### Python SDK
+
+`ForgeClient.consumed_terminal_candidate(run_id)` reads the candidate.
+`request_consumed_terminal(run_id, request_id, request)` accepts the native
+`ConsumedTerminalInputV2` model or its exact JSON object.
+`consumed_terminal_status(run_id, request_id)` reads the receipt. The client
+validates the V2 contracts and the requested run/request scope before returning
+results; a POST receipt must also match the body that was submitted.
+
+### Operator CLI
+
+Use `forge consumed-terminal-completions candidate RUN` to review the saved
+candidate. Submission requires the five reviewed hashes and three explicit
+acknowledgments; there is no opaque input document or automatic candidate
+selection:
+
+```sh
+forge consumed-terminal-completions request RUN REQUEST \
+  --candidate-digest "$CANDIDATE_DIGEST" \
+  --policy-digest "$POLICY_DIGEST" \
+  --expected-run-digest "$RUN_DIGEST" \
+  --journal-digest "$JOURNAL_DIGEST" \
+  --proof-digest "$PROOF_DIGEST" \
+  --acknowledge-known-worker-output \
+  --acknowledge-no-execution-grant \
+  --acknowledge-local-postprocessing
+forge consumed-terminal-completions status RUN REQUEST
+```
+
+Replace `RUN`, `REQUEST` and the hash variables with the exact reviewed values.
+The CLI does not create additional authority or retry a failed delivery.
+
+### MCP
+
+`get_consumed_terminal_candidate` and `get_consumed_terminal_status` are
+read-only tools. `request_consumed_terminal` is explicitly mutating and exposes
+the strict version-2 input schema. All three call the same authenticated SDK and
+REST routes. They add no separate credentials or transport-based privileges.
+The descriptions are versioned resources in the packaged prompt catalog.
+
+### Reconcile an already claimed action
+
+A stopped, uncharged `claimed` action can be continued only after the original
+operator explicitly reviews a new reconciliation candidate. Installing a fix,
+resubmitting the original settlement, or restarting a worker does not authorize
+this continuation. The same original request identifier owns the reconciliation;
+there is no replacement settlement identifier.
+
+Use these authenticated routes under
+`/api/v1/runs/{run_id}/worker-completion-settlements/{request_id}`:
+
+| Method | Suffix | Purpose |
+| --- | --- | --- |
+| GET | `/reconciliation-candidate` | Review the current hash-only authority. |
+| POST | `/reconcile` | Continue this same claim once under the native execution slot. |
+| GET | `/reconciliation` | Read the saved reconciliation without retrying work. |
+
+The strict POST body contains `version: 1`, the reviewed `candidate_digest`, and
+three literal `true` acknowledgments: `acknowledge_same_claimed_action`,
+`acknowledge_no_execution_grant`, and `acknowledge_local_postprocessing`.
+The candidate binds the original witness and claim, current operator rights,
+physical PostgreSQL owner and configuration generation, qualified runtime and
+profile, exact native task and journal cut, source and Git index. An active
+worker, changed grants, charged result, foreign journal suffix or changed source
+refuses admission. The only historical extra suffix admitted is the exact
+obsolete automatic verification hold after this claim; its record and held
+projection remain intact.
+
+Admission appends one immutable reconciliation record and transitions the same
+paused task to running without changing its attempt, claim or spent counters.
+It continues local acceptance of the already consumed output, charges that output
+once, writes the native receipts, and pauses before remaining stages. It grants
+no model, tool, command, QA, verification or publication replay. The response
+contains `candidate`, `request`, `record_digest`, and the original settlement
+receipt as `settlement`; inspect `settlement.state` for `claimed` or `accepted`.
+After uncertain delivery, use only the GET readback with the same identifier.
+A repeated POST with the identical input reads the saved record and cannot
+continue work again. Native commit checks retain the original reviewed operator,
+owner, configuration, runtime, profile, policy, source and index through the final
+awaited lease validation. If authority changes after an admission has committed,
+its record remains available; the stale admission cannot start result acceptance.
+
+The Python SDK methods are
+`consumed_terminal_reconciliation_candidate(run_id, request_id)`,
+`reconcile_consumed_terminal(run_id, request_id, request)`, and
+`consumed_terminal_reconciliation_status(run_id, request_id)`.
+`ConsumedTerminalReconciliationInputV1` and its exact JSON object are accepted;
+responses are validated against the requested run and original request.
+
+```sh
+forge consumed-terminal-completions reconciliation-candidate RUN REQUEST
+forge consumed-terminal-completions reconcile RUN REQUEST \
+  --candidate-digest "$RECONCILIATION_CANDIDATE_DIGEST" \
+  --acknowledge-same-claimed-action \
+  --acknowledge-no-execution-grant \
+  --acknowledge-local-postprocessing
+forge consumed-terminal-completions reconciliation-status RUN REQUEST
+```
+
+The matching MCP tools are
+`get_consumed_terminal_reconciliation_candidate`, `reconcile_consumed_terminal`,
+and `get_consumed_terminal_reconciliation_status`. They use the same SDK,
+authentication and strict versioned contracts. These routes do not establish
+portal support, product verification, publication or external acceptance.

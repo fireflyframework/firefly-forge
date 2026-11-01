@@ -263,7 +263,7 @@ async def test_unsupported_actor_paths_do_not_claim_live_observations(actor):
 
 
 @pytest.mark.asyncio
-async def test_slow_observation_times_out_without_cancelling_the_engine_task():
+async def test_slow_observation_times_out_without_cancelling_the_engine_task(caplog):
     store, records, activity = observer()
     entered = asyncio.Event()
 
@@ -280,6 +280,9 @@ async def test_slow_observation_times_out_without_cancelling_the_engine_task():
     await activity.begin("b" * 32, "implement", "a" * 32)
     assert entered.is_set() and not activity.scopes
     assert not asyncio.current_task().cancelling()
+    diagnostic = next(row for row in caplog.records if row.name == "firefly_forge.engine_activity")
+    assert diagnostic.args == ("TimeoutError",)
+    assert diagnostic.exc_info is None
 
 
 def cleanup_engine(tmp_path, monkeypatch, observer_failure):
@@ -417,3 +420,21 @@ async def test_undrained_consumer_still_holds_owner_without_calling_observer_clo
         await asyncio.gather(consumer, return_exceptions=True)
         engine.owner_lock.release()
         RETAINED_EXECUTION_FENCES.discard(engine.owner_lock)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["RuntimeError", "ValueError", "PRIVATE_CLASS_CANARY"])
+async def test_observation_failure_reports_only_a_safe_kind_without_private_details(kind, caplog):
+    store, records, activity = observer()
+    error_type = {"RuntimeError": RuntimeError, "ValueError": ValueError}.get(kind, type(kind, (Exception,), {}))
+    store.assert_ownership = AsyncMock(side_effect=error_type("PRIVATE_MESSAGE_CANARY secret database context"))
+    await activity.begin("b" * 32, "implement", "a" * 32)
+    assert not activity.scopes and activity.poller is None
+    records.begin.assert_not_awaited()
+    diagnostic = next(row for row in caplog.records if row.name == "firefly_forge.engine_activity")
+    assert diagnostic.args == (kind if kind in {"RuntimeError", "ValueError"} else "Exception",)
+    assert diagnostic.exc_info is None and "CANARY" not in caplog.text
+
+
+def test_production_observation_keeps_its_one_second_default():
+    assert EngineActivitySettings().sample_timeout_seconds == 1

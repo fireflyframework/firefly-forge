@@ -13,13 +13,14 @@ from openai.types.chat import ChatCompletion
 from pydantic_ai.messages import ModelResponse, ToolCallPart, ToolReturnPart
 from pydantic_ai.usage import RunUsage
 
-from firefly_forge.agent_checkpoint_models import CheckpointPayloadV2, ConsumePayload, ConsumePayloadV2
+from firefly_forge.agent_checkpoint_models import ConsumePayload, ConsumePayloadV2
 from firefly_forge.agent_checkpoints import AgentCheckpoints
 from firefly_forge.agentic_checkpoint_boundary import USAGE, BoundaryCheckpoint
 from firefly_forge.agentic_checkpoint_invocation import STATIC_TOOLS, invocation_cut
 from firefly_forge.bridge_completion_models import CompletionIntentPayload, CompletionResponsePayload
 from firefly_forge.bridge_completions import _cut
 from firefly_forge.checkpoint_mode_runtime import effective_revision
+from firefly_forge.checkpoint_work_duration import checkpoint_payload, same_owned_duration, validate_binding_duration
 from firefly_forge.invalid_read_continuity import _bytes, _json
 from firefly_forge.journal import Journal, digest
 from firefly_forge.known_worker_completion_proof import CUSTODY, _schema, _unsettled
@@ -118,9 +119,10 @@ def pending_checkpoint(run: Data, task: Data, entries: list[Data]) -> Data:
     last = None
     for index, (intent, checkpoint, response) in enumerate(zip(*(grouped[k] for k in CUSTODY[:3]), strict=True)):
         ip = CompletionIntentPayload.model_validate(intent["payload"])
-        cp = CheckpointPayloadV2.model_validate(checkpoint["payload"])
+        cp = checkpoint_payload(checkpoint["payload"])
         rp = CompletionResponsePayload.model_validate(response["payload"])
         bound = cp.invocation
+        validate_binding_duration(run, bound)
         if (
             any(e["task_id"] != "implement" for e in (intent, checkpoint, response))
             or ip.run_id != run["id"]
@@ -140,7 +142,8 @@ def pending_checkpoint(run: Data, task: Data, entries: list[Data]) -> Data:
             or (
                 previous is not None
                 and (
-                    bound.ordinal != previous.invocation.ordinal + 1
+                    not same_owned_duration(previous.invocation, bound)
+                    or bound.ordinal != previous.invocation.ordinal + 1
                     or bound.predecessor != previous.checkpoint_digest
                     or bound.invocation_id != previous.invocation.invocation_id
                     or bound.grants != previous.invocation.grants
@@ -208,7 +211,7 @@ def pending_checkpoint(run: Data, task: Data, entries: list[Data]) -> Data:
         previous = cp
         last = {"intent": intent, "checkpoint": checkpoint, "response": response}
     assert last is not None
-    cp = CheckpointPayloadV2.model_validate(last["checkpoint"]["payload"])
+    cp = checkpoint_payload(last["checkpoint"]["payload"])
     if any(
         e["sequence"] > last["checkpoint"]["sequence"]
         and e["kind"] not in {"bridge_request_response", "verification_handoff_refused", HANDOFF}

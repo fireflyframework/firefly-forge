@@ -2,6 +2,7 @@
 import { expect, test, type Route } from "@playwright/test";
 import { mockIdentity } from "./auth-fixture";
 import { navigate } from "./navigation";
+import { assistantChatFixture } from "./assistant-chat-fixture";
 test("image support is read for the selected frozen conversation and late replies cannot overwrite it", async ({
   page,
 }) => {
@@ -76,11 +77,12 @@ test("image support is read for the selected frozen conversation and late replie
     .click();
   await navigate(page, "Product definition");
   await expect.poll(() => Boolean(pending)).toBe(true);
-  await page.locator(".assistant-settings>summary").click();
+  await page
+    .getByRole("button", { name: "Conversation history", exact: true })
+    .click();
   await page
     .getByLabel("Recorded conversation", { exact: true })
     .selectOption(second);
-  await page.locator(".assistant-settings>summary").click();
   await pending!
     .fulfill({ json: { image_input: { status: "verified" } } })
     .catch(() => undefined);
@@ -89,14 +91,149 @@ test("image support is read for the selected frozen conversation and late replie
     .getByLabel("Include screen.png in next message", { exact: true })
     .check();
   await page.getByRole("button", { name: "Done", exact: true }).click();
-  await expect(page.locator(".assistant-file-guidance")).toContainText(
+  const imageGuidance = page
+    .getByRole("form", { name: "Design message", exact: true })
+    .locator(".assistant-file-guidance");
+  await expect(imageGuidance).toContainText(
     "Image input is not verified for this conversation",
   );
-  await expect(page.locator(".assistant-file-guidance")).not.toContainText(
-    "Image input is verified",
-  );
+  await expect(imageGuidance).not.toContainText("Image input is verified");
   expect(modelCalls).toBe(0);
 });
+
+for (const rejected of [true, false]) {
+  test(`conversation polling recovers its read error ${rejected ? "without erasing a rejected send" : "without another operation"}`, async ({
+    page,
+  }) => {
+    const repository = "a".repeat(32),
+      fixture = assistantChatFixture(repository),
+      held: Route[] = [],
+      posts: Record<string, unknown>[] = [];
+    let readMode: "ready" | "held" | "failed" = "ready",
+      failedReads = 0,
+      marker = "";
+    const record = () => ({
+      ...fixture.state.sessions[0],
+      journal: { verified: true, head: "a".repeat(64), entries: [] },
+      turns: [
+        ...fixture.state.turns,
+        ...(marker
+          ? [{ ...fixture.state.turns[0], id: "9".repeat(32), message: marker }]
+          : []),
+      ],
+    });
+    await page.clock.install();
+    await page.route("**/api/v1/**", async (route) => {
+      if (await mockIdentity(route)) return;
+      const path = new URL(route.request().url()).pathname;
+      if (path.endsWith(`/assistant/conversations/${fixture.conversation}`)) {
+        if (readMode === "held") {
+          held.push(route);
+          return;
+        }
+        if (readMode === "failed") {
+          failedReads++;
+          return route.fulfill({
+            status: 503,
+            json: { detail: "Conversation temporarily unavailable" },
+          });
+        }
+        return route.fulfill({ json: record() });
+      }
+      if (path.endsWith("/turns")) {
+        posts.push(route.request().postDataJSON());
+        return route.fulfill({
+          status: 409,
+          json: { detail: "The recorded model rejected this message" },
+        });
+      }
+      if (await fixture.handle(route)) return;
+      await route.fulfill({
+        json: path.endsWith("/repositories")
+          ? [
+              {
+                id: repository,
+                name: "Inventory",
+                provider: "git",
+                url: "/fixture",
+                default_branch: "main",
+              },
+            ]
+          : path.endsWith("/product") || path.endsWith("/brand")
+            ? null
+            : [],
+      });
+    });
+    await page.goto("/");
+    await navigate(page, "Connections");
+    await page
+      .getByLabel("API token", { exact: true })
+      .fill("fixture-polling-at-least-24-characters");
+    await page
+      .getByRole("button", { name: "Save connection", exact: true })
+      .click();
+    await navigate(page, "Product definition");
+    const message = page.getByLabel("Product design message", { exact: true });
+    await expect(message).toBeEnabled();
+    await message.fill("Keep the unsent reservation draft");
+    if (rejected) {
+      await page.getByRole("button", { name: "Files", exact: true }).click();
+      await page
+        .getByLabel(`Include ${fixture.file.filename} in next message`, {
+          exact: true,
+        })
+        .check();
+      await page.getByRole("button", { name: "Done", exact: true }).click();
+      readMode = "held";
+      await page
+        .getByRole("button", { name: "Send design message", exact: true })
+        .click();
+      await expect(page.getByRole("alert")).toContainText(
+        "The recorded model rejected this message",
+      );
+      await expect.poll(() => held.length).toBeGreaterThan(0);
+      marker = "Recorded readback after rejection";
+      readMode = "ready";
+      for (const route of held.splice(0))
+        await route.fulfill({ json: record() }).catch(() => undefined);
+      await expect(
+        page.getByRole("log", { name: "Recorded design dialogue" }),
+      ).toContainText(marker);
+      await expect(page.getByRole("alert")).toContainText(
+        "The recorded model rejected this message",
+      );
+    }
+    readMode = "failed";
+    await page.clock.runFor(3100);
+    await expect.poll(() => failedReads).toBeGreaterThan(0);
+    await expect(page.getByRole("alert")).toContainText(
+      rejected
+        ? "The recorded model rejected this message"
+        : "Conversation temporarily unavailable",
+    );
+    marker = "Recorded readback after polling recovered";
+    readMode = "ready";
+    await page.clock.runFor(3100);
+    await expect(
+      page.getByRole("log", { name: "Recorded design dialogue" }),
+    ).toContainText(marker);
+    if (rejected) {
+      await expect(page.getByRole("alert")).toContainText(
+        "The recorded model rejected this message",
+      );
+      expect(posts).toHaveLength(1);
+      expect(posts[0].attachment_ids).toEqual([fixture.file.id]);
+      await expect(
+        page.locator('[aria-label="Files for next message"]'),
+      ).toContainText(fixture.file.filename);
+    } else {
+      await expect(page.getByRole("alert")).toHaveCount(0);
+      expect(posts).toHaveLength(0);
+    }
+    await expect(message).toHaveValue("Keep the unsent reservation draft");
+    await expect(message).toBeEnabled();
+  });
+}
 
 test("reading an AI source preserves the owner's manual scroll across status polling", async ({
   page,

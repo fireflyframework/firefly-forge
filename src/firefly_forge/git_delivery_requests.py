@@ -100,6 +100,9 @@ class GitDeliveryRequests:
         if not policy.enabled or run["status"] not in {"paused", "failed"}:
             raise ValueError("Checkpointing requires an enabled policy and a quiescent paused or failed run")
         await self.deliveries._authorize(run, actor, "release" if policy.remote == "draft_pr" else "execute")
+        from firefly_forge.git_linked_verification import assert_linked_git_closed
+
+        settlement = await assert_linked_git_closed(self.deliveries, run_id)
         incoming: Data = {"input": body.model_dump(mode="json"), "actor": actor, "binding": binding(run)}
         if adoption_expires is not None:
             incoming["explicit_adoption_expires_at_ms"] = adoption_expires
@@ -117,6 +120,7 @@ class GitDeliveryRequests:
             if binding(current) != binding(run) or CURRENT_PRINCIPAL.get() != user:
                 raise ValueError("The checkpoint run or caller changed during admission")
             await self.deliveries._authorize(current, actor, "release" if policy.remote == "draft_pr" else "execute")
+            await assert_linked_git_closed(self.deliveries, run_id, prepared=settlement)
             if body.explicit_adoption is not None:
                 current_candidate = await GitFailedUnitAdoptions(self.deliveries).candidate(run_id, actor)
                 GitFailedUnitAdoptions.compare(current_candidate, body.explicit_adoption)

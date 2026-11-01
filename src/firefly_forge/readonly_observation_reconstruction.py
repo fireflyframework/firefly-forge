@@ -29,6 +29,7 @@ from firefly_forge.agentic_tool_custody import EFFECTS, INTENT, RESULT, UNKNOWN
 from firefly_forge.bridge_completion_models import CompletionIntentPayload, CompletionResponsePayload
 from firefly_forge.bridge_completions import _cut, _outside_unit
 from firefly_forge.checkpoint_mode_runtime import effective_revision
+from firefly_forge.checkpoint_work_duration import checkpoint_payload
 from firefly_forge.invalid_read_continuity import _bytes, _json
 from firefly_forge.invalid_read_reconstruction import _agent, _Captured, _NegativeResultMetadata
 from firefly_forge.journal import Journal, digest
@@ -66,7 +67,7 @@ class PreparedObservation:
 
     @property
     def checkpoint(self) -> BoundaryCheckpoint:
-        p = CheckpointPayloadV2.model_validate(self.data["checkpoint"])
+        p = checkpoint_payload(self.data["checkpoint"])
         return BoundaryCheckpoint.decode(p.snapshot.encode(), p.checkpoint_digest)
 
 

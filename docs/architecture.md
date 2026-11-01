@@ -11,6 +11,229 @@ The factory itself uses [pyfly](https://fireflyframework.org/frameworks/python/)
 
 ## Components and dependency injection
 
+### Durable code and runner storage
+
+Git remotes and their confirmed commits remain the source of truth for delivered
+code. A runner's checkout is disposable execution state. Docker volumes, or a
+Kubernetes Job's ephemeral volumes, own that checkout's filesystem lifecycle;
+object storage is accessed through its object API, never mounted as a POSIX
+replacement. PostgreSQL owns metadata, WAL, current ACLs, leases and publication
+decisions. Losing a runner must not lose the committed source or a published
+artifact.
+
+| Data | Durable authority | Runner use |
+| --- | --- | --- |
+| Delivered source | Confirmed Git remote commit and repository identity | Fetch into a new isolated checkout. |
+| Uncommitted checkpoints and immutable source archives | Scoped object chunks plus a published PostgreSQL manifest | Verify and restore into runner-owned scratch. |
+| Results, attachments and log chunks | Scoped object chunks plus publication receipts | Stream verified bytes through the authorized controller. |
+| Ownership, grants, history and retention references | PostgreSQL records and WAL | Recheck current authority before and after external effects. |
+| Checkout, build cache and temporary files | Docker/Kubernetes volume lifecycle | Recreate or discard after owned cleanup. |
+
+The existing runner implementation has host and Docker backends. It does not
+currently contain a Kubernetes Job backend. `RunnerPoolWorker._workspace()`
+also binds source to a central absolute factory path. Adding object storage alone
+does not remove that dependency. A distributed workspace protocol must bind a
+logical workspace, source manifest, invocation and current lease, then restore
+that source into a fresh runner volume after rescheduling. Retained local
+bindings continue to identify their original storage; they are not silently
+converted or reset.
+
+The concrete artifact integration points are `RunnerPoolExecutions.accept()`
+(source and stdin), its result collection (output and result),
+`RunnerControllerService.artifact()` (authorized reads), and
+`RunnerPoolArtifacts` (archive custody and preparation). Their existing byte
+bundle protocol buffers complete archives through `pack_workspace()` and
+`DockerPoolDispatcher`. Chunking that byte string afterward cannot establish
+bounded memory at the producer. A streaming artifact-reference protocol must
+carry a size, SHA-256, ordered chunk manifest and immutable invocation identity
+without sending a complete base64 bundle. The retained byte protocol remains a
+separate compatibility path.
+
+PyFly's native `DocumentStoragePort` supplies asynchronous `upload(Document,
+bytes)`, `download(Document, version)` and `delete` operations. Its S3, Azure
+Blob and local filesystem adapters can store bounded chunk objects. MinIO uses
+the native S3 adapter with an explicitly configured S3 client and endpoint.
+GCS requires an installed PyFly release that exports its native
+`GoogleCloudStorageAdapter`; configuration fails closed when it is absent. An
+unknown or unavailable provider must fail configuration instead of selecting local storage.
+The ECM auto-configuration's in-memory metadata repository is unsuitable for
+Forge's durable publication ledger.
+
+Each object key must belong to a tenant and project, with invocation and artifact
+identity in PostgreSQL. The controller verifies a running SHA-256 while reading
+bounded chunks, verifies the native provider's receipt, and rechecks authority
+after upload. A manifest becomes readable only through an atomic PostgreSQL
+compare-and-set after every chunk is verified. Object ETags are not SHA-256
+evidence. A lost upload or publication reply requires explicit readback of its
+retained request; it must not trigger an automatic new write.
+
+Restoration verifies chunk order, lengths, checksums and the complete manifest
+before publishing a file into private runner scratch. Archive extraction keeps
+the existing no-link, no-traversal and credential checks. A partial restore never
+replaces an admitted checkout. Production retention must use PostgreSQL reachability
+and legal holds, reclaiming only unreferenced objects after an orphan grace
+period and a current-authority check. That retention worker is not implemented
+by this artifact slice. Storage credentials stay outside manifests and runner
+payloads; use scoped workload identities or private operator credentials with
+only the required bucket/container prefix permissions.
+
+Development and tests may use an explicit private local adapter or a dedicated
+local Docker MinIO deployment. Production uses object storage and PostgreSQL;
+local emulation does not demonstrate cloud availability, Kubernetes scheduling,
+cross-node restore or production retention acceptance.
+
+#### Configure and exercise the artifact path
+
+The runner controller's private configuration accepts `object_tenant_id` and
+`object_storage` alongside its existing TLS, PostgreSQL and Docker authority.
+For example, merge these fields into `forge.runner.controller`:
+
+```yaml
+object_tenant_id: 428e7fe2-39b5-4f11-af24-d07cd7fe605b
+object_storage:
+  provider: s3
+  mode: production
+  storage_id: 73744117-1ab1-4342-92eb-962287975ac8
+  bucket: forge-artifacts
+  region: eu-west-1
+  key_prefix: forge
+  chunk_bytes: 8388608
+```
+
+Tenant and storage identities are operator-managed deployment identities, not
+example grants. Use the actual tenant UUID and keep `storage_id` stable for that
+physical store. Changing bucket, prefix, endpoint or account requires an explicit
+new binding. Provider credentials are supplied through the provider's workload
+identity chain or private connection configuration. They do not travel with an
+invocation or object reference. S3/MinIO requires PyFly's `ecm-aws` extra; Azure
+requires `ecm-azure`, with `azure-identity` for workload identity. SDK upload
+retries are disabled in the configured clients; an uncertain write enters
+explicit readback.
+
+Enabling the object backend adds runner schema revision 2 and the native
+`forge_runner_artifact_publications` and `forge_runner_artifact_chunks`
+repositories. The controller records upload
+intent before each provider call and publishes the manifest with the exact
+factory fence and upload-owner compare-and-set. A published receipt is immutable.
+An unfinished intent refuses an automatic second upload. Explicit readback
+verifies its recorded chunk keys and aggregate hash before publishing, while
+preserving the original intent and fence. This operation grants no execution.
+
+The manifest root has constant-size counters, the content hash and a chunk-chain
+head. Each chunk has its own immutable sequence and descriptor row. Readers use
+keyset pages of at most 128 rows and verify the sequence, scope and digest chain
+while checking each object's bytes. Neither the writer nor PostgreSQL stores a
+full-file reference array in the root. The small ECM page utility is limited to
+128 descriptors and is not the full-file publication path. Source scanning and
+restoration use private ephemeral disk; their application buffers scale with the
+configured chunk width and a fixed metadata page, rather than the complete project. The existing
+invocation byte budgets still apply; this change does not remove the retained
+carrier's project-size bounds.
+
+`RunnerPoolExecutions` uses the selected backend for source, stdin, output and
+result custody. The existing artifact RPC can reconstruct a retained byte bundle
+after controller restart. Local and object-backed custody require the current
+authorization callback. The controller checks it before reading, retaining or
+bundling local bytes, and again after asynchronous object operations before
+writing a local copy or returning bytes. A revoked callback stops the operation
+with its original exception. The separate `object-artifacts/upload` RPC consumes a
+raw stream, with typed invocation/fence/length/hash metadata in the bounded
+`X-Forge-Artifact-Request` header. `RunnerControllerClient.upload_artifact_file()`
+reads a regular producer file in 64 KiB frames. It does not call `read_bytes()` or
+base64-encode the complete archive. The server validates the complete credential
+scan and aggregate hash in private ephemeral scratch before uploading chunks.
+
+`forge-runner-object-reference-v1` contains execution identity, invocation digest,
+artifact kind, byte count, content SHA-256 and the separate canonical receipt
+digest. It contains no paths, provider URI or credentials. The manifest stays in
+PostgreSQL. The `object-artifacts/read-reference` RPC resolves it only with the
+same authenticated invocation and an explicit current owner/epoch/factory-fence
+lease. It rechecks that lease while streaming. The command container receives
+neither object-store credentials nor a storage grant. Completed output/result
+reads use the existing authenticated observation scope separately from a live
+execution lease.
+
+For local emulation, [the dedicated MinIO Compose file](https://github.com/fireflyframework/firefly-forge/blob/main/compose.object-storage.local.yaml)
+uses a Docker-owned volume and loopback ports. Supply an already installed image
+pinned by digest and private administrator secret files, then use
+`docker compose -f compose.object-storage.local.yaml up --pull never -d`.
+Provision a bucket and a separate least-privilege application identity before
+configuring Forge. Do not give the controller MinIO's root credentials. Select
+`provider: minio`, `mode: development`, and
+`endpoint_url: http://127.0.0.1:9000` for a controller on that local host. No image
+download or VM creation is implicit in this recipe.
+
+The storage settings wizard, Kubernetes scheduling, a reference-native Docker
+carrier, production retention/GC and live provider acceptance are separate
+integration requirements. The current carrier and `RunnerPoolWorker` still use
+the retained central byte-bundle path. Existing local installations continue
+with that explicit binding when `object_storage` is absent; enabling a backend
+does not migrate or delete their files.
+
+#### Read recorded source
+
+The source explorer backend reuses `SourceCatalogRefV1`, `SourceCatalogEntryV1`
+and `SourceCatalogPageV1`. At the Engine snapshot boundary it captures the public
+catalog, stores each file through the native object publication ledger, and
+copies catalog pages into PostgreSQL. Roots have constant-size lineage and
+digest-chain fields; pages contain at most 128 entries. The source digest is
+recomputed from the ordered catalog before a page is returned. Source and owner
+fences cover publication, including the final compare-and-set. An incomplete or
+ambiguous archive stays unavailable and is never retried automatically.
+
+A factory with native object storage configured records fresh snapshots by
+default. Its private configuration requires `FORGE_OBJECT_STORAGE_TENANT_ID`
+alongside the existing `FORGE_OBJECT_STORAGE_*` provider settings. Administrators
+can set `FORGE_SOURCE_ARCHIVE_POLICY` to a JSON object with `enabled`, an
+`excluded_projects` array of exact project UUIDs, and
+`retention: "retain_until_explicit_admin_gc"`. This policy does not grant read
+access or delete retained data. Production GC and a portal storage setup wizard
+remain separate work; the implemented retention policy keeps recorded bytes.
+
+Source archives require a canonical native project ID. Standalone runs whose
+`project_id` is explicitly `null` are not eligible for archiving; no project is
+inferred from their repository. When archival is enabled, a present noncanonical
+project ID is refused before source publication effects. These eligibility checks
+do not change the runner object protocol's separate requirement for a
+project-scoped invocation.
+
+Authenticated GET routes list recorded snapshots and return catalog/file pages.
+Each response rechecks the native reader, current project access, run scope,
+tenant and immutable reference. An optional Git delivery request requires its
+verified intent/receipt and typed `expected_source_digest` to match the complete
+catalog source digest, alongside the recorded Git tree. A matching tree alone
+does not cover ignored public files; missing legacy proof holds that selector.
+Reads perform no Git or SCM
+network operation. `branch` and `head` describe the captured run baseline;
+`tree` describes the admitted snapshot, without claiming a remote branch update.
+
+File windows come only from verified object bytes, never the current workspace.
+Publication scans the complete file for configured credentials and verifies its
+SHA-256. Reads verify the bounded metadata chain, then fetch only chunks that
+intersect the requested window and its credential-scan overlap. They never
+restore the complete file or archive per window. The configured credential
+fingerprint must still match. After rotation, a current project owner or factory
+administrator can explicitly rescan the retained objects without the workspace.
+The scan streams every chunk, verifies file checksums and metadata, and appends
+a request-scoped credential receipt in the same private source schema. Source,
+catalog, object and checkpoint identities remain unchanged. Pending or uncertain
+scans grant no access and are read back rather than retried. Native identity and
+membership locks cover receipt publication; current access and registry checks
+also cover object reads. The page chain is verified once and streamed again in
+bounded pages, so rescan metadata work is linear rather than one full catalog
+pass per file. GET requests never create scan receipts or upload content.
+Request-specific credential taints are checked against the returned byte range
+without changing that persistent fingerprint. Application memory scales with
+chunk/page width and the bounded response window. Publication scratch scales
+with the file being captured. Base64 carries binary or partial UTF-8 windows
+without inventing text. Private paths, aliases and symbolic links cannot become
+file capabilities.
+
+Existing installations without storage configuration are unchanged. Old runs
+and checkpoints without a complete publication explicitly have no archived
+content; there is no mutable fallback or retroactive migration. This backend
+does not provide an editor, a terminal or a complete live SCM branch browser.
+
 <figure class="forge-shot forge-architecture-diagram" markdown="1">
 <picture>
   <source media="(max-width: 640px)" srcset="../diagrams/architecture-components-narrow.svg">
@@ -394,6 +617,44 @@ Older runs without an automatic-verification grant stay manual until an authenti
 
 Progress in the [repository workflow](repository-workflow.md) comes from durable run states. The bot reports starts, checks, questions and delivery outcomes through centralized Agentic templates. A confirmed GitHub comment and a successful product delivery remain separate records.
 
+### Fresh verification after an accepted recovery
+
+An accepted implementation may need fresh checks after its runtime or dependency inputs change. `LinkedVerifications` provides a separate verification operation for that case. It preserves the original implementation claim, held handoff, usage and sandbox counters. Its own allowance is the length of the complete effective check list, including required policy and framework checks.
+
+<div class="forge-flow forge-flow--dependencies" role="region" aria-label="Fresh verification after an accepted recovery" tabindex="0" markdown="1">
+
+```mermaid
+---
+config:
+  flowchart:
+    wrappingWidth: 96
+---
+flowchart LR
+    A[Accepted source] --> B[Review and consent]
+    B --> C[Fresh checks and receipts]
+    C -->|All pass| D[Parent verification]
+```
+
+</div>
+
+| Outcome | Continuation |
+| --- | --- |
+| Every check passes | Revalidate the source and receipts, then settle parent verification. Git delivery retains its own gates. |
+| A check fails | Retain the failed command and output preview for review. Further coding needs separate authorization. |
+| A result is uncertain | Hold the operation and read its original records. An unfinished intent cannot be replayed. |
+
+The owning execution leader prepares the candidate. Admission rechecks the current operator, project access and host-administrator permission, then records a queued request through the native execution-request repositories. The HTTP request executes no project commands. Status reads inspect the retained operation under current authority.
+
+The worker reserves the repository's execution slot and records each command intent before dispatch. It uses the prepared physical wrapper and private build environment, with the same effective timeout rules as ordinary execution. Source, input and authority changes stop further dispatch. An unfinished command remains uncertain after restart; the worker never queues that command again automatically. The global publication lock is released during command execution so unrelated projects can continue delivery.
+
+Successful settlement requires every declared check and its matching result. The parent verification receipt binds the operation, source and command list; ordinary Engine continuation validates that receipt again before the Git checkpoint. A failure retains its actual command ordinal, exit code and bounded output preview for the operator and communication model. Neither a failed check nor an uncertain outcome grants another coding attempt.
+
+Builds may create ignored output directories such as `dist` or `.cache`. After a successful result is durably recorded, the worker can refresh that directory witness only if the canonical selected source, physical payload and exact Git index remain unchanged. Original selected-file metadata and Git metadata stay protected, including tracked files inside ignored directories. A source edit, index change, replaced selected file or new trackable file stops continuation. An uncertain command result cannot use this refresh path.
+
+Git delivery retains the exact prepared SCM consent through its native writer, including locks for the QA actor. A transaction synchronization checks current authority, runtime, profile, build inputs, selected payload and index before commit. It permits the writer's own checkpoint progress fields without accepting changes to source, grants or spent usage. Changes to this implementation invalidate the measured runtime and admission bindings; earlier qualification cannot authorize the new code.
+
+This recovery path currently supports the configured host backend and requires current factory-administrator authority. Docker and runner-pool transports are refused explicitly. Candidate inspection and admission require the owning leader; API replicas can serve authorized status reads. The [operator integration guide](agent-integrations.md) describes the SDK, CLI and MCP contracts. Full runner, Git and source-control acceptance remains separate from a successful isolated consumer test.
+
 ### Persistent human decisions and image evidence
 
 A pending human `worker_request` keeps its run paused. A normal worker restart reads that retained state without selecting an answer or invoking another coding task. An authenticated `worker_response` records the actor and exact answer once; resumption remains a separate authorized action. Studio hides execution and handoff controls until the human question is answered. Factory-owned verification retains its separate system-response path.
@@ -499,7 +760,7 @@ flowchart LR
 
 <p class="forge-flow-caption" id="coding-check-flow-guide">Review and grant before reserving the linked attempt. Each interactive call repeats current authority, source and budget checks; independent final verification follows separately. On a narrow screen, scroll horizontally or focus a diagram and use the arrow keys.</p>
 
-The coding channel is separate from the 185-tool operator MCP server. Its token is invocation-scoped, expires no later than the provider deadline, and is removed from streams and retained activity before storage. Accepted effects drain before teardown. Codex retains `workspace-write`; Claude uses an explicit private MCP configuration with strict server/tool selection. These adapters do not make general role-tool declarations enforceable inside an official CLI. A host runner retains service-account execution with timeout/output controls, without filesystem or network isolation. The grant changes no original snapshot, repair allowance or shared runner budget. See [the recovery journey](recovery.md#grant-configured-checks-for-the-final-recovery) and [native API contract](api.md#scoped-coding-check-grants).
+The coding channel is separate from the 202-tool operator MCP server. Its token is invocation-scoped, expires no later than the provider deadline, and is removed from streams and retained activity before storage. Accepted effects drain before teardown. Codex retains `workspace-write`; Claude uses an explicit private MCP configuration with strict server/tool selection. These adapters do not make general role-tool declarations enforceable inside an official CLI. A host runner retains service-account execution with timeout/output controls, without filesystem or network isolation. The grant changes no original snapshot, repair allowance or shared runner budget. See [the recovery journey](recovery.md#grant-configured-checks-for-the-final-recovery) and [native API contract](api.md#scoped-coding-check-grants).
 
 Bridge completion requests follow the same uncertainty rule. A transport failure, unusable completion or cancellation during an unfinished submission retains the original intent and workspace for reconciliation. Local cancellation stops scheduling but cannot establish the remote result. The hold survives cancelled, interrupted or failed run status; resume, handoff and replacement retry check it before dispatch. Recovery of the original Bridge job is not automated. See [provider failure handling](agents.md).
 
@@ -643,7 +904,7 @@ Built-in model instructions are versioned YAML resources loaded and rendered by 
 | Native browser QA | Fresh Docker context, declared local origin and bounded actions | Layout diagnostics and screenshots require actual visual/interaction review. |
 | Native PHP diagnostics | Explicit `profile_php` plus command grant, frozen Docker/archive/network-`none` runner | Runtime metrics or preinstalled Xdebug observations retain command receipts; they do not authorize or approve work. |
 | Internet search | Explicit Brave or Tavily selection, retained credential revision and domain restrictions | Bounded cited results are untrusted references; no key goes to the model. |
-| Factory MCP | 185 authenticated operator tools in `mcp_server.py` | These API tools are distinct from a coding model's workspace tools. |
+| Factory MCP | 202 authenticated operator tools in `mcp_server.py` | These API tools are distinct from a coding model's workspace tools. |
 
 Flycanon retrieves `forge-<repository_id>` project context and shared framework references. Required retrieval failure prevents coding continuation. The retained citations/context digest support recovery. A ProductProject does not automatically create an aggregated memory workspace across its repositories.
 
@@ -757,11 +1018,11 @@ Stage labels and the floor scene follow returned plans and jobs. Failed or pause
 
 `Collaboration.feedback` captures the current native run and prepares its deterministic card. `CommunicationWriter` resolves only the explicit `communication` task, validates the frozen model profile, and invokes the bounded drafting/classification flow. Bridge uses prompted structured JSON through the existing OpenAI-compatible adapter; API profiles use the existing native model adapter. Central YAML/Jinja templates own the instructions and composition.
 
-The draft references a bounded fact packet rather than repository prose or command output. Request template `collaboration/communication-request` version `1.0.1` supplies the exact allowed paragraph citation IDs from that packet. Citations name top-level groups such as `state`, rather than a JSON path such as `state.status`; unknown IDs remain invalid. The earlier template is retained for provenance. After validation, the service reads the run again. A changed milestone or fact-packet digest discards the draft and holds configured AI delivery without a substitute card. The retained intent contains the exact body, body hash, fact hash, prompt hash and profile revision before the existing remote-write boundary. Current actor, credentials and selected model routing are checked again there. Existing fingerprints and remote-outcome reconciliation continue to prevent automatic duplicate comments.
+The draft references recorded run facts and selected check excerpts. The current human question reaches both writer and reviewer as a digest-bound quotation; it helps answer the request but grants no execution authority. Request template `collaboration/communication-request` version `1.0.3` supplies the exact allowed paragraph citation IDs from that packet. Citations name top-level groups such as `state`, rather than a JSON path such as `state.status`; unknown IDs remain invalid. The earlier template is retained for provenance. After validation, the service reads the run again. A changed milestone or fact-packet digest discards the draft and holds configured AI delivery without a substitute card. The retained intent contains the exact body, body hash, fact hash, prompt hash and profile revision before the existing remote-write boundary. Current actor, credentials and selected model routing are checked again there. Existing fingerprints and remote-outcome reconciliation continue to prevent automatic duplicate comments.
 
-System template `collaboration/communication-system` version `1.0.3` asks the agent to write the complete card: a specific title, useful paragraphs and, when needed, the exact human question and choices. The existing skill injector includes the pinned Humanizer adaptation in the real instructions. Its revision and adaptation digest are retained; no upstream script or installation is executed. The fact packet includes internally consistent saved check totals, native acceptance/review-link state and an allowlisted source-safety blocker. That blocker comes from the recorded error; it is not an independent security diagnosis. Raw error messages, provider summaries and command output are withheld. The title and paragraphs cite exact fact groups, including the offered blocker and check context. A separate AI reviewer evaluates claims against those same facts; word matching does not decide whether a negation is a positive claim.
+System template `collaboration/communication-system` version `1.0.9` asks the agent to write the complete card: a specific title, useful paragraphs and, when needed, the exact human question and choices. The existing skill injector includes the pinned Humanizer adaptation in the real instructions. Its revision and adaptation digest are retained; no upstream script or installation is executed. The fact packet includes internally consistent saved check totals, native acceptance/review-link state and known guard reasons. For `failed` or `needs_reconciliation`, a nonempty recorded run error also supplies `recorded_error` after privacy filtering, even when no known guard reason matches it. Active states never expose an old error as a current failure. Sensitive-looking errors and filtered-empty text are withheld. The fact records the saved condition without establishing a root cause or permitting recovery. Provider summaries remain withheld. Final-check commands can supply separately identified diagnostic excerpts after privacy filtering. Output excerpts are offered only for nonzero exit codes; successful output stays in the complete activity history. The title and paragraphs cite exact fact groups, including the offered error, blocker and check context. A separate AI reviewer evaluates claims against those same facts; word matching does not decide whether a negation is a positive claim.
 
-`CommunicationCard` is a strict structured output with a cited title, cited paragraphs and an optional decision quotation. Central `collaboration/communication-card` and `collaboration/communication-decision` templates apply Markdown formatting to that output. They do not append a generic status card. The original templates remain available for provenance. A human decision must retain the complete bounded public question, context and ordered choices; oversized quotations hold configured AI delivery. No generated answer can resume work or grant permissions. Drafting uses one tool-free request with a 1,400-token output ceiling. A separate tool-free `CommunicationReview` request has a 700-token ceiling. A rejected or uncertain classification triggers one final AI correction, after which forge responds without another semantic veto. SDK retries are disabled and all calls share one selected-profile deadline capped at 120 seconds, including bridge queue time. The underlying run, WAL and native receipt remain authoritative.
+`CommunicationCard` is a strict structured output with a cited title, cited paragraphs, optional section headings or bullet items, and an optional decision quotation. The AI chooses the useful structure for the current question. An optional `diagnostic_id` selects an existing final-check command or output excerpt, or `run-error` with a `recorded_error` citation; the model cannot supply replacement code or log bytes. `communication_diagnostics.py` preserves line breaks, marks check provenance as current/retained/unknown, withholds sensitive-looking assignments or private-key material, removes local paths and destinations, and retains the truncation flag. Known-credential rejection and the existing current-facts check still apply. Adaptive code fences prevent a log fragment from escaping into mentions or links. Central `collaboration/communication-card` and `collaboration/communication-decision` templates apply Markdown formatting to that output. They do not append a generic status card. The original templates remain available for provenance. A human decision must retain the complete bounded public question, context and ordered choices; oversized quotations hold configured AI delivery. No generated answer can resume work or grant permissions. Drafting uses one tool-free request with a 1,400-token output ceiling. A separate tool-free `CommunicationReview` request has a 700-token ceiling. A factual refusal, uncertainty or failed reader check triggers one final AI correction, after which forge responds without another semantic veto. SDK retries are disabled and all calls share one selected-profile deadline capped at 120 seconds, including bridge queue time. The underlying run, WAL and native receipt remain authoritative.
 
 After any generation outcome, the service checks the current milestone and fact digest again. If either changed during configured AI wording, it holds delivery without posting stale prose or substituting a generic card. Delivery testing includes direct review of the actual published wording: an AI-mode receipt alone does not establish that the update is useful.
 
@@ -770,29 +1031,43 @@ Generation is optional presentation work with one total deadline and bounded per
 
 ### Semantic review of source-control messages
 
-The writer and reviewer are separate `FireflyAgent` invocations using the same selected communication profile. The reviewer sees only the exact structured candidate and bounded recorded facts. The candidate is quoted data, not instructions. Its strict result contains a verdict, issue categories, fact references and a short rationale. It checks the whole passage for supported negations, contradictions, misleading check results, unrecorded actions and human decisions. It neither rewrites the candidate nor uses tools.
+The writer and reviewer are separate `FireflyAgent` invocations using the same selected communication profile. The reviewer sees only the exact structured candidate and bounded recorded facts. The candidate is quoted data, not instructions. Its strict result contains a factual verdict, five required reader checks, issue categories, fact references and a short rationale. Review template `collaboration/communication-review-system` version `1.0.5` checks claims, check provenance, pending human decisions and exact diagnostic choices. The model separately supplies strict booleans for `answers_question`, `relevant_detail`, `no_redundancy`, `plain_language` and `useful_excerpts`. Any false check triggers the existing single correction, even when the factual verdict is supported. Editorial issues can explain that failed check without changing the factual verdict. Missing, extra or non-boolean reader fields hold delivery rather than becoming an assumed pass. It evaluates meaning instead of enforcing a fixed set of headings or a banned-word list. It neither rewrites the candidate nor uses tools.
 
 <div class="forge-flow" role="region" aria-label="Semantic review of source-control messages" aria-describedby="semantic-review-flow-guide" tabindex="0" markdown="1">
 
 ```mermaid
-flowchart TB
-    F["Recorded facts"] --> W["Draft complete card"]
-    W --> N["Check structure<br/>and exact quotation"]
-    N --> R["Classify meaning"]
-    F --> R
-    R --> V{"Supported?"}
-    V -->|Yes| C["Recheck current facts<br/>and authority"]
+flowchart LR
+    F["Facts and<br/>human question"] --> W["Draft and<br/>validate card"]
+    W --> R{"Valid<br/>review?"}
+    R -->|No| H["Hold<br/>delivery"]
+    R -->|Yes| S["Select<br/>response"]
+```
+
+```mermaid
+flowchart LR
+    R["Valid review"] --> V{"Facts supported<br/>and reader checks pass?"}
+    V -->|Yes| D["Keep draft"]
     V -->|No or uncertain| B["Correct once"]
-    B --> C
+```
+
+```mermaid
+flowchart LR
+    S["Selected<br/>response"] --> C["Recheck facts<br/>and authority"]
     C --> I["Retain body<br/>and write intent"]
-    I --> P["SCM write boundary"]
+    I --> P["SCM write<br/>boundary"]
 ```
 
 </div>
 
-<p class="forge-flow-caption" id="semantic-review-flow-guide">A semantic verdict is followed by current facts and authority checks before the write intent. Focus and scroll the diagram on a narrow screen.</p>
+<p class="forge-flow-caption" id="semantic-review-flow-guide">Read the three stages from top to bottom: validate the review, select or correct the response, then recheck authority and retain the write intent. Focus and scroll each stage on a narrow screen.</p>
 
-A supported verdict cannot grant permissions, change the execution plan, answer a pending question or bypass source freshness. Native validation requires known, nonduplicate review references covering every candidate citation and no issues with a supported verdict. Unsupported claims or uncertainty trigger one AI correction followed by the response. There is no second semantic veto. The retained review applies to the original candidate; the corrected candidate has its own digest. Malformed reviews, timeout and provider failure hold delivery with a reason and no substitute template or automatic repeated calls. The candidate and review prompt digests bind the classification to the reviewed text. An AI verdict can still be wrong; direct review of real published messages remains an acceptance step.
+A supported verdict cannot grant permissions, change the execution plan, answer a pending question or bypass source freshness. Native validation requires known, nonduplicate review references covering every candidate citation. A supported factual verdict proceeds directly only when every reader check passes and there are no issues. Supported facts with a false reader check may carry editorial issues and trigger one correction; contradictory factual issues remain invalid. Unsupported claims or uncertainty also trigger that correction. There is no second semantic veto. The retained review applies to the original candidate; the corrected candidate has its own digest. Malformed reviews, timeout and provider failure hold delivery with a reason and no substitute template or automatic repeated calls. The candidate and review prompt digests bind the classification to the reviewed text. An AI verdict can still be wrong; direct review of real published messages remains an acceptance step.
+
+Test and function names are plain text in the narrative. The renderer escapes underscores so a name such as `test_validation_responses` cannot become Markdown formatting or cause an otherwise valid correction to be withheld. Recorded command and error excerpts use a separate fenced-code path; their filtered bytes stay unchanged.
+
+A recorded worker-identity guard identifies the failed step as admission of a retained verification result. It does not establish why the identity was unavailable. This display fact grants no permission and does not resume the worker.
+
+Publication drafts use the same strict reader-check model and single-correction path. Both `collaboration/publication-system` and `collaboration/publication-review-system` are pinned to version `1.0.1`. Their editorial contract asks whether the proposed PR explains its objective, change and verification in professional American English. Selected excerpts must come from supplied diagnostics; a reported change or source hash still supplies no remote publication authority.
 
 ### Native Agentic tool custody
 

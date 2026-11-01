@@ -174,6 +174,13 @@ async def test_native_actual_release_membership_revocation_stops_next_effect(nat
             card()
             if phase == "draft"
             else {
+                "reader_checks": {
+                    "answers_question": True,
+                    "relevant_detail": True,
+                    "no_redundancy": True,
+                    "plain_language": True,
+                    "useful_excerpts": True,
+                },
                 "verdict": "supported",
                 "issues": [],
                 "fact_ids": ["publication", "verification", "delivery"],
@@ -301,6 +308,13 @@ async def test_native_takeover_preserves_successor_custody_and_fences_reconnecti
             card()
             if phase == "draft"
             else {
+                "reader_checks": {
+                    "answers_question": True,
+                    "relevant_detail": True,
+                    "no_redundancy": True,
+                    "plain_language": True,
+                    "useful_excerpts": True,
+                },
                 "verdict": "supported",
                 "issues": [],
                 "fact_ids": ["publication", "verification", "delivery"],

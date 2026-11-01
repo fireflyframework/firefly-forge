@@ -53,9 +53,20 @@ async def test_never_claimed_same_request_recovers_and_reaches_actual_engine_wit
             return [await c.journal._task(RUN, "implement")]
 
         c.journal.tasks.find_pending_recovery = pending
-        assert await c.journal.recover() == 1
-        assert c.journal.records.rows[-1].kind == "recovery"
+        startup_state = copy.deepcopy(
+            (
+                c.store.run.data,
+                [(r.task_id, r.status, r.attempt, r.data) for r in c.journal.tasks.rows],
+                [r.data for r in c.journal.records.rows],
+            )
+        )
         assert await c.journal.recover() == 0
+        assert await c.journal.recover() == 0
+        assert (
+            c.store.run.data,
+            [(r.task_id, r.status, r.attempt, r.data) for r in c.journal.tasks.rows],
+            [r.data for r in c.journal.records.rows],
+        ) == startup_state
     history = copy.deepcopy([row.data for row in c.journal.records.rows])
     commands = copy.deepcopy([row.data for row in c.journal.sandboxes.rows])
     candidate = await c.continuity.recoveries.candidate(RUN, before["id"])

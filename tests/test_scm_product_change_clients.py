@@ -229,7 +229,7 @@ def test_invalid_route_identity_cannot_dispatch(method, arguments, monkeypatch):
 
 async def test_mcp_grants_have_strict_schema_and_do_not_offer_signed_command_fabrication():
     tools = {tool.name: tool for tool in await create_server().list_tools()}
-    assert len(tools) == 185
+    assert len(tools) == 202
     names = {
         "configure_scm_product_change_grant",
         "get_scm_product_change_grant",
@@ -260,6 +260,14 @@ async def test_all_145_prior_complete_mcp_objects_remain_literal():
     from mcp.types import ListToolsResult
 
     new = {
+        "create_github_projects",
+        "get_github_projects_creation",
+        "get_github_projects_connection",
+        "discover_github_projects",
+        "configure_github_projects",
+        "sync_github_projects",
+        "get_github_projects_request",
+        "observe_github_projects",
         "get_framework_knowledge_status",
         "check_framework_updates",
         "refresh_framework_knowledge",
@@ -297,14 +305,24 @@ async def test_all_145_prior_complete_mcp_objects_remain_literal():
         "get_scm_product_change_grant",
         "get_current_scm_product_change_grant",
         "get_scm_product_change",
+        "get_consumed_terminal_candidate",
+        "request_consumed_terminal",
+        "get_consumed_terminal_status",
         "get_final_outcome_candidate",
         "request_final_outcome_continuation",
         "get_final_outcome_status",
+        "get_linked_verification_candidate",
+        "request_linked_verification",
+        "get_linked_verification_status",
+        "get_consumed_terminal_reconciliation_candidate",
+        "reconcile_consumed_terminal",
+        "get_consumed_terminal_reconciliation_status",
     }
     tools = await create_server().list_tools()
+    assert new <= {tool.name for tool in tools}
     previous = [tool for tool in tools if tool.name not in new]
     baseline = json.loads((Path(__file__).parent / "fixtures/mcp-product-change-baseline-v1.json").read_text())
-    assert len(previous) == 145 and len(tools) == 185
+    assert len(previous) == 145 and len(tools) == 202
     expected = json.loads(baseline["wire_json"])
     routing = next(tool for tool in expected["tools"] if tool["name"] == "save_task_routing")
     bindings = routing["inputSchema"]["$defs"]["TaskRoutingInput"]["properties"]["bindings"]

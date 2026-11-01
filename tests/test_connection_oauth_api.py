@@ -16,7 +16,15 @@ def test_native_di_optional_provider_catalog_and_protected_callback(tmp_path, po
         headers = {"Authorization": "Bearer " + TOKEN}
         response = client.get("/api/v1/connection-oauth/providers", headers=headers)
         assert response.status_code == 200
-        assert {item["provider"] for item in response.json()} == {"github", "figma", "sentry", "grafana", "playwright"}
+        assert {item["provider"] for item in response.json()} == {
+            "github",
+            "figma",
+            "sentry",
+            "grafana",
+            "playwright",
+            "github-projects",
+            "github-projects-private",
+        }
         assert all(item["status"] == "prerequisite_required" for item in response.json())
         assert client.get("/api/v1/connection-oauth/design/callback?code=private&state=private").status_code == 401
         assert (

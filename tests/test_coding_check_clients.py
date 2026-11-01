@@ -46,9 +46,17 @@ def test_scoped_check_sdk_keeps_exact_identities_port_and_current_readback():
         assert json.loads(calls[1][3]) == body
         assert [call[0] for call in calls] == ["GET", "POST", "GET", "GET", "POST"]
         assert calls[2][1].endswith("/" + grant_id) and calls[3][1].endswith("/current")
-        for changed in (body | {"argv": ["other"]}, body | {"command_indices": [20]}):
+        elastic = body | {"request_id": "f" * 32, "command_indices": [20, 50], "call_limit": 51}
+        client.grant_coding_checks(run_id, elastic)
+        assert json.loads(calls[-1][3]) == elastic
+        for changed in (
+            body | {"argv": ["other"]},
+            body | {"command_indices": [-1]},
+            body | {"command_indices": [0, 0]},
+            body | {"command_indices": [True]},
+        ):
             with pytest.raises(ValueError):
                 client.grant_coding_checks(run_id, changed)
         with pytest.raises(ValueError):
             client.coding_check_candidate(run_id, future_id, bind_port=1)
-        assert len(calls) == 5
+        assert len(calls) == 6

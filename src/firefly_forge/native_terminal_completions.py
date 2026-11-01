@@ -58,11 +58,16 @@ class NativeAcceptance:
         if self.store.execution_ownership_token is not self.ownership or CURRENT_PRINCIPAL.get() != self.actor:
             raise AccessDenied("Native terminal acceptance lost its original execution lease or context")
         current = await self.store.get_run(self.run["id"])
-        operator = (
-            await self.restored.restoration.service.operator(self.restored.ticket["request"]["actor"])
-            if self.restored is not None
-            else None
-        )
+        from firefly_forge.consumed_terminal_completions import PreparedConsumedAcceptance
+
+        if isinstance(self.restored, PreparedConsumedAcceptance):
+            operator = await self.restored.operator()
+        else:
+            operator = (
+                await self.restored.restoration.service.operator(self.restored.ticket["request"]["actor"])
+                if self.restored is not None
+                else None
+            )
         await self.completions._writer(current, operator)
         await self.journal._run(current["id"])
         current = await self.store.get_run(current["id"])
@@ -246,12 +251,19 @@ async def _native_terminal_acceptance(
         ownership = store.execution_ownership_token
         actor = CURRENT_PRINCIPAL.get()
         await BridgeCompletions(store, journal)._execution(run, actor)
+        from firefly_forge.consumed_terminal_completions import (
+            ConsumedTerminalExecution,
+            PreparedConsumedAcceptance,
+            prepare_acceptance,
+        )
         from firefly_forge.final_outcome_acceptance import PreparedFinalAcceptance, prepare_final_acceptance
         from firefly_forge.final_outcome_continuations import FinalOutcomeExecution
         from firefly_forge.native_terminal_restore_proof import PreparedRestoreAcceptance, prepare_restore_acceptance
 
-        restored: PreparedFinalAcceptance | PreparedRestoreAcceptance | None
-        if isinstance(restoration, FinalOutcomeExecution):
+        restored: PreparedFinalAcceptance | PreparedRestoreAcceptance | PreparedConsumedAcceptance | None
+        if isinstance(restoration, ConsumedTerminalExecution):
+            restored = await prepare_acceptance(restoration)
+        elif isinstance(restoration, FinalOutcomeExecution):
             restored = await prepare_final_acceptance(restoration)
         else:
             restored = await prepare_restore_acceptance(restoration) if restoration is not None else None
@@ -266,7 +278,7 @@ async def _native_terminal_acceptance(
             raise ValueError("Normal terminal completion requires its actual task and source checkpoint")
         prepared = (
             restored.prepared
-            if isinstance(restored, PreparedFinalAcceptance)
+            if isinstance(restored, (PreparedFinalAcceptance, PreparedConsumedAcceptance))
             else prepare_worker_completion(
                 run,
                 task,
@@ -285,7 +297,17 @@ async def _native_terminal_acceptance(
 
             current_checkpoint = next(e for e in reversed(entries) if e["kind"] == "agent_checkpoint")
             binding = checkpoint_payload(current_checkpoint["payload"]).invocation
-            retained_source = await prepare_retained_source(store, journal, run, Path(binding.workspace["path"]))
+            retained_source = await prepare_retained_source(
+                store,
+                journal,
+                run,
+                Path(binding.workspace["path"]),
+                consumed_reconciliation=(
+                    restoration.retained_source_authority()
+                    if isinstance(restoration, ConsumedTerminalExecution)
+                    else None
+                ),
+            )
             if _bytes(retained_source.proof.model_dump(mode="json")) != _bytes(run["usage"]["retained_source"]):
                 raise ValueError("Native terminal retained-source proof changed after runtime return")
         await store.admit_credentials({"report": prepared.report, "payload": payload, "checkpoint": checkpoint})

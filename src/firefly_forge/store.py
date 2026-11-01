@@ -38,6 +38,7 @@ from firefly_forge.models import RepositoryInput, RunInput, capture_new_work_com
 if TYPE_CHECKING:
     from firefly_forge.native_location_runtime import NativeLocationState
     from firefly_forge.project_access import PersonalObservationAuthority
+    from firefly_forge.scm_linked_verification import SCMLinkedVerifications
 
 from firefly_forge.persistence import (
     ForgeDeploymentEntity,
@@ -155,6 +156,7 @@ class _SourceBudgetAdmission:
     session: AsyncSession
     connection: AsyncConnection
     pid: int
+    backend_start: str | None
 
 
 _source_budget_admission: ContextVar[_SourceBudgetAdmission | None] = ContextVar(
@@ -258,6 +260,7 @@ class Store:
         self.run_creation_records = ForgeRunCreationRequestRepository()
         self.scm_polling: Any = None
         self.scm_poll_functional: Any = None
+        self.scm_linked_verification_authority: SCMLinkedVerifications | None = None
         self.scm_resume_authorities: dict[str, Any] = {}
         if not existing_only:
             self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -271,6 +274,7 @@ class Store:
         self._initialized = False
         self._ownership_connection: AsyncConnection | None = None
         self._ownership_pid: int | None = None
+        self._ownership_backend_start: str | None = None
         self._ownership_lock = asyncio.Lock()
         self.execution_stopping = False
         self.repository_records = repository_records or ForgeRepositoryRepository()
@@ -349,8 +353,14 @@ class Store:
             if not acquired:
                 raise ExecutionOwnerBusy("Another factory server already owns this PostgreSQL schema")
             pid = await connection.scalar(text("SELECT pg_backend_pid()"))
+            backend_start = await connection.scalar(
+                text("SELECT backend_start::text FROM pg_stat_activity WHERE pid=pg_backend_pid()")
+            )
+            if type(pid) is not int or type(backend_start) is not str or not backend_start:
+                raise RuntimeError("PostgreSQL execution owner has no exact backend identity")
             await connection.commit()
             self._ownership_connection, self._ownership_pid = connection, pid
+            self._ownership_backend_start = backend_start
         except BaseException:
             await connection.invalidate()
             await connection.close()
@@ -376,6 +386,7 @@ class Store:
                 or self.execution_stopping
                 or self._ownership_connection is not cut.connection
                 or self._ownership_pid != cut.pid
+                or self._ownership_backend_start != cut.backend_start
                 or cut.connection.closed
                 or cut.connection.invalidated
             ):
@@ -388,13 +399,16 @@ class Store:
             raise RuntimeError("Source budget admission changed its physical lease connection")
         held = await cut.session.scalar(
             text(
-                "SELECT pg_backend_pid() = :pid AND EXISTS ("
+                "SELECT pg_backend_pid() = :pid "
+                "AND (SELECT backend_start::text FROM pg_stat_activity "
+                "WHERE pid=pg_backend_pid()) = :backend_start "
+                "AND EXISTS ("
                 "SELECT 1 FROM pg_locks WHERE locktype = 'advisory' AND granted "
                 "AND pid = pg_backend_pid() AND objsubid = 1 "
                 "AND classid::bigint = ((hashtextextended(:key, 0) >> 32) & 4294967295) "
                 "AND objid::bigint = (hashtextextended(:key, 0) & 4294967295))"
             ),
-            {"key": "forge:execution:" + self.schema, "pid": cut.pid},
+            {"key": "forge:execution:" + self.schema, "pid": cut.pid, "backend_start": cut.backend_start},
         )
         current()
         if actual.sync_connection is not cut.connection.sync_connection or not held:
@@ -423,7 +437,9 @@ class Store:
                     task = asyncio.current_task()
                     if unit is None or task is None or unit.resource is not session or unit.owner_task is not task:
                         raise RuntimeError("The source budget native unit has no exact task/session provenance")
-                    cut = _SourceBudgetAdmission(self, task, unit, session, connection, pid)
+                    cut = _SourceBudgetAdmission(
+                        self, task, unit, session, connection, pid, self._ownership_backend_start
+                    )
                     token = _source_budget_admission.set(cut)
                     await session.execute(text("SET LOCAL lock_timeout='1s'"))
                     await session.execute(text("SET LOCAL statement_timeout='5s'"))
@@ -448,23 +464,38 @@ class Store:
 
     async def _assert_ownership(self) -> None:
         connection = self._ownership_connection
+        pid, backend_start = self._ownership_pid, self._ownership_backend_start
         if connection is None:
             raise RuntimeError("PostgreSQL execution ownership was lost")
         try:
             held = await connection.scalar(
                 text(
-                    "SELECT pg_backend_pid() = :pid AND EXISTS ("
+                    "SELECT pg_backend_pid() = :pid "
+                    "AND (SELECT backend_start::text FROM pg_stat_activity "
+                    "WHERE pid=pg_backend_pid()) = :backend_start "
+                    "AND EXISTS ("
                     "SELECT 1 FROM pg_locks WHERE locktype = 'advisory' AND granted "
                     "AND pid = pg_backend_pid() AND objsubid = 1 "
                     "AND classid::bigint = ((hashtextextended(:key, 0) >> 32) & 4294967295) "
                     "AND objid::bigint = (hashtextextended(:key, 0) & 4294967295))"
                 ),
-                {"key": "forge:execution:" + self.schema, "pid": self._ownership_pid},
+                {
+                    "key": "forge:execution:" + self.schema,
+                    "pid": pid,
+                    "backend_start": backend_start,
+                },
             )
             await connection.commit()
         except Exception:
             raise RuntimeError("PostgreSQL execution ownership was lost") from None
-        if not held:
+        if (
+            not held
+            or self._ownership_connection is not connection
+            or self._ownership_pid != pid
+            or self._ownership_backend_start != backend_start
+            or connection.closed
+            or connection.invalidated
+        ):
             raise RuntimeError("PostgreSQL execution ownership was lost")
 
     async def release_ownership(self) -> None:
@@ -474,6 +505,7 @@ class Store:
     async def _release_ownership(self) -> None:
         connection, self._ownership_connection = self._ownership_connection, None
         self._ownership_pid = None
+        self._ownership_backend_start = None
         if connection is None:
             return
         if connection.closed or connection.invalidated:
@@ -1127,6 +1159,17 @@ class Store:
             raise RuntimeError("PostgreSQL execution ownership was lost")
         return connection
 
+    @property
+    def execution_ownership_identity(self) -> Data:
+        connection = self.execution_ownership_token
+        if self._ownership_pid is None or self._ownership_backend_start is None:
+            raise RuntimeError("PostgreSQL execution owner has no exact backend identity")
+        return {
+            "backend_pid": self._ownership_pid,
+            "backend_start": self._ownership_backend_start,
+            "connection_instance": id(connection),
+        }
+
     async def update_publication(
         self, value: str, expected: Data, *, ownership: object | None = None, **fields: Any
     ) -> None:
@@ -1199,7 +1242,7 @@ class Store:
                 "The project campaign is stopped or requires reconciliation; resume it through the campaign"
             )
 
-    async def event(self, value: str, stage: str, message: str) -> None:
+    async def event(self, value: str, stage: str, message: str) -> Data:
         data: Data = {"id": uuid.uuid4().hex, "stage": stage, "message": message[:8000], "created_at": now()}
         provider_output = stage in {"stdout", "stderr"}
         if provider_output:
@@ -1239,6 +1282,7 @@ class Store:
                         raw_bytes=payload,
                     )
                 )
+        return copy.deepcopy(data)
 
     async def finish(self, value: str, status: str, *, error: str | None = None) -> None:
         if status not in TERMINAL:

@@ -12,6 +12,20 @@ from firefly_forge.mcp_server import create_server
 from firefly_forge.prompts import prompt_catalog
 
 NEW_TOOLS = {
+    "get_linked_verification_candidate",
+    "request_linked_verification",
+    "get_linked_verification_status",
+    "get_consumed_terminal_reconciliation_candidate",
+    "reconcile_consumed_terminal",
+    "get_consumed_terminal_reconciliation_status",
+    "create_github_projects",
+    "get_github_projects_creation",
+    "get_github_projects_connection",
+    "discover_github_projects",
+    "configure_github_projects",
+    "sync_github_projects",
+    "get_github_projects_request",
+    "observe_github_projects",
     "get_framework_knowledge_status",
     "check_framework_updates",
     "refresh_framework_knowledge",
@@ -52,6 +66,9 @@ NEW_TOOLS = {
     "get_scm_product_change_grant",
     "get_current_scm_product_change_grant",
     "get_scm_product_change",
+    "get_consumed_terminal_candidate",
+    "request_consumed_terminal",
+    "get_consumed_terminal_status",
     "get_final_outcome_candidate",
     "request_final_outcome_continuation",
     "get_final_outcome_status",
@@ -64,7 +81,7 @@ def _baseline():
 
 async def test_original_mcp_wire_metadata_keeps_reviewed_configuration_extensions():
     tools = await create_server().list_tools()
-    assert len(tools) == 185
+    assert len(tools) == 202
     original = [tool for tool in tools if tool.name not in NEW_TOOLS]
     assert len(original) == 142
     actual = ListToolsResult(tools=original).model_dump_json(by_alias=True, exclude_none=True)
@@ -93,6 +110,36 @@ async def test_original_mcp_wire_metadata_keeps_reviewed_configuration_extension
         properties.update({field: runner["properties"][field] for field in additions})
         definitions["WorkDurationPolicyV2"] = WorkDurationPolicyV2.model_json_schema()
     assert json.loads(actual) == expected
+
+
+async def test_reviewed_reconciliation_tools_keep_exact_scope_consent_and_read_annotations():
+    tools = {tool.name: tool for tool in await create_server().list_tools()}
+    for name in ("get_consumed_terminal_reconciliation_candidate", "get_consumed_terminal_reconciliation_status"):
+        tool = tools[name]
+        assert tool.input_schema["required"] == ["identifier", "request_id"]
+        assert set(tool.input_schema["properties"]) == {"identifier", "request_id"}
+        assert tool.annotations.read_only_hint is True
+        assert tool.annotations.idempotent_hint is True and tool.annotations.open_world_hint is False
+        for field in ("identifier", "request_id"):
+            assert tool.input_schema["properties"][field]["pattern"] == "^[a-f0-9]{32}$"
+    tool = tools["reconcile_consumed_terminal"]
+    assert tool.input_schema["required"] == ["identifier", "request_id", "request"]
+    assert tool.annotations.read_only_hint is False
+    assert tool.annotations.idempotent_hint is True and tool.annotations.open_world_hint is False
+    body = tool.input_schema["properties"]["request"]
+    assert body["additionalProperties"] is False
+    assert set(body["required"]) == {
+        "version",
+        "candidate_digest",
+        "acknowledge_same_claimed_action",
+        "acknowledge_no_execution_grant",
+        "acknowledge_local_postprocessing",
+    }
+    assert body["properties"]["version"]["const"] == 1
+    assert body["properties"]["candidate_digest"]["pattern"] == "^[a-f0-9]{64}$"
+    for field in body["required"]:
+        if field.startswith("acknowledge_"):
+            assert body["properties"][field]["const"] is True
 
 
 def test_all_mcp_descriptions_are_empty_variable_native_resources():

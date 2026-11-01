@@ -60,6 +60,8 @@ class ExecutionRequests:
         self.agent_restores: Any = None
         self.invalid_read_continuities: Any = None
         self.git_deliveries: Any = None
+        self.github_projects: Any = None
+        self.linked_verifications: Any = None
         self.publish_effect: Callable[[str, Data | None], Awaitable[str]] | None = None
         self.cancel_effect: Callable[[str], Awaitable[Data]] | None = None
         self.poller: asyncio.Task[None] | None = None
@@ -588,6 +590,10 @@ class ExecutionRequests:
             await self.invalid_read_continuities.recover()
         if self.git_deliveries is not None:
             await self.git_deliveries.recover()
+        if self.github_projects is not None:
+            await self.github_projects.recover()
+        if self.linked_verifications is not None:
+            await self.linked_verifications.recover()
         self.poller = asyncio.create_task(self._poll())
 
     async def stop(self) -> None:
@@ -621,11 +627,23 @@ class ExecutionRequests:
                     queued += [
                         copy.deepcopy(row.data) for row in await self.records.state("queued", kind="git_delivery")
                     ]
+                if self.github_projects is not None:
+                    queued += [
+                        copy.deepcopy(row.data) for row in await self.records.state("queued", kind="github_board")
+                    ]
+                if self.linked_verifications is not None:
+                    queued += [
+                        copy.deepcopy(row.data) for row in await self.records.state("queued", kind="linked_verify")
+                    ]
             for row in queued:
                 if row["kind"] == "cancel":
                     await self.execute(row["id"])
                 elif not self.active:
-                    if row["kind"] == "git_delivery":
+                    if row["kind"] == "linked_verify":
+                        action = self.linked_verifications.execute
+                    elif row["kind"] == "github_board":
+                        action = self.github_projects.execute
+                    elif row["kind"] == "git_delivery":
                         action = self.git_deliveries.execute
                     elif row["kind"] == "agent_restore":
                         action = self.agent_restores.execute
@@ -638,4 +656,6 @@ class ExecutionRequests:
                     else:
                         action = self.execute
                     self.active[row["id"]] = asyncio.create_task(action(row["id"]))
+            if self.github_projects is not None and not self.active:
+                await self.github_projects.queue_automatic()
             await asyncio.sleep(0.2)

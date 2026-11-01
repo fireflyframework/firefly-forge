@@ -513,14 +513,128 @@ class SCMPolling:
             raise ValueError("Polling pagination left its exact bounded repository resource")
         return page + 1
 
-    async def step(self, repository: str) -> None:
+    async def _wake_source(self, delivery: Data, repo: Data) -> str:
+        from firefly_forge.scm_authority_models import VerifiedSCMReferenceV1
+        from firefly_forge.scm_conversation_models import (
+            GitHubObservationWakeV1,
+            GitHubRepositoryWebhookReferenceV1,
+            SignedAddressedSourceV1,
+        )
+
+        bound = SignedAddressedSourceV1.model_validate(delivery.get("addressed_source"))
+        wake = GitHubObservationWakeV1.model_validate(delivery.get("api_observation"))
+        reference = delivery.get("verification") or {}
+        if reference.get("transport") == "github_repository_webhook_v1":
+            proof = GitHubRepositoryWebhookReferenceV1.model_validate(reference)
+            scope = proof.connection.scope()
+            actor, payload = proof.external_actor_id, proof.payload_digest
+            if proof.source_digest != bound.source_digest:
+                raise AccessDenied("The signed source binding changed")
+        else:
+            app = VerifiedSCMReferenceV1.model_validate(reference)
+            scope = {key: reference[key] for key in self.scm.delegation_scope(repo)}
+            actor, payload = app.external_actor_id, app.payload_digest
+        source = delivery.get("source_snapshot") or {}
+        source_key = "comment:" + bound.comment_id
+        if (
+            delivery.get("provider") != "github"
+            or delivery.get("repository_id") != repo["id"]
+            or delivery.get("command") is not None
+            or wake.source_key != source_key
+            or payload != delivery.get("digest")
+            or bound.payload_digest != payload
+            or bound.source_digest != digest(source)
+            or actor != delivery.get("actor")
+            or actor != bound.external_actor_id
+            or source.get("author_type") != "User"
+            or source.get("author_id") != actor
+            or source.get("comment_id") != bound.comment_id
+            or source.get("issue_number") != bound.issue_number
+            or delivery.get("issue", {}).get("number") != bound.issue_number
+            or delivery.get("issue", {}).get("kind") != bound.resource_kind
+            or scope != self.scm.delegation_scope(repo)
+            or not self.authority._key_current(repo["id"], reference)
+            or self.collaboration._allowed(repo, await self.collaboration.settings(repo["id"]), delivery, "github")
+        ):
+            raise AccessDenied("The current signed observation scope changed")
+        return source_key
+
+    async def wake_observation(self, receipt_id: str) -> Data:
+        """Keep a signed wake pending until the independent API scan owns its comment."""
+        from firefly_forge.scm_conversation_models import GitHubObservationWakeV1
+
+        if current_unit_of_work() is not None:
+            raise ValueError("Schedule an API observation outside a caller transaction")
+        initial = await self.collaboration.receipt(receipt_id)
+        if initial.get("status") != "received":
+            return dict(initial)
+        repository = initial["repository_id"]
+        try:
+            policy, state = await self._policy(repository)
+            repo = await self._scope(repository, policy)
+            source_key = await self._wake_source(initial, repo)
+            async with self.store._unit():
+                await self.collaboration._repo_lock(repository)
+                await self._scope(repository, policy)
+                await self._wake_source(initial, repo)
+                row = await self.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)
+                if row is None or row.data != initial:
+                    raise AccessDenied("The pending webhook observation changed")
+                observed = await self.inbox.find_source(identifier(repository), "github", source_key)
+                if observed is not None:
+                    if (observed.data.get("verification") or {}).get("transport") != TRANSPORT:
+                        await self.collaboration._write_row(
+                            row, status="denied", reason="historical_comment_owner_requires_review"
+                        )
+                    else:
+                        await self.collaboration._write_row(
+                            row,
+                            status="processed",
+                            api_observation={
+                                **initial["api_observation"],
+                                "state": "observed",
+                                "receipt_id": observed.id.hex,
+                                "source_digest": observed.data["digest"],
+                            },
+                        )
+                    return copy.deepcopy(row.data)
+                settings, current = await self._state(repository)
+                if current["configuration"] != state["configuration"]:
+                    raise AccessDenied("The observation configuration changed")
+                wake = GitHubObservationWakeV1.model_validate(initial["api_observation"])
+                cursor = current["cursor"]
+                if wake.scheduled_epoch is None or (
+                    not wake.scan_after_wake and wake.scheduled_epoch != cursor["epoch"]
+                ):
+                    # An in-flight page may already have missed the comment. Request
+                    # one complete scan after this wake, then retain normal cadence.
+                    if cursor["next_due_at"] is not None and cursor["next_due_at"] > time():
+                        cursor["next_due_at"] = time()
+                        settings.data = {**settings.data, STATE_KEY: current}
+                        await self.settings.save(settings)
+                    scheduled = wake.model_copy(
+                        update={"scheduled_epoch": cursor["epoch"], "scan_after_wake": cursor["pages"] == 0}
+                    )
+                    await self.collaboration._write_row(row, api_observation=scheduled.model_dump(mode="json"))
+                return copy.deepcopy(row.data)
+        except (ValueError, AccessDenied, KeyError, TypeError):
+            async with self.store._unit():
+                row = await self.inbox.find_by_id(identifier(receipt_id), lock=LockMode.PESSIMISTIC_WRITE)
+                if row is not None and row.data == initial:
+                    await self.collaboration._write_row(
+                        row, status="denied", reason="api_observation_scope_unavailable"
+                    )
+            return dict(await self.collaboration.receipt(receipt_id))
+
+    async def step(self, repository: str) -> bool:
+        """Read one page; report only an available continuation of this scan."""
         if current_unit_of_work() is not None:
             raise ValueError("Read provider observations outside a caller transaction")
         await self.store.assert_ownership()
         policy, state = await self._policy(repository)
         cursor = copy.deepcopy(state["cursor"])
         if any(cursor[k] is not None and cursor[k] > time() for k in ("retry_at", "next_due_at")):
-            return
+            return False
         repo = await self._scope(repository, policy)
         response = await self.scm.github_poll_read(repo, cursor["phase"], page=cursor["page"])
         if response.status_code != 200:
@@ -538,7 +652,7 @@ class SCMPolling:
                     current["cursor"]["last_error"] = "provider_backoff"
                     row.data = {**row.data, STATE_KEY: current}
                     await self.settings.save(row)
-                return
+                return False
             raise AccessDenied("The provider polling resource is unavailable; preserve the cursor")
         entries = response.json()
         if not isinstance(entries, list) or len(entries) > 50 or any(not isinstance(item, dict) for item in entries):
@@ -731,6 +845,7 @@ class SCMPolling:
             row.data = {**row.data, STATE_KEY: current}
             self.store.reject_credentials(row.data)
             await self.settings.save(row)
+        return next_page is not None or cursor["phase"] == "comments"
 
     async def candidates(self, project: str, repository: str) -> Data:
         actor = CURRENT_PRINCIPAL.get()
@@ -1010,6 +1125,53 @@ class SCMPolling:
             actor, project, repository, await self._event(pointer, BINDING_KIND, project, repository)
         )
 
+    async def _conversation_observation(self, project: str, repository: str, receipt_id: str) -> Data:
+        from firefly_forge.scm_conversation_models import GitHubRepositoryWebhookReferenceV1, SignedAddressedSourceV1
+
+        delivery = await self.collaboration.receipt(receipt_id)
+        if (delivery.get("verification") or {}).get("transport") != "github_repository_webhook_v1":
+            return await self._observation(project, repository, receipt_id)
+        proof = GitHubRepositoryWebhookReferenceV1.model_validate(delivery["verification"])
+        bound = SignedAddressedSourceV1.model_validate(delivery.get("addressed_source"))
+        source = delivery.get("source_snapshot") or {}
+        repo = await self.store.repository(repository)
+        if (
+            delivery.get("repository_id") != repository
+            or delivery.get("provider") != "github"
+            or (delivery.get("command") or {}).get("adapter") != "addressed_status_v1"
+            or delivery.get("source_conflict")
+            or proof.payload_digest != delivery.get("digest")
+            or bound.payload_digest != proof.payload_digest
+            or proof.source_digest != digest(source)
+            or bound.source_digest != proof.source_digest
+            or source.get("author_type") != "User"
+            or source.get("author_id") != proof.external_actor_id
+            or delivery.get("actor") != proof.external_actor_id
+            or bound.external_actor_id != proof.external_actor_id
+            or source.get("comment_id") != bound.comment_id
+            or source.get("issue_number") != bound.issue_number
+            or delivery["issue"]["number"] != bound.issue_number
+            or delivery["issue"]["kind"] != bound.resource_kind
+            or proof.connection.scope() != self.scm.delegation_scope(repo)
+            or not self.authority._key_current(repository, delivery["verification"])
+        ):
+            raise AccessDenied("The repository webhook read observation or current key changed")
+        if delivery.get("global_ingress"):
+            channel = self.store.configuration._read(self.store.configuration.directory / "channel-bootstrap.json").get(
+                "github", {}
+            )
+            if not channel.get("enabled") or delivery["actor"] not in channel.get("trusted_actors", []):
+                raise AccessDenied("The signed repository ingress actor is no longer enabled")
+        return dict(delivery)
+
+    @staticmethod
+    def _conversation_identity(delivery: Data) -> Data:
+        if (delivery.get("verification") or {}).get("transport") == "github_repository_webhook_v1":
+            from firefly_forge.scm_conversation_models import GitHubRepositoryWebhookReferenceV1
+
+            return GitHubRepositoryWebhookReferenceV1.model_validate(delivery["verification"]).read_identity()
+        return dict(delivery["verification"])
+
     async def conversation_scope(self, delivery: Data, *, remote: bool = True) -> Data:
         """Authorize an observed status address without inventing a run or execution principal."""
         from firefly_forge.scm_conversation_models import AddressedStatusV1, ConversationReadScopeV1, addressed_status
@@ -1025,7 +1187,7 @@ class SCMPolling:
         policy, state = await self._policy(repository)
         project = policy["project_id"]
         repo = await self._scope(repository, policy)
-        original = await self._observation(project, repository, delivery["id"])
+        original = await self._conversation_observation(project, repository, delivery["id"])
         if original != delivery or delivery.get("source_conflict") or not state["cursor"]["ready"]:
             raise AccessDenied("The retained status observation or polling baseline changed")
         parsed = (
@@ -1042,7 +1204,7 @@ class SCMPolling:
         )
         if parsed != message:
             raise AccessDenied("The status address no longer binds its exact original human comment")
-        reference = delivery["verification"]
+        reference = self._conversation_identity(delivery)
         key = poll_key(project, reference)
         if key not in state["heads"]:
             raise AccessDenied("Current API-observed status consent is required")
@@ -1070,7 +1232,7 @@ class SCMPolling:
         if remote:
             await self._fresh(delivery, repo)
         await self._scope(repository, policy)
-        if await self._observation(project, repository, delivery["id"]) != original:
+        if await self._conversation_observation(project, repository, delivery["id"]) != original:
             raise AccessDenied("The original status observation changed during authorization")
         async with self.store._unit():
             user = await self.users.find_by_id(identifier(request["native_user_id"]))
@@ -1091,7 +1253,7 @@ class SCMPolling:
             ):
                 raise AccessDenied("The current status consent, actor or command changed")
         return ConversationReadScopeV1(
-            transport="github_rest_poll_v1",
+            transport=(delivery["verification"].get("transport", TRANSPORT)),
             project_id=project,
             repository_id=repository,
             native_user_id=user.id.hex,
@@ -1100,7 +1262,7 @@ class SCMPolling:
             binding_digest=receipt["digest"],
             binding_request_id=request["request_id"],
             verified_receipt_id=delivery["id"],
-            verified_reference_digest=digest(reference),
+            verified_reference_digest=digest(delivery["verification"]),
             project_binding_digest=digest(current_project),
             observation_digest=digest(
                 {
@@ -1391,30 +1553,43 @@ class SCMPolling:
     async def _poll(self) -> None:
         while True:
             await self.store.assert_ownership()
-            async with self.store._unit() as session:
-                from firefly_forge.collaboration_persistence import ForgeCollaborationSettingsEntity
+            after = None
+            while True:
+                async with self.store._unit() as session:
+                    from firefly_forge.collaboration_persistence import ForgeCollaborationSettingsEntity
 
-                rows = list(
-                    await session.scalars(
+                    query = (
                         select(ForgeCollaborationSettingsEntity)
                         .where(ForgeCollaborationSettingsEntity.data[STATE_KEY].is_not(None))
-                        .limit(101)
+                        .order_by(ForgeCollaborationSettingsEntity.repository_id)
+                        .limit(100)
                     )
-                )
-            if len(rows) > 100:
-                raise ValueError("Too many polling repositories for this bounded worker")
-            for row in rows:
-                try:
-                    await self.step(row.repository_id.hex)
-                except (ValueError, AccessDenied, KeyError):
-                    async with self.store._unit():
-                        await self.collaboration._repo_lock(row.repository_id.hex)
-                        current_row, current = await self._state(row.repository_id.hex)
-                        if current["cursor"] is not None:
-                            current["cursor"]["last_error"] = "poll_unavailable"
-                            current_row.data = {**current_row.data, STATE_KEY: current}
-                            await self.settings.save(current_row)
-            await asyncio.sleep(60)
+                    if after is not None:
+                        query = query.where(ForgeCollaborationSettingsEntity.repository_id > after)
+                    rows = list(await session.scalars(query))
+                pending = rows
+                while pending:
+                    continuing = []
+                    for row in pending:
+                        try:
+                            if await self.step(row.repository_id.hex):
+                                continuing.append(row)
+                        except (ValueError, AccessDenied, KeyError):
+                            async with self.store._unit():
+                                await self.collaboration._repo_lock(row.repository_id.hex)
+                                current_row, current = await self._state(row.repository_id.hex)
+                                if current["cursor"] is not None:
+                                    current["cursor"]["last_error"] = "poll_unavailable"
+                                    current_row.data = {**current_row.data, STATE_KEY: current}
+                                    await self.settings.save(current_row)
+                    pending = continuing
+                    if pending:
+                        await asyncio.sleep(0)
+                if len(rows) < 100:
+                    break
+                after = rows[-1].repository_id
+                await asyncio.sleep(0)
+            await asyncio.sleep(1)
 
 
 async def inbox_size(store: Store, repository: str) -> tuple[int, int]:

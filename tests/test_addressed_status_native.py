@@ -13,10 +13,7 @@ from scm_polling_native_fixtures import native_poll as native_poll
 from worker_reply_fixtures import authenticated_operator
 
 from firefly_forge.collaboration import CollaborationSettings
-from firefly_forge.journal import digest
 from firefly_forge.models import RunInput
-from firefly_forge.scm_actor_authority import SCMActorAuthority
-from firefly_forge.scm_authority_models import SCMActorBindingInputV1
 
 
 def natural(c, body="@forge how is this going?", number=80, issue=3):
@@ -85,8 +82,12 @@ def test_native_source_edit_during_issue_token_wait_stops_reply_and_preserves_un
     assert c.state["posts"] == []
 
 
-def test_native_signed_status_requires_actual_native_status_consent_and_retains_original_signature(native_poll):
+def test_native_signed_status_requires_actual_native_status_consent_and_retains_original_signature(
+    native_poll, monkeypatch
+):
     c = native_poll
+    c.ready()
+    bound = c.consent()
     comment = c.comment(90, "@forge how is this going?")
     c.state["comments"].append(comment)
     settings = CollaborationSettings(
@@ -114,35 +115,26 @@ def test_native_signed_status_requires_actual_native_status_consent_and_retains_
     delivery = c.http.portal.call(c.collaboration.receive, "github", c.repo["id"], raw, headers)
     original = copy.deepcopy(delivery)
 
-    async def consent():
-        async with authenticated_operator(c.store):
-            authority = SCMActorAuthority(c.store, c.scm)
-            project = await authority._project(c.project["id"], c.repo["id"])
-            return await authority.configure(
-                c.project["id"],
-                c.repo["id"],
-                SCMActorBindingInputV1(
-                    version=1,
-                    request_id=uuid4().hex,
-                    expected_previous_digest=None,
-                    expected_project_binding_digest=digest(project),
-                    verified_receipt_id=delivery["id"],
-                    expected_verified_reference_digest=digest(delivery["verification"]),
-                    native_user_id=c.mapped.id.hex,
-                    component_ids=["api"],
-                    allowed_actions=["status"],
-                    active=True,
-                    acknowledge_webhook_asserted_identity=True,
-                ),
-            )
-
-    bound = c.http.portal.call(consent)
-    result = c.process(delivery)
+    assert c.process(delivery)["status"] == "received"
+    for _ in range(3):
+        c.http.portal.call(c.service.step, c.repo["id"])
+    observed = next(
+        row
+        for row in c.http.portal.call(c.retained)[2]
+        if (row.get("verification") or {}).get("transport") == "github_rest_poll_v1"
+        and row["verification"]["resource_id"] == "90"
+    )
+    coordinator_calls = native_coordinator(c, monkeypatch)
+    result = c.process(observed)
+    assert len(coordinator_calls) == 1
     assert result["status"] == "processed" and result["run_id"] is None
     assert result["conversation"]["scopes"][0]["binding_digest"] == bound["digest"]
-    assert result["verification"] == original["verification"] and "transport" not in result["verification"]
+    assert result["verification"]["transport"] == "github_rest_poll_v1"
     assert result["source_snapshot"] == original["source_snapshot"]
-    assert len(c.state["posts"]) == 1
+    correlation = c.process(delivery)
+    assert correlation["api_observation"]["receipt_id"] == result["id"]
+    assert correlation["verification"] == original["verification"] and "transport" not in original["verification"]
+    assert correlation["feedback_status"] == "not_requested" and len(c.state["posts"]) == 1
 
 
 def test_native_multiple_active_ticket_runs_require_clarification_without_run_mutation(native_poll, monkeypatch):

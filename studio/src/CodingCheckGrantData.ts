@@ -135,8 +135,8 @@ export function codingPort(value: unknown) {
   return n;
 }
 function indices(value: unknown) {
-  valid(Array.isArray(value) && value.length >= 1 && value.length <= 20);
-  const list = value.map((v) => integer(v, 0, 19));
+  valid(Array.isArray(value) && value.length >= 1);
+  const list = value.map((v) => integer(v, 0, Number.MAX_SAFE_INTEGER));
   valid(new Set(list).size === list.length);
   return list;
 }
@@ -218,14 +218,14 @@ export function codingCandidate(
   match(cut.sandbox_digest, hash);
   match(cut.scope_digest, hash);
   const selected = indices(c.command_indices),
-    count = integer(c.command_count, 1, 20);
+    count = integer(c.command_count, 1, Number.MAX_SAFE_INTEGER);
   valid(selected.length === count && selected.every((v, i) => v === i));
   valid(Array.isArray(c.commands) && c.commands.length === count);
   for (const [i, value] of c.commands.entries()) {
     const command = object(value);
     keys(command, ["command_index", "argv", "timeout"]);
     valid(
-      integer(command.command_index, 0, 19) === i &&
+      integer(command.command_index, 0, count - 1) === i &&
         Array.isArray(command.argv) &&
         command.argv.length >= 1 &&
         command.argv.length <= 64,
@@ -319,7 +319,11 @@ export function codingCandidate(
       channel.host === "127.0.0.1" &&
       codingPort(channel.bind_port) === port,
   );
-  const final = integer(c.independent_final_check_count, 1, 20),
+  const final = integer(
+      c.independent_final_check_count,
+      1,
+      Number.MAX_SAFE_INTEGER,
+    ),
     limit = integer(c.shared_command_limit, 1, 100),
     used = integer(c.shared_commands_used, 0, 100),
     remaining = integer(c.shared_commands_remaining, 0, 100);
@@ -344,7 +348,7 @@ export function codingInput(
   match(requestId, id);
   const list = indices(selected);
   valid(list.every((i) => candidate.command_indices.includes(i)));
-  integer(calls, 1, Math.min(20, candidate.interactive_commands_remaining));
+  integer(calls, 1, candidate.interactive_commands_remaining);
   integer(seconds, 30, 3600);
   text(reason, 2000);
   valid(reason.trim().length > 0);
@@ -377,7 +381,7 @@ function parseInput(value: unknown, candidate: CodingCandidate) {
     candidate,
     match(b.request_id, id),
     indices(b.command_indices),
-    integer(b.call_limit, 1, 20),
+    integer(b.call_limit, 1, candidate.interactive_commands_remaining),
     integer(b.valid_seconds, 30, 3600),
     text(b.reason, 2000),
   );
@@ -577,7 +581,11 @@ export async function codingReceipt(
   valid(
     integer(r.revision, 1, Number.MAX_SAFE_INTEGER) ===
       marker.grant.expected_revision + 1 &&
-      integer(r.call_limit, 1, 20) === marker.grant.call_limit,
+      integer(
+        r.call_limit,
+        1,
+        marker.candidate.interactive_commands_remaining,
+      ) === marker.grant.call_limit,
   );
   return {
     grantId: marker.grant.request_id,

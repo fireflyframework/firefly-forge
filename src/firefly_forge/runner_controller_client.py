@@ -7,13 +7,18 @@ import asyncio
 import base64
 import hashlib
 import json
+import os
+import stat
+from collections.abc import AsyncIterator
+from pathlib import Path
 from typing import Any
 
 import httpx
 from pyfly.container import service
 
-from firefly_forge.runner_controller import invocation_scope
+from firefly_forge.runner_controller import PoolObjectUpload, invocation_scope
 from firefly_forge.runner_controller_config import RunnerWorkerTransport
+from firefly_forge.runner_object_artifacts import RunnerArtifactReadLease, RunnerObjectReference
 from firefly_forge.runner_pool_artifacts import validate_artifact_receipt
 from firefly_forge.runner_pool_models import FactoryFence, RunnerInvocation, pool_digest
 from firefly_forge.runner_run_liveness import RunLeaseAckV1, RunRenewalV1, validate_run_ack
@@ -166,3 +171,123 @@ class RunnerControllerClient:
         if len(data) != size or hashlib.sha256(data).hexdigest() != receipt.get("sha256"):
             raise RuntimeError("Returned artifact differs from immutable receipt")
         return data
+
+    async def upload_artifact_file(
+        self, invocation: RunnerInvocation, fence: FactoryFence, kind: str, receipt: dict[str, Any], source: Path
+    ) -> RunnerObjectReference:
+        """Stage a file by bounded reads; this request cannot submit a command."""
+        self.transport.require_active()
+        self._scope(invocation)
+        if receipt.get("kind") != kind or set(receipt) != {"kind", "bytes", "sha256"}:
+            raise ValueError("Artifact upload requires its exact typed receipt")
+        request = PoolObjectUpload.model_validate(
+            {
+                "invocation": invocation,
+                "fence": fence,
+                "kind": kind,
+                "bytes": receipt["bytes"],
+                "sha256": receipt["sha256"],
+            }
+        )
+
+        async def content() -> AsyncIterator[bytes]:
+            descriptor = os.open(source, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+            with os.fdopen(descriptor, "rb") as file:
+                before = os.fstat(file.fileno())
+                if not stat.S_ISREG(before.st_mode) or before.st_uid != os.getuid() or before.st_nlink != 1:
+                    raise ValueError("Artifact producer requires its owned regular runner-volume file")
+                if before.st_size != receipt["bytes"]:
+                    raise ValueError("Artifact file differs from its immutable receipt")
+                while data := file.read(65_536):
+                    yield data
+                after = os.fstat(file.fileno())
+                fields = ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns", "st_mode", "st_nlink")
+                if any(getattr(before, name) != getattr(after, name) for name in fields):
+                    raise RuntimeError("Artifact file changed while streaming; explicit readback is required")
+
+        metadata = json.dumps(request.model_dump(mode="json"), ensure_ascii=True, separators=(",", ":"))
+        if len(metadata) > 65_536:
+            raise ValueError("Artifact metadata exceeds its transport header envelope")
+        async with (
+            asyncio.timeout(RPC_DEADLINE_SECONDS),
+            httpx.AsyncClient(
+                verify=self.transport.client_context(),
+                trust_env=False,
+                follow_redirects=False,
+                timeout=httpx.Timeout(30, connect=5),
+            ) as client,
+            client.stream(
+                "POST",
+                self.transport.endpoint + "/runner/v1/object-artifacts/upload",
+                content=content(),
+                headers={
+                    "Authorization": "Bearer " + self.transport.token.get_secret_value(),
+                    "X-Forge-Artifact-Request": metadata,
+                },
+            ) as response,
+        ):
+            output = bytearray()
+            async for data in response.aiter_bytes():
+                if len(output) + len(data) > 1_048_576:
+                    raise RuntimeError("Artifact publication response exceeds its metadata envelope")
+                output.extend(data)
+            if response.status_code != 200:
+                raise RuntimeError("Artifact upload outcome requires explicit readback; no automatic retry")
+            value = json.loads(output)
+        if (
+            not isinstance(value, dict)
+            or set(value) != {"protocol", "receipt", "reference", "execution_granted"}
+            or value["protocol"] != "forge-object-artifact-v1"
+            or value["receipt"] != receipt
+            or value["execution_granted"] is not False
+        ):
+            raise RuntimeError("Artifact upload response differs from its exact data-only request")
+        reference = RunnerObjectReference.model_validate(value["reference"])
+        if (
+            reference.execution_id != invocation.execution_id
+            or reference.invocation_digest != pool_digest(invocation.model_dump(mode="json"))
+            or reference.receipt() != receipt
+        ):
+            raise RuntimeError("Artifact reference differs from its immutable invocation and receipt")
+        return reference
+
+    async def read_object(
+        self, invocation: RunnerInvocation, reference: RunnerObjectReference, lease: RunnerArtifactReadLease
+    ) -> AsyncIterator[bytes]:
+        self.transport.require_active()
+        payload = {
+            **self._scope(invocation),
+            "reference": reference.model_dump(mode="json"),
+            "lease": lease.model_dump(mode="json"),
+        }
+        if reference.execution_id != invocation.execution_id or reference.invocation_digest != pool_digest(
+            invocation.model_dump(mode="json")
+        ):
+            raise ValueError("Artifact reference belongs to another invocation")
+        reference.receipt()
+        size, digest = 0, hashlib.sha256()
+        async with (
+            asyncio.timeout(RPC_DEADLINE_SECONDS),
+            httpx.AsyncClient(
+                verify=self.transport.client_context(),
+                trust_env=False,
+                follow_redirects=False,
+                timeout=httpx.Timeout(30, connect=5),
+            ) as client,
+            client.stream(
+                "POST",
+                self.transport.endpoint + "/runner/v1/object-artifacts/read-reference",
+                json=payload,
+                headers={"Authorization": "Bearer " + self.transport.token.get_secret_value()},
+            ) as response,
+        ):
+            if response.status_code != 200:
+                raise RuntimeError("Artifact reference read was refused")
+            async for data in response.aiter_bytes(chunk_size=65_536):
+                size += len(data)
+                if size > reference.bytes:
+                    raise RuntimeError("Artifact stream exceeds its immutable receipt")
+                digest.update(data)
+                yield data
+        if size != reference.bytes or digest.hexdigest() != reference.sha256:
+            raise RuntimeError("Artifact stream differs from its immutable receipt")

@@ -30,6 +30,13 @@ def draft(text):
 def reviewed_model(value, verdict="supported", issues=None, *, review_override=None):
     calls = []
     review = {
+        "reader_checks": {
+            "answers_question": True,
+            "relevant_detail": True,
+            "no_redundancy": True,
+            "plain_language": True,
+            "useful_excerpts": True,
+        },
         "verdict": verdict,
         "issues": issues or [],
         "fact_ids": ["state", "blocker", "delivery", "check_batch"],

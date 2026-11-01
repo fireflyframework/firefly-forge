@@ -465,10 +465,26 @@
       "variables": {}
     },
     {
+      "id": "collaboration/publication-review-system",
+      "version": "1.0.1",
+      "path": "collaboration/publication-review-system-1.0.1.yaml",
+      "sha256": "f3affd3e03244f57da602d1de829401b45a2ede11af71f3eb3a1b8110df01361",
+      "field": "user",
+      "variables": {}
+    },
+    {
       "id": "collaboration/publication-system",
       "version": "1.0.0",
       "path": "collaboration/publication-system.yaml",
       "sha256": "8849979851bf45007b74afb0e86fbc39d74386ff5e28bca9ad01432bf7d04f2d",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "collaboration/publication-system",
+      "version": "1.0.1",
+      "path": "collaboration/publication-system-1.0.1.yaml",
+      "sha256": "bab42b526b30051917689256582236402f0280ebcab2efb7cc6cb78a20de16fe",
       "field": "user",
       "variables": {}
     },
@@ -2941,6 +2957,258 @@
       "variables": {
         "pin": "string"
       }
+    },
+    {
+      "id": "collaboration/communication-system",
+      "version": "1.0.6",
+      "path": "collaboration/communication-system-1.0.6.yaml",
+      "sha256": "5148b2d2bb77094c18dc1f36e5374e37988640df396ec738638711e45b4322d2",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "collaboration/communication-system",
+      "version": "1.0.7",
+      "path": "collaboration/communication-system-1.0.7.yaml",
+      "sha256": "fd749bfb5eb8bbf626dbdd2a3b927dc255d0d12be1c6f0db730e5ee405dc39f4",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "collaboration/communication-system",
+      "version": "1.0.8",
+      "path": "collaboration/communication-system-1.0.8.yaml",
+      "sha256": "06fd24f330ce4dc99193538d300e4248d217b77a92f6158a718d102a21e2906c",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "collaboration/communication-review-system",
+      "version": "1.0.3",
+      "path": "collaboration/communication-review-system-1.0.3.yaml",
+      "sha256": "b75b99caacd0212f3a750d77dad534f92c6ac23b49b4fee78952c12c13c9c150",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "collaboration/communication-review-system",
+      "version": "1.0.4",
+      "path": "collaboration/communication-review-system-1.0.4.yaml",
+      "sha256": "c06dc7eda1286e73ec0ba7c578a2ee72a869e04cce5abcc41c523206a5c6c831",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "collaboration/communication-review-system",
+      "version": "1.0.5",
+      "path": "collaboration/communication-review-system-1.0.5.yaml",
+      "sha256": "2c57f6e5bd35854a420f461c7e26f6a388567db0027db91caddbc4498d7bc653",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "collaboration/communication-request",
+      "version": "1.0.3",
+      "path": "collaboration/communication-request-1.0.3.yaml",
+      "sha256": "ab0b2ed2d451152e26fee1a4b0af630528975ac4117a5cc55816e19e017a653e",
+      "field": "user",
+      "variables": {
+        "facts": "string",
+        "fact_ids": "string",
+        "context": "string"
+      }
+    },
+    {
+      "id": "mcp/get_consumed_terminal_candidate",
+      "version": "1.0.0",
+      "path": "mcp/get_consumed_terminal_candidate.yaml",
+      "sha256": "8a2ff5c79194d868e81acd3905dcdbb6eb64db100b285ee6e5bd64c8c8e3d8de",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/request_consumed_terminal",
+      "version": "1.0.0",
+      "path": "mcp/request_consumed_terminal.yaml",
+      "sha256": "99a0fc816425663c1b178f30ae402681da3fc7b5a91eb2aada85aadbdeb419f8",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_consumed_terminal_status",
+      "version": "1.0.0",
+      "path": "mcp/get_consumed_terminal_status.yaml",
+      "sha256": "c0ba9b1240c8b8d2508b8fc0d36bb3166baee7cbed1a46efda5b9d654ea997d6",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "collaboration/communication-system",
+      "version": "1.0.9",
+      "path": "collaboration/communication-system-1.0.9.yaml",
+      "sha256": "6bb0e6b4c89e74d84933d4acf65c53e684479bd1c82170c436e92ebacc7c0d46",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "collaboration/communication-review-system",
+      "version": "1.0.6",
+      "path": "collaboration/communication-review-system-1.0.6.yaml",
+      "sha256": "7aeadc77bbc44835d7ad5d64abeb94a117c5d504afa461ba25a3c8a533525b46",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_consumed_terminal_reconciliation_candidate",
+      "version": "1.0.0",
+      "path": "mcp/get_consumed_terminal_reconciliation_candidate.yaml",
+      "sha256": "0c9e284038bf0cfe48cfb46cfcf100231b5a9247424c5e4f9d1d309895de3dc4",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/reconcile_consumed_terminal",
+      "version": "1.0.0",
+      "path": "mcp/reconcile_consumed_terminal.yaml",
+      "sha256": "5cd6d8754cdb6c5d91683b76973e2c49a16d15e4e569c8dc4e3f842cf0729464",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_consumed_terminal_reconciliation_status",
+      "version": "1.0.0",
+      "path": "mcp/get_consumed_terminal_reconciliation_status.yaml",
+      "sha256": "ea8eee77dbbc6f9e246314aaae909382e69d507409da8b7ce4b597983043340c",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/configure_github_projects",
+      "version": "1.0.0",
+      "path": "mcp/configure_github_projects.yaml",
+      "sha256": "36faa98815b5d9be0150039e99852cc3d52f854777235d75d3d28da243b805b7",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/discover_github_projects",
+      "version": "1.0.0",
+      "path": "mcp/discover_github_projects.yaml",
+      "sha256": "cad812fda5398e00cd499d9df1413553dc9e400a68ddfffdf12f0cd0bd043c68",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_github_projects_connection",
+      "version": "1.0.0",
+      "path": "mcp/get_github_projects_connection.yaml",
+      "sha256": "04fdd1998f7ae5b8d34be2628676d8317370e74969cff0bbb84678fa45c9e1f7",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_github_projects_request",
+      "version": "1.0.0",
+      "path": "mcp/get_github_projects_request.yaml",
+      "sha256": "45dde8597ef63247b46c1283661730c0b148bb87428e3b28804176f2c9743d06",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/observe_github_projects",
+      "version": "1.0.0",
+      "path": "mcp/observe_github_projects.yaml",
+      "sha256": "dd252ff82ed3f6d16799d55208b84c9dfbc62a0e4c4e11e2ae58d609cbe0d13a",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/sync_github_projects",
+      "version": "1.0.0",
+      "path": "mcp/sync_github_projects.yaml",
+      "sha256": "c471d41d6a65896197056d5e7ae4d8a8c37f37c42843f07a10407e3be64d6bed",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/create_github_projects",
+      "version": "1.0.0",
+      "path": "mcp/create_github_projects-1.0.0.yaml",
+      "sha256": "247562e9519d60ad613fd48e4564295f865897b14b439ff0ffbb8dafd4258a95",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_github_projects_creation",
+      "version": "1.0.0",
+      "path": "mcp/get_github_projects_creation-1.0.0.yaml",
+      "sha256": "f35d8578f12763f9343e085dc7b5925be8cb996af687f51f090ea86f508145e5",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "collaboration/communication-system",
+      "version": "1.0.10",
+      "path": "collaboration/communication-system-1.0.10.yaml",
+      "sha256": "ebb1f05aea31ddf6a5a8a5a4c9e9939358b143cc95ef3ee45bd3135f757a9678",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "collaboration/communication-review-system",
+      "version": "1.0.7",
+      "path": "collaboration/communication-review-system-1.0.7.yaml",
+      "sha256": "5481e02038a7017ff4c2f11a93e456dd92426b1cc537d794630e19e7068f6a51",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "collaboration/communication-repair-request",
+      "version": "1.0.2",
+      "path": "collaboration/communication-repair-request-1.0.2.yaml",
+      "sha256": "2bfaf97be959a124888683eecf58ed30de24160e2a471f1df55865311ce95a74",
+      "field": "user",
+      "variables": {
+        "facts": "string",
+        "candidate": "string",
+        "review": "string",
+        "fact_ids": "string",
+        "context": "string"
+      }
+    },
+    {
+      "id": "collaboration/communication-delivery-references",
+      "version": "1.0.0",
+      "path": "collaboration/communication-delivery-references.yaml",
+      "sha256": "dad8925e766981ebc1e740a504f81784363879265a05283e1a65bfa0aeb30b37",
+      "field": "user",
+      "variables": {
+        "references": "string"
+      }
+    },
+    {
+      "id": "mcp/get_linked_verification_candidate",
+      "version": "1.0.0",
+      "path": "mcp/get_linked_verification_candidate.yaml",
+      "sha256": "0a3b946d2e6bcba8019103afd3421d40aa474f5c1cf02a6f11eeeb34331a972f",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/request_linked_verification",
+      "version": "1.0.0",
+      "path": "mcp/request_linked_verification.yaml",
+      "sha256": "a2c69df508367351028e41ba93a7e37c58541e2f101b75ba3460c54bb9936ab2",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "mcp/get_linked_verification_status",
+      "version": "1.0.0",
+      "path": "mcp/get_linked_verification_status.yaml",
+      "sha256": "e61adbba0a3c2621daa1405b6c637f7a0f87f690eb857e8679f0f5b5b4a3bbaa",
+      "field": "user",
+      "variables": {}
     }
   ]
 }

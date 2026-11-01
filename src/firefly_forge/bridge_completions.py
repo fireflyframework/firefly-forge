@@ -183,7 +183,7 @@ class BridgeCompletions:
                 raise AccessDenied("Completion evidence identity is unavailable or disabled")
             return user
 
-    async def _execution(self, run: Data, initial_reader: Any) -> None:
+    async def _execution_authority(self, run: Data, initial_reader: Any) -> None:
         if CURRENT_PRINCIPAL.get() != initial_reader:
             raise AccessDenied("Bridge execution context changed during admission")
         if not run.get("execution_actor") or not run.get("project_id"):
@@ -205,6 +205,9 @@ class BridgeCompletions:
             await ProjectAccess(self.store).authorize_execution(run, "release")
         if CURRENT_PRINCIPAL.get() != initial_reader:
             raise AccessDenied("Bridge execution context changed during authorization")
+
+    async def _execution(self, run: Data, initial_reader: Any) -> None:
+        await self._execution_authority(run, initial_reader)
         if run.get("cancel_request", {}).get("status") == "requested" or run.get("status") in {
             "cancelled",
             "failed",

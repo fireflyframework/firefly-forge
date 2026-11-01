@@ -80,6 +80,10 @@ test("verified run exposes diff, checks, artifact download and explicit publicat
   await page.getByRole("tab", { name: "Changes" }).click();
   await expect(page.getByLabel("Git diff")).toContainText("+def reserve():");
   await page.keyboard.press("ArrowRight");
+  const code = page.getByRole("tab", { name: "Code", exact: true });
+  await expect(code).toBeFocused();
+  await expect(code).toHaveAttribute("aria-selected", "true");
+  await code.press("ArrowRight");
   await expect(page.getByRole("tab", { name: "Verification" })).toBeFocused();
   await expect(
     page.getByText("Behavior tests passed", { exact: true }),

@@ -105,6 +105,14 @@ CASES = [
     ),
 ]
 NEW_TOOLS = {case[1] for case in CASES} | {
+    "create_github_projects",
+    "get_github_projects_creation",
+    "get_github_projects_connection",
+    "discover_github_projects",
+    "configure_github_projects",
+    "sync_github_projects",
+    "get_github_projects_request",
+    "observe_github_projects",
     "get_framework_knowledge_status",
     "check_framework_updates",
     "refresh_framework_knowledge",
@@ -130,9 +138,18 @@ NEW_TOOLS = {case[1] for case in CASES} | {
     "get_scm_polling_functional_grant",
     "get_current_scm_polling_functional_grant",
     "review_scm_polling_functional",
+    "get_consumed_terminal_candidate",
+    "request_consumed_terminal",
+    "get_consumed_terminal_status",
     "get_final_outcome_candidate",
     "request_final_outcome_continuation",
     "get_final_outcome_status",
+    "get_linked_verification_candidate",
+    "request_linked_verification",
+    "get_linked_verification_status",
+    "get_consumed_terminal_reconciliation_candidate",
+    "reconcile_consumed_terminal",
+    "get_consumed_terminal_reconciliation_status",
 }
 PRESENCE_CASES = [
     (*CASES[0][:4], {"version": 1, "input": {**ENVELOPE["input"], "skills": []}}, *CASES[0][5:]),
@@ -289,6 +306,7 @@ def test_cli_requires_every_explicit_argument_without_io(monkeypatch, case):
 async def test_mcp_native_contracts_annotations_and_additive_150_tool_compatibility():
     tools = await create_server().list_tools()
     baseline = json.loads((Path(__file__).parent / "fixtures/mcp-recovery-additive-baseline-v1.json").read_text())
+    assert {tool.name for tool in tools} >= NEW_TOOLS
     original = [tool for tool in tools if tool.name not in NEW_TOOLS]
     wire = ListToolsResult(tools=original).model_dump_json(by_alias=True, exclude_none=True)
     assert len(original) == baseline["tool_count"] == 150
@@ -334,7 +352,7 @@ async def test_mcp_native_contracts_annotations_and_additive_150_tool_compatibil
         assert definitions.pop("WorkDurationPolicyV2") == WorkDurationPolicyV2.model_json_schema()
     original_wire = json.dumps(expected, ensure_ascii=False, separators=(",", ":"))
     assert hashlib.sha256(original_wire.encode()).hexdigest() == baseline["wire_sha256"]
-    assert len(tools) == 185
+    assert len(tools) == 202
     catalog = prompt_catalog()
     root = Path("src/firefly_forge/resources/prompts/v1")
     entries = {entry["id"]: entry for entry in json.loads((root / "manifest.json").read_text())["templates"]}

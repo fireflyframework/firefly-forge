@@ -325,15 +325,26 @@ async def test_late_process_error_cannot_replace_completed_original_result(recov
     assert e.memory.task.status == "done"
 
 
-async def test_startup_never_relabels_legacy_failed_provider_before_explicit_admission(recovery):
+async def test_startup_preserves_failed_predispatch_provider_with_one_restart_witness(recovery):
     e = recovery
+    before_run = copy.deepcopy(e.memory.run.data)
+    before_task = copy.deepcopy(e.memory.task.data)
+    before_entries = await e.journal.entries(e.memory.id.hex)
+    assert [entry["kind"] for entry in before_entries] == ["intent", "intent"]
 
     async def pending():
         return [SimpleNamespace(run_id=e.memory.id, task_id="implement")]
 
     e.journal.tasks.find_pending_recovery = pending
+    assert await e.journal.recover() == 1
+    assert e.memory.run.status == "failed" and e.memory.run.data == before_run
+    assert e.memory.task.status == "needs_reconciliation" and e.memory.task.attempt == 2
+    assert e.memory.task.data == before_task
+    entries = await e.journal.entries(e.memory.id.hex)
+    assert entries[:-1] == before_entries and Journal.verify_chain(entries)
+    assert entries[-1]["kind"] == "recovery" and entries[-1]["idempotency_key"] == before_task["idempotency_key"]
     assert await e.journal.recover() == 0
-    assert e.memory.run.status == "failed" and e.memory.task.status == "running"
+    assert await e.journal.entries(e.memory.id.hex) == entries
 
 
 async def test_operator_context_change_after_candidate_read_refuses_before_admission(recovery, monkeypatch):

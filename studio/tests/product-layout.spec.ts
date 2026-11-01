@@ -62,6 +62,7 @@ async function openProduct(page: Page, contextual = false) {
               ? [
                   {
                     id: conversation,
+                    repository_id: "a".repeat(32),
                     task: "product",
                     agent: "bridge",
                     created_at: "2026-10-12T12:00:00Z",
@@ -70,6 +71,7 @@ async function openProduct(page: Page, contextual = false) {
               : path.endsWith(`/assistant/conversations/${conversation}`)
                 ? {
                     id: conversation,
+                    repository_id: "a".repeat(32),
                     task: "product",
                     agent: "bridge",
                     turns: [
@@ -147,9 +149,10 @@ for (const width of [1440, 1920]) {
           form: rect(".functional-features .component-editor-layout > section"),
           given: rect("#feature-behavior-given"),
           fields: rect(".wizard-field-scroll"),
+          document: rect(".product-document"),
           actions: rect(".wizard-actions"),
           footer: rect(".workspace-main > footer"),
-          scrollTop: document.querySelector(".wizard-field-scroll")!.scrollTop,
+          scrollTop: document.querySelector(".product-document")!.scrollTop,
         };
       });
     const before = await geometry();
@@ -171,20 +174,20 @@ for (const width of [1440, 1920]) {
     await page
       .getByLabel("Feature name", { exact: true })
       .fill("Reserve stock");
-    const fields = await page.locator(".wizard-field-scroll").boundingBox();
-    await page.mouse.move(
-      fields!.x + fields!.width * 0.8,
-      fields!.y + fields!.height * 0.5,
-    );
+    await page.locator(".product-document").hover();
     await page.mouse.wheel(0, 500);
     await expect
       .poll(async () => (await geometry()).scrollTop)
       .toBeGreaterThan(before.scrollTop + 250);
     const after = await geometry();
-    expect.soft(after.actions.bottom).toBeLessThan(after.footer.top);
+    expect(
+      await page
+        .locator(".wizard-field-scroll")
+        .evaluate((node) => node.scrollTop),
+    ).toBe(0);
     if (width === 1920) {
-      expect.soft(after.nav.top).toBeGreaterThanOrEqual(after.fields.top);
-      expect.soft(after.nav.bottom).toBeLessThanOrEqual(after.fields.bottom);
+      expect.soft(after.nav.top).toBeGreaterThanOrEqual(after.document.top);
+      expect.soft(after.nav.bottom).toBeLessThanOrEqual(after.document.bottom);
       await expect(
         page.getByRole("button", { name: /1\. Reserve stock/ }),
       ).toBeInViewport();
@@ -196,6 +199,17 @@ for (const width of [1440, 1920]) {
     await expect(page.getByLabel("Given", { exact: true })).toHaveValue(
       "Stock is available",
     );
+    await page
+      .getByRole("button", { name: "Continue", exact: true })
+      .scrollIntoViewIfNeeded();
+    const reachable = await geometry();
+    expect(reachable.actions.top).toBeGreaterThanOrEqual(
+      reachable.document.top,
+    );
+    expect(reachable.actions.bottom).toBeLessThanOrEqual(
+      reachable.document.bottom,
+    );
+    expect(reachable.actions.bottom).toBeLessThan(reachable.footer.top);
   });
 }
 
@@ -280,27 +294,35 @@ for (const width of [1280, 1440, 1920]) {
     expect.soft(g.header.right).toBeGreaterThanOrEqual(g.assistant.right - 1);
     expect.soft(g.assistant.top).toBeCloseTo(g.editor.top, 0);
     expect.soft(g.assistant.bottom).toBeCloseTo(g.editor.bottom, 0);
-    expect.soft(g.assistant.width).toBeGreaterThanOrEqual(320);
-    expect.soft(g.assistant.width).toBeLessThanOrEqual(520);
-    expect
-      .soft(g.assistant.width)
-      .toBeCloseTo(Math.min(520, Math.max(320, g.header.width * 0.32)), 0);
-    expect.soft(g.fieldsOverflow).toBe("auto");
+    expect.soft(g.assistant.width).toBeGreaterThanOrEqual(300);
+    expect.soft(g.editor.width / g.assistant.width).toBeGreaterThanOrEqual(1.8);
+    expect.soft(g.editor.width / g.assistant.width).toBeLessThanOrEqual(2.1);
+    expect.soft(g.fieldsOverflow).toBe("visible");
     expect.soft(g.mainScroll).toBeLessThanOrEqual(1);
-    expect.soft(g.actions.bottom).toBeLessThanOrEqual(g.main.bottom - 20);
     expect.soft(g.composer.bottom).toBeLessThanOrEqual(g.main.bottom - 20);
+    const expectActionsReachable = async () => {
+      await page
+        .getByRole("button", { name: "Continue", exact: true })
+        .scrollIntoViewIfNeeded();
+      const current = await geometry();
+      expect(current.actions.top).toBeGreaterThanOrEqual(current.editor.top);
+      expect(current.actions.bottom).toBeLessThanOrEqual(current.editor.bottom);
+      expect(current.composer.bottom).toBeLessThanOrEqual(
+        current.main.bottom - 20,
+      );
+      expect(current.mainScroll).toBeLessThanOrEqual(1);
+    };
+    await expectActionsReachable();
     await page.setViewportSize({ width, height: 720 });
     await expect
       .poll(async () => (await geometry()).assistant.height)
       .toBeLessThan(g.assistant.height - 100);
     const resized = await geometry();
     expect(resized.assistant.bottom).toBeCloseTo(resized.editor.bottom, 0);
-    expect(resized.actions.bottom).toBeLessThanOrEqual(
-      resized.main.bottom - 20,
-    );
     expect(resized.composer.bottom).toBeLessThanOrEqual(
       resized.main.bottom - 20,
     );
+    await expectActionsReachable();
   });
 }
 
@@ -345,8 +367,11 @@ for (const viewport of [
       page.getByLabel("Product design message", { exact: true }),
     ).toHaveValue("Retain my unsent reservation question");
     await expect(
-      dialog.getByRole("button", { name: "Files (1)", exact: true }),
+      dialog.getByRole("button", { name: "Files", exact: true }),
     ).toBeVisible();
+    await expect(
+      dialog.locator('[aria-label="Files for next message"]'),
+    ).toContainText("journey-notes.md");
     const composer = await dialog.locator(".assistant-composer").boundingBox();
     expect(composer!.y + composer!.height).toBeLessThanOrEqual(
       viewport.height - 12,
@@ -364,8 +389,11 @@ for (const viewport of [
       }),
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Files (1)", exact: true }),
+      page.getByRole("button", { name: "Files", exact: true }),
     ).toBeVisible();
+    await expect(
+      page.locator('[aria-label="Files for next message"]'),
+    ).toContainText("journey-notes.md");
     await expect(
       page.getByLabel("Product design message", { exact: true }),
     ).toHaveValue("Retain my unsent reservation question");
@@ -428,7 +456,7 @@ for (const theme of ["light", "dark"]) {
     });
     await expect(trigger).toBeVisible();
     await trigger.click();
-    const dialogue = page.getByRole("region", {
+    const dialogue = page.getByRole("log", {
       name: "Recorded design dialogue",
       exact: true,
     });
@@ -473,10 +501,12 @@ for (const theme of ["light", "dark"]) {
     });
     expect(reachable).toBe(true);
     await message.focus();
-    await page.keyboard.press("Tab");
+    await page.keyboard.press("Shift+Tab");
     await expect(
       page.getByRole("button", { name: "Files", exact: true }),
     ).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(message).toBeFocused();
     await page.keyboard.press("Tab");
     await expect(send).toBeFocused();
     await page.keyboard.press("Escape");
@@ -514,14 +544,19 @@ test("assistant history keeps its conversation selector readable and its actions
           await page
             .getByRole("button", { name: "Open design assistant", exact: true })
             .click();
-        await page.getByText("History", { exact: true }).click();
-        const popover = page.locator(".assistant-history-popover");
-        const selector = popover.getByLabel("Recorded conversation", {
+        await page
+          .getByRole("button", { name: "Conversation history", exact: true })
+          .click();
+        const history = page.getByRole("region", {
+          name: "Recorded conversations",
+          exact: true,
+        });
+        const selector = history.getByLabel("Recorded conversation", {
           exact: true,
         });
         await selector.scrollIntoViewIfNeeded();
         const field = await selector.boundingBox();
-        const label = await popover
+        const label = await history
           .locator('label[for="design-conversation"]')
           .boundingBox();
         expect
@@ -532,13 +567,13 @@ test("assistant history keeps its conversation selector readable and its actions
           .toBeLessThanOrEqual(24);
         expect
           .soft(
-            await popover.evaluate(
+            await history.evaluate(
               (element) => element.scrollWidth <= element.clientWidth + 1,
             ),
           )
           .toBe(true);
         for (const name of ["Refresh record", "Configure AI"]) {
-          const action = popover.getByRole("button", { name, exact: true });
+          const action = history.getByRole("button", { name, exact: true });
           await action.scrollIntoViewIfNeeded();
           const box = await action.boundingBox();
           expect
@@ -569,7 +604,9 @@ test("assistant history keeps its conversation selector readable and its actions
         await page.screenshot({
           path: info.outputPath(`history-${viewport.width}-${colorScheme}.png`),
         });
-        await page.getByText("History", { exact: true }).click();
+        await history
+          .getByRole("button", { name: "Back to conversation", exact: true })
+          .click();
         expect(
           await page.evaluate(
             () => document.documentElement.scrollWidth <= innerWidth,

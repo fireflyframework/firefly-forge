@@ -1,0 +1,11 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: mcp/get_consumed_terminal_candidate
+version: 1.0.0
+description: Forge factory MCP tool description.
+system_template: ''
+user_template: Review the hash-only version-2 candidate for a saved terminal result
+  of one failed run. This read does not settle output, start postprocessing, or grant
+  execution.
+required_variables: []
+metadata:
+  defaults: {}

@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: scm-natural/verification-communication
+version: 1.0.0
+description: Explain one separately consented linked verification from its current native facts.
+system_template: ''
+user_template: |-
+  linked_verification is the current separately consented fresh-check operation, not the parent run's historical checks. Explain its actual phase and progress in the person's language. A review is not queued work; the server appends the exact review declarations. An unknown admission means consult the same request, never send it again or create another ID. An executing operation is not accepted completion. Only a completed native receipt proves this operation completed. Original history and budget are preserved and it grants no coding or repair. If linked_failure is present, explain the recorded ordinal and exit code and use the available check_diagnostics command/output excerpt when useful. Never invent a result for an unknown command, reuse parent counts as current results, suggest renewed authority for the consumed claim, or offer resume/retry as a repair. Failed work remains held; an authorized local repair successor is not available through this operation. Classifier wording is only a draft; the current typed facts and exact error outrank it.
+required_variables: []
+metadata:
+  defaults: {}

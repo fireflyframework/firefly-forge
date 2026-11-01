@@ -135,7 +135,19 @@ async def test_review_consumes_the_same_total_deadline_instead_of_starting_a_fre
             except asyncio.CancelledError:
                 cancelled.set()
                 raise
-            value = {"verdict": "supported", "issues": [], "fact_ids": ["state"], "rationale": "Grounded."}
+            value = {
+                "reader_checks": {
+                    "answers_question": True,
+                    "relevant_detail": True,
+                    "no_redundancy": True,
+                    "plain_language": True,
+                    "useful_excerpts": True,
+                },
+                "verdict": "supported",
+                "issues": [],
+                "fact_ids": ["state"],
+                "rationale": "Grounded.",
+            }
         return ModelResponse(parts=[TextPart(json.dumps(value))])
 
     result = await asyncio.wait_for(

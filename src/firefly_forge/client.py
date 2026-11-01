@@ -13,6 +13,17 @@ from uuid import UUID
 import httpx
 from pydantic import BaseModel
 
+from firefly_forge.github_projects_models import (
+    BoardConnectionInputV1,
+    BoardConnectionViewV1,
+    BoardCreateInputV1,
+    BoardCreationReceiptV1,
+    BoardDiscoveryInputV1,
+    BoardDiscoveryV1,
+    BoardObserveInputV1,
+    BoardRequestReceiptV1,
+    BoardSyncInputV1,
+)
 from firefly_forge.models import RepositoryInput, RunInput
 
 if TYPE_CHECKING:
@@ -42,6 +53,11 @@ if TYPE_CHECKING:
     from firefly_forge.invalid_read_continuity_models import InvalidReadAdmissionInputV1, InvalidReadAdmissionInputV2
     from firefly_forge.invalid_read_lease import ContinuityLeasePolicyV1
     from firefly_forge.invalid_read_recovery_models import InvalidReadRecoveryInputV1
+    from firefly_forge.known_worker_completion_models import (
+        ConsumedTerminalInputV2,
+        ConsumedTerminalReconciliationInputV1,
+    )
+    from firefly_forge.linked_verification_models import LinkedVerificationInputV1
     from firefly_forge.model_profiles import ModelProfileInput
     from firefly_forge.original_selection_models import OriginalSelectionReadmissionInput
     from firefly_forge.product_assistant import AssistantRecoveryInput, AssistantTurnInput
@@ -61,12 +77,18 @@ if TYPE_CHECKING:
     from firefly_forge.scm_product_intake_models import SCMProductIntakeConsentInputV1
     from firefly_forge.scm_resume_models import SCMResumeGrantInputV2
     from firefly_forge.scm_source_edit_models import SCMSourceEditGrantInputV1
+    from firefly_forge.source_archive_scan_models import (
+        SourceCredentialScanInputV1,
+        SourceCredentialScanReceiptV1,
+        SourceCredentialScanViewV1,
+    )
     from firefly_forge.source_budget_allowances import (
         SourceBudgetAllowanceInput,
         SourceBudgetPolicy,
         SourceBudgetProposal,
     )
     from firefly_forge.source_edit_models import SourceEditContinuationInput
+    from firefly_forge.source_explorer import SourceCatalogObservationV1, SourceFilePageV1
     from firefly_forge.task_routing import TaskRoutingInput
     from firefly_forge.task_routing_mcp import TaskRoutingInput as MCPTaskRoutingInput
     from firefly_forge.unknown_command_models import UnknownCommandAcknowledgementV1
@@ -129,6 +151,162 @@ class ForgeClient:
             return model.model_validate(value).model_dump(mode="json", exclude_unset=True)
         except ValueError:
             raise ValueError("Use the original recovery request with its exact identities, scope and digests") from None
+
+    def consumed_terminal_candidate(self, run_id: str) -> dict[str, Any]:
+        """Review exact already-consumed output without requesting postprocessing or execution."""
+        from firefly_forge.known_worker_completion_models import ConsumedTerminalCandidateV2
+
+        run_id = self._recovery_identifier(run_id)
+        response = self.request("GET", f"runs/{run_id}/worker-completion-settlements/candidate")
+        try:
+            candidate = ConsumedTerminalCandidateV2.model_validate(response)
+            if candidate.run_id != run_id or candidate.proof.run_id != run_id:
+                raise ValueError("Candidate scope differs")
+        except ValueError:
+            raise ValueError("The saved candidate does not match the reviewed version-2 run") from None
+        return candidate.model_dump(mode="json")
+
+    @staticmethod
+    def _consumed_terminal_receipt(
+        response: Any,
+        run_id: str,
+        request_id: str,
+        expected_request: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        from firefly_forge.known_worker_completion_models import ConsumedTerminalReceiptV2
+
+        try:
+            receipt = ConsumedTerminalReceiptV2.model_validate(response)
+            if (
+                receipt.run_id != run_id
+                or receipt.request_id != request_id
+                or receipt.candidate.proof.run_id != run_id
+                or expected_request is not None
+                and receipt.request.model_dump(mode="json") != expected_request
+            ):
+                raise ValueError("Receipt scope differs")
+        except ValueError:
+            raise ValueError("The saved receipt does not match the reviewed version-2 request") from None
+        return receipt.model_dump(mode="json")
+
+    def request_consumed_terminal(
+        self, run_id: str, request_id: str, request: ConsumedTerminalInputV2 | dict[str, Any]
+    ) -> dict[str, Any]:
+        """Submit once; uncertain delivery requires readback of this same request identity."""
+        from firefly_forge.known_worker_completion_models import ConsumedTerminalInputV2
+
+        run_id, request_id = self._recovery_identifier(run_id), self._recovery_identifier(request_id)
+        body = self._recovery_body(ConsumedTerminalInputV2, request)
+        response = self.request("POST", f"runs/{run_id}/worker-completion-settlements/{request_id}", json=body)
+        return self._consumed_terminal_receipt(response, run_id, request_id, body)
+
+    def consumed_terminal_status(self, run_id: str, request_id: str) -> dict[str, Any]:
+        """Read the original receipt without repeating settlement or starting another action."""
+        run_id, request_id = self._recovery_identifier(run_id), self._recovery_identifier(request_id)
+        response = self.request("GET", f"runs/{run_id}/worker-completion-settlements/{request_id}")
+        return self._consumed_terminal_receipt(response, run_id, request_id)
+
+    def consumed_terminal_reconciliation_candidate(self, run_id: str, request_id: str) -> dict[str, Any]:
+        from firefly_forge.known_worker_completion_models import ConsumedTerminalReconciliationCandidateV1
+
+        run_id, request_id = self._recovery_identifier(run_id), self._recovery_identifier(request_id)
+        response = self.request(
+            "GET", f"runs/{run_id}/worker-completion-settlements/{request_id}/reconciliation-candidate"
+        )
+        try:
+            candidate = ConsumedTerminalReconciliationCandidateV1.model_validate(response)
+            if candidate.run_id != run_id or candidate.request_id != request_id:
+                raise ValueError("Reconciliation scope differs")
+        except ValueError:
+            raise ValueError("The reconciliation candidate belongs to another native action") from None
+        return candidate.model_dump(mode="json")
+
+    @staticmethod
+    def _consumed_terminal_reconciliation_receipt(
+        response: Any, run_id: str, request_id: str, expected_request: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        from firefly_forge.known_worker_completion_models import ConsumedTerminalReconciliationReceiptV1
+
+        try:
+            receipt = ConsumedTerminalReconciliationReceiptV1.model_validate(response)
+            if (
+                receipt.candidate.run_id != run_id
+                or receipt.candidate.request_id != request_id
+                or expected_request is not None
+                and receipt.request.model_dump(mode="json") != expected_request
+            ):
+                raise ValueError("Reconciliation receipt scope differs")
+        except ValueError:
+            raise ValueError("The reconciliation receipt belongs to another reviewed action") from None
+        return receipt.model_dump(mode="json")
+
+    def reconcile_consumed_terminal(
+        self, run_id: str, request_id: str, request: ConsumedTerminalReconciliationInputV1 | dict[str, Any]
+    ) -> dict[str, Any]:
+        """Submit once; after uncertain delivery read this same reconciliation identity."""
+        from firefly_forge.known_worker_completion_models import ConsumedTerminalReconciliationInputV1
+
+        run_id, request_id = self._recovery_identifier(run_id), self._recovery_identifier(request_id)
+        body = self._recovery_body(ConsumedTerminalReconciliationInputV1, request)
+        response = self.request(
+            "POST", f"runs/{run_id}/worker-completion-settlements/{request_id}/reconcile", json=body
+        )
+        return self._consumed_terminal_reconciliation_receipt(response, run_id, request_id, body)
+
+    def consumed_terminal_reconciliation_status(self, run_id: str, request_id: str) -> dict[str, Any]:
+        run_id, request_id = self._recovery_identifier(run_id), self._recovery_identifier(request_id)
+        response = self.request("GET", f"runs/{run_id}/worker-completion-settlements/{request_id}/reconciliation")
+        return self._consumed_terminal_reconciliation_receipt(response, run_id, request_id)
+
+    def linked_verification_candidate(self, run_id: str) -> dict[str, Any]:
+        """Read the frozen fresh-check scope without admitting an operation."""
+        from firefly_forge.linked_verification_models import LinkedVerificationCandidateV1
+
+        run_id = self._recovery_identifier(run_id)
+        response = self.request("GET", f"runs/{run_id}/linked-verifications/candidate")
+        try:
+            candidate = LinkedVerificationCandidateV1.model_validate(response)
+            if candidate.run_id != run_id:
+                raise ValueError("Linked verification candidate scope differs")
+        except ValueError:
+            raise ValueError("The linked verification candidate belongs to another reviewed run") from None
+        return candidate.model_dump(mode="json")
+
+    @staticmethod
+    def _linked_verification_receipt(
+        response: Any, run_id: str, request_id: str, expected_request: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        from firefly_forge.linked_verification_models import LinkedVerificationReceiptV1
+
+        try:
+            receipt = LinkedVerificationReceiptV1.model_validate(response)
+            if (
+                receipt.run_id != run_id
+                or receipt.request_id != request_id
+                or expected_request is not None
+                and receipt.request.model_dump(mode="json") != expected_request
+            ):
+                raise ValueError("Linked verification receipt scope differs")
+        except ValueError:
+            raise ValueError("The linked verification receipt belongs to another reviewed operation") from None
+        return receipt.model_dump(mode="json")
+
+    def request_linked_verification(
+        self, run_id: str, request: LinkedVerificationInputV1 | dict[str, Any]
+    ) -> dict[str, Any]:
+        """Admit once; uncertain delivery requires reading the same request identity."""
+        from firefly_forge.linked_verification_models import LinkedVerificationInputV1
+
+        run_id = self._recovery_identifier(run_id)
+        body = self._recovery_body(LinkedVerificationInputV1, request)
+        response = self.request("POST", f"runs/{run_id}/linked-verifications", json=body)
+        return self._linked_verification_receipt(response, run_id, body["request_id"], body)
+
+    def linked_verification_status(self, run_id: str, request_id: str) -> dict[str, Any]:
+        """Read progress without retrying a check or changing the original budget."""
+        run_id, request_id = self._recovery_identifier(run_id), self._recovery_identifier(request_id)
+        response = self.request("GET", f"runs/{run_id}/linked-verifications/{request_id}")
+        return self._linked_verification_receipt(response, run_id, request_id)
 
     def provider_recovery_allowance_candidate(
         self, run_id: str, agent: Literal["codex", "claude"], *, adopt_current_executable: bool = False
@@ -1250,6 +1428,110 @@ class ForgeClient:
     def git_delivery_policy(self, project_id: str) -> dict[str, Any]:
         return dict(self.request("GET", f"projects/{self._id(project_id)}/git-delivery-policy"))
 
+    def _board_path(self, project_id: str, repository_id: str) -> str:
+        return f"projects/{self._id(project_id)}/repositories/{self._id(repository_id)}/github-projects"
+
+    @staticmethod
+    def _board_scope(
+        result: BoardConnectionViewV1 | BoardCreationReceiptV1 | BoardRequestReceiptV1,
+        project_id: str,
+        repository_id: str,
+        *,
+        request_id: str | None = None,
+        run_id: str | None = None,
+    ) -> None:
+        if (
+            result.project_id != project_id
+            or result.repository_id != repository_id
+            or request_id is not None
+            and getattr(result, "id", None) != request_id
+            or run_id is not None
+            and getattr(result, "run_id", None) != run_id
+        ):
+            raise ValueError("GitHub board response leaves its requested native scope")
+
+    def create_github_projects(
+        self, project_id: str, repository_id: str, request: BoardCreateInputV1 | dict[str, Any]
+    ) -> BoardCreationReceiptV1:
+        body = BoardCreateInputV1.model_validate(request)
+        result = BoardCreationReceiptV1.model_validate(
+            self.request(
+                "POST",
+                self._board_path(project_id, repository_id) + "/creations",
+                json=body.model_dump(mode="json"),
+            )
+        )
+        self._board_scope(result, project_id, repository_id, request_id=body.request_id)
+        return result
+
+    def github_projects_creation(self, project_id: str, repository_id: str, request_id: str) -> BoardCreationReceiptV1:
+        result = BoardCreationReceiptV1.model_validate(
+            self.request(
+                "GET",
+                self._board_path(project_id, repository_id) + "/creations/" + self._id(request_id),
+            )
+        )
+        self._board_scope(result, project_id, repository_id, request_id=request_id)
+        return result
+
+    def github_projects_connection(self, project_id: str, repository_id: str) -> BoardConnectionViewV1:
+        result = BoardConnectionViewV1.model_validate(
+            self.request("GET", self._board_path(project_id, repository_id) + "/connection")
+        )
+        self._board_scope(result, project_id, repository_id)
+        return result
+
+    def discover_github_projects(
+        self, project_id: str, repository_id: str, request: BoardDiscoveryInputV1 | dict[str, Any]
+    ) -> BoardDiscoveryV1:
+        body = BoardDiscoveryInputV1.model_validate(request).model_dump(mode="json")
+        return BoardDiscoveryV1.model_validate(
+            self.request("POST", self._board_path(project_id, repository_id) + "/discover", json=body)
+        )
+
+    def configure_github_projects(
+        self, project_id: str, repository_id: str, request: BoardConnectionInputV1 | dict[str, Any]
+    ) -> BoardConnectionViewV1:
+        body = BoardConnectionInputV1.model_validate(request).model_dump(mode="json")
+        result = BoardConnectionViewV1.model_validate(
+            self.request("PUT", self._board_path(project_id, repository_id) + "/connection", json=body)
+        )
+        self._board_scope(result, project_id, repository_id)
+        return result
+
+    def sync_github_projects(
+        self, project_id: str, repository_id: str, run_id: str, request: BoardSyncInputV1 | dict[str, Any]
+    ) -> BoardRequestReceiptV1:
+        body = BoardSyncInputV1.model_validate(request).model_dump(mode="json")
+        result = BoardRequestReceiptV1.model_validate(
+            self.request(
+                "POST", self._board_path(project_id, repository_id) + f"/runs/{self._id(run_id)}/sync", json=body
+            )
+        )
+        self._board_scope(result, project_id, repository_id, request_id=body["request_id"], run_id=run_id)
+        return result
+
+    def github_projects_request(self, project_id: str, repository_id: str, request_id: str) -> BoardRequestReceiptV1:
+        result = BoardRequestReceiptV1.model_validate(
+            self.request("GET", self._board_path(project_id, repository_id) + f"/requests/{self._id(request_id)}")
+        )
+        self._board_scope(result, project_id, repository_id, request_id=request_id)
+        return result
+
+    def observe_github_projects(
+        self, project_id: str, repository_id: str, request_id: str, request: BoardObserveInputV1 | dict[str, Any]
+    ) -> BoardRequestReceiptV1:
+        body = BoardObserveInputV1.model_validate(request).model_dump(mode="json")
+        result = BoardRequestReceiptV1.model_validate(
+            self.request(
+                "POST",
+                self._board_path(project_id, repository_id) + f"/requests/{self._id(request_id)}/observe",
+                json=body,
+            )
+        )
+        self._board_scope(result, project_id, repository_id, request_id=request_id)
+        return result
+
     def configure_git_deliveries(
         self, project_id: str, request: GitDeliveryPolicyInputV1 | dict[str, Any]
     ) -> dict[str, Any]:
@@ -1361,6 +1643,212 @@ class ForgeClient:
             or hashlib.sha256(content).hexdigest() != result.content_sha256
         ):
             raise ValueError("The returned diff content differs from the requested verified window")
+        return result
+
+    def run_source_scan_candidate(self, run_id: str, snapshot_id: str, expected_manifest: str) -> dict[str, Any]:
+        path = self._source_path(run_id, snapshot_id, expected_manifest)
+        value = self.request(
+            "GET", path + "/credential-scan-candidate", params={"expected_manifest": expected_manifest}
+        )
+        if (
+            not isinstance(value, dict)
+            or set(value)
+            != {"version", "run_id", "snapshot_id", "expected_manifest", "expected_credential_fingerprint"}
+            or type(value["version"]) is not int
+            or value["version"] != 1
+            or value["run_id"] != run_id
+            or value["snapshot_id"] != snapshot_id
+            or value["expected_manifest"] != expected_manifest
+            or not isinstance(value["expected_credential_fingerprint"], str)
+            or re.fullmatch(r"[a-f0-9]{64}", value["expected_credential_fingerprint"]) is None
+        ):
+            raise ValueError("Credential scan candidate differs from its authorized snapshot")
+        return dict(value)
+
+    def run_source_rescan(
+        self,
+        run_id: str,
+        snapshot_id: str,
+        request_id: str,
+        body: SourceCredentialScanInputV1,
+    ) -> SourceCredentialScanReceiptV1:
+        from firefly_forge.runner_pool_models import pool_digest
+        from firefly_forge.source_archive_scan_models import SourceCredentialScanInputV1, SourceCredentialScanReceiptV1
+
+        body = SourceCredentialScanInputV1.model_validate(body)
+        request_id = self._id(request_id)
+        path = self._source_path(run_id, snapshot_id, body.expected_manifest)
+        value = self.request("POST", path + "/credential-scans/" + request_id, json=body.model_dump(mode="json"))
+        receipt = SourceCredentialScanReceiptV1.model_validate(value)
+        if (
+            receipt.request_id != request_id
+            or receipt.snapshot_id != snapshot_id
+            or receipt.run_id != run_id
+            or receipt.request_sha256 != pool_digest(body.model_dump(mode="json"))
+            or receipt.credential_fingerprint != body.expected_credential_fingerprint
+        ):
+            raise ValueError("Credential scan response differs from the exact retained submission")
+        return receipt
+
+    def run_source_scan_receipt(
+        self,
+        run_id: str,
+        snapshot_id: str,
+        request_id: str,
+        expected_manifest: str,
+        *,
+        expected_request_sha256: str,
+    ) -> SourceCredentialScanViewV1:
+        from firefly_forge.source_archive_scan_models import SourceCredentialScanViewV1
+
+        if re.fullmatch(r"[a-f0-9]{64}", expected_request_sha256) is None:
+            raise ValueError("Keep the exact credential scan request digest before submission")
+        request_id = self._id(request_id)
+        path = self._source_path(run_id, snapshot_id, expected_manifest)
+        value = self.request(
+            "GET", path + "/credential-scans/" + request_id, params={"expected_manifest": expected_manifest}
+        )
+        view = SourceCredentialScanViewV1.model_validate(value)
+        if (
+            view.request_id != request_id
+            or view.snapshot_id != snapshot_id
+            or view.run_id != run_id
+            or view.request_sha256 != expected_request_sha256
+        ):
+            raise ValueError("Credential scan readback differs from the exact retained request")
+        return view
+
+    def run_source_revisions(self, run_id: str, *, after: str | None = None) -> dict[str, Any]:
+        from firefly_forge.source_archive_index import SourceArchiveRefV1
+
+        run_id = self._id(run_id)
+        if after is not None:
+            after = self._id(after)
+        result = self.request("GET", f"runs/{run_id}/source/revisions", params={"after": after} if after else {})
+        if (
+            not isinstance(result, dict)
+            or set(result) != {"run_id", "items", "next_after", "recording_enabled", "availability"}
+            or result["run_id"] != run_id
+            or type(result["recording_enabled"]) is not bool
+            or result["availability"] not in {"recorded", "unavailable"}
+            or not isinstance(result["items"], list)
+            or len(result["items"]) > 128
+        ):
+            raise ValueError("The returned source revisions differ from the requested run")
+        previous = after
+        for item in result["items"]:
+            if (
+                not isinstance(item, dict)
+                or set(item) != {"reference", "status", "reason"}
+                or item["status"] not in {"pending", "published", "failed"}
+            ):
+                raise ValueError("The returned source revision status is invalid")
+            ref = SourceArchiveRefV1.model_validate(item["reference"])
+            if ref.run_id != run_id or previous is not None and ref.snapshot_id <= previous:
+                raise ValueError("The returned source revision cursor or scope changed")
+            previous = ref.snapshot_id
+        if (
+            result["next_after"] not in (None, previous)
+            or result["next_after"] is not None
+            and len(result["items"]) != 128
+        ):
+            raise ValueError("The returned source revision cursor changed")
+        return dict(result)
+
+    def _source_path(self, run_id: str, snapshot_id: str, expected_manifest: str) -> str:
+        if not isinstance(expected_manifest, str) or re.fullmatch(r"[a-f0-9]{64}", expected_manifest) is None:
+            raise ValueError("An exact source catalog manifest is required")
+        return f"runs/{self._id(run_id)}/source/revisions/{self._id(snapshot_id)}"
+
+    def run_source_catalog(
+        self, run_id: str, snapshot_id: str, expected_manifest: str, *, page: int = 0, request_id: str | None = None
+    ) -> SourceCatalogObservationV1:
+        from firefly_forge.source_archive import public_entry
+        from firefly_forge.source_explorer import SourceCatalogObservationV1
+
+        if type(page) is not int or page < 0:
+            raise ValueError("A nonnegative source catalog page is required")
+        path = self._source_path(run_id, snapshot_id, expected_manifest) + "/catalog"
+        params = {"expected_manifest": expected_manifest, "page": page}
+        if request_id is not None:
+            params["request_id"] = self._id(request_id)
+        result = SourceCatalogObservationV1.model_validate(self.request("GET", path, params=params))
+        ref = result.reference
+        if (
+            ref.run_id != self._id(run_id)
+            or ref.snapshot_id != self._id(snapshot_id)
+            or ref.catalog.manifest_sha256 != expected_manifest
+            or result.catalog.manifest_sha256 != expected_manifest
+            or result.catalog.artifact_id != ref.catalog.artifact_id
+            or result.catalog.page != page
+            or len(result.catalog.entries) > 128
+            or result.catalog.next_page != (page + 1 if page + 1 < ref.catalog.page_count else None)
+        ):
+            raise ValueError("The returned source catalog differs from the requested immutable page")
+        for entry in result.catalog.entries:
+            public_entry(entry)
+        return result
+
+    def run_source_file(
+        self,
+        run_id: str,
+        snapshot_id: str,
+        expected_manifest: str,
+        *,
+        page: int,
+        entry_index: int,
+        offset: int = 0,
+        limit: int = 32768,
+        request_id: str | None = None,
+    ) -> SourceFilePageV1:
+        from firefly_forge.source_archive import public_entry
+        from firefly_forge.source_explorer import SourceFilePageV1
+
+        if (
+            type(page) is not int
+            or page < 0
+            or type(entry_index) is not int
+            or entry_index < 0
+            or type(offset) is not int
+            or offset < 0
+            or type(limit) is not int
+            or not 1 <= limit <= 1048576
+        ):
+            raise ValueError("Use a bounded source file window and exact catalog indexes")
+        path = self._source_path(run_id, snapshot_id, expected_manifest) + f"/files/{entry_index}"
+        params = {"expected_manifest": expected_manifest, "page": page, "offset": offset, "limit": limit}
+        if request_id is not None:
+            params["request_id"] = self._id(request_id)
+        result = SourceFilePageV1.model_validate(self.request("GET", path, params=params))
+        public_entry(result.entry)
+        content = base64.b64decode(result.content_base64, validate=True)
+        text_value: str | None
+        try:
+            text_value = content.decode("utf-8", errors="strict")
+            if "\0" in text_value:
+                text_value = None
+        except UnicodeDecodeError:
+            text_value = None
+        if (
+            result.reference.run_id != self._id(run_id)
+            or result.reference.snapshot_id != self._id(snapshot_id)
+            or result.reference.catalog.manifest_sha256 != expected_manifest
+            or result.catalog_page != page
+            or result.entry_index != entry_index
+            or result.entry.kind != "file"
+            or result.offset != offset
+            or result.byte_count > limit
+            or len(content) != result.byte_count
+            or offset + len(content) > result.entry.byte_count
+            or not content
+            and offset < result.entry.byte_count
+            or result.next_offset
+            != (offset + len(content) if offset + len(content) < result.entry.byte_count else None)
+            or hashlib.sha256(content).hexdigest() != result.sha256
+            or result.text != text_value
+            or result.binary is not (text_value is None)
+        ):
+            raise ValueError("The returned source content differs from its verified byte window")
         return result
 
     def analytics_configuration(self, project_id: str) -> dict[str, Any]:

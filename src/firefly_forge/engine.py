@@ -54,7 +54,9 @@ from firefly_forge.work_duration_models import WorkDurationPolicyV2
 RETAINED_EXECUTION_FENCES: set[FileLock] = set()
 
 if TYPE_CHECKING:
+    from firefly_forge.consumed_terminal_completions import ConsumedTerminalExecution
     from firefly_forge.git_deliveries import GitDeliveries
+    from firefly_forge.source_archive_service import SourceArchiveManager
 
 
 async def checked(argv: list[str], cwd: Path, timeout: int = 300, *, env: dict[str, str] | None = None) -> str:
@@ -110,6 +112,16 @@ def framework_commands(run: dict[str, Any]) -> list[Command | NewWorkCommand]:
     ]
 
 
+def final_verification_commands(run: dict[str, Any], workspace: Path) -> list[Command | NewWorkCommand]:
+    commands = configured_commands(run) or default_commands(
+        workspace,
+        work_duration=WorkDurationPolicyV2.model_validate(run["work_duration"])
+        if run.get("work_duration") is not None
+        else None,
+    )
+    return commands + policy_commands(run.get("policy_snapshot", {}), run["backend"]) + framework_commands(run)
+
+
 def private_path(path: str) -> bool:
     parts = Path(path).parts
     return any(
@@ -158,6 +170,7 @@ class Engine:
 
         self.communication_writer = CommunicationWriter(store)
         self.git_deliveries: GitDeliveries | None = None
+        self.linked_verifications: Any = None
         self.knowledge: Any = None
         self.assurance: Any = None
         self.workspaces = workspaces
@@ -195,6 +208,7 @@ class Engine:
         self.knowledge_first: Any = None
         self.git_metadata: dict[Path, str] = {}
         self.worker_evidence: Any = None
+        self.source_archives: SourceArchiveManager | None = None
 
     async def start(self) -> None:
         if self.store.runtime_roles and not self.store.runtime_roles.executes_jobs:
@@ -433,12 +447,18 @@ class Engine:
         await self.execute_run(identifier, restoration=restoration)
 
     async def execute_run(self, identifier: str, *, restoration: Any = None) -> None:
+        consumed_execution: ConsumedTerminalExecution | None = None
         await self.assert_ownership()
         if restoration is None:
             if not (await self.store.claim(identifier)):
                 return
         else:
             await restoration.guard_source()
+        if restoration is not None:
+            from firefly_forge.consumed_terminal_completions import ConsumedTerminalExecution
+
+            if isinstance(restoration, ConsumedTerminalExecution):
+                consumed_execution = restoration
         workspace = self.workspaces / identifier
         settings: dict[str, str] = {}
         active_key: str | None = None
@@ -486,6 +506,20 @@ class Engine:
 
         try:
             run = await self.store.get_run(identifier)
+            if restoration is None and run.get("consumed_terminal_recovery"):
+                from firefly_forge.consumed_terminal_completions import claimed_execution
+
+                try:
+                    restoration = await claimed_execution(self, identifier)
+                    consumed_execution = restoration
+                    run = await self.store.get_run(identifier)
+                except Exception as error:
+                    await self.store.update(
+                        identifier,
+                        status="needs_reconciliation",
+                        error="Consumed terminal claim held: " + type(error).__name__,
+                    )
+                    return
             from firefly_forge.project_access import ProjectAccess
 
             await ProjectAccess(self.store).authorize_execution(run)
@@ -510,9 +544,12 @@ class Engine:
                     and not (await self.sandbox.probe(run["sandbox_snapshot"]))["available"]
                 ):
                     raise ValueError("The frozen Docker runner is unavailable on the execution worker")
-                await self.store.event(
-                    identifier, "runner_attestation", "Execution worker attested frozen runner and tool grants"
-                )
+                if consumed_execution is not None:
+                    await consumed_execution.attest_runner()
+                else:
+                    await self.store.event(
+                        identifier, "runner_attestation", "Execution worker attested frozen runner and tool grants"
+                    )
             if run.get("component_snapshot"):
                 self.component_roots[workspace.resolve()] = run["component_snapshot"]["path"]
             if run.get("checkpoint_mode_adoption"):
@@ -1451,9 +1488,16 @@ class Engine:
                     qa = QAReport.model_validate(qa_report)
                     if any(finding.severity in {"high", "critical"} for finding in qa.findings):
                         raise ValueError("Visual QA requires changes; inspect the retained findings and image evidence")
-                files, diff, tree = await self._snapshot(
-                    workspace, base, secrets=settings, expected_head=run.get("checkpoint_revision")
-                )
+                from firefly_forge.consumed_terminal_completions import ConsumedTerminalExecution
+
+                if isinstance(restored_receipt, ConsumedTerminalExecution):
+                    files, diff, tree = await restored_receipt.snapshot(
+                        self, base, secrets=settings, expected_head=run.get("checkpoint_revision")
+                    )
+                else:
+                    files, diff, tree = await self._snapshot(
+                        workspace, base, secrets=settings, expected_head=run.get("checkpoint_revision")
+                    )
                 evidence = {
                     "source_tree": tree,
                     "changed_files": files,
@@ -1467,6 +1511,9 @@ class Engine:
                     await restored_receipt.receipt(self, active_key, evidence, source_checkpoint)
                 else:
                     await self._receipt(identifier, active_key, evidence, checkpoint=source_checkpoint)
+                if isinstance(restored_receipt, ConsumedTerminalExecution):
+                    await emit("paused", "The consumed worker result was accepted without another provider dispatch")
+                    return
                 if known_final:
                     # Native acceptance owns the consumed output; later QA is ordinary execution.
                     restoration = None
@@ -1482,16 +1529,7 @@ class Engine:
                     await self.git_deliveries.automatic(identifier)
                     run = await self.store.get_run(identifier)
                 (await self.store.update(identifier, **snapshot_run_fields(files, diff), status="validating"))
-                commands = configured_commands(run) or default_commands(
-                    self.component_directory(run, workspace),
-                    work_duration=WorkDurationPolicyV2.model_validate(run["work_duration"])
-                    if run.get("work_duration") is not None
-                    else None,
-                )
-                commands += policy_commands(run.get("policy_snapshot", {}), run["backend"])
-                commands += framework_commands(run)
-                if len(commands) > 20:
-                    raise ValueError("Selected policies exceed the 20 verification-command limit")
+                commands = final_verification_commands(run, self.component_directory(run, workspace))
                 verification = await self._begin_task(identifier, "verify", workspace, settings, repair_failures)
                 active_key = verification.get("idempotency_key")
                 retained = await self.store.get_run(identifier)
@@ -1502,6 +1540,15 @@ class Engine:
                     saved_task = next(
                         item for item in (await self.journal.plan(identifier))["tasks"] if item["id"] == "verify"
                     )
+                    if saved_task.get("evidence", {}).get("linked_verification"):
+                        if self.linked_verifications is None:
+                            raise ReconciliationRequired("The linked verification receipt consumer is unavailable")
+                        try:
+                            await self.linked_verifications.validate_settlement(identifier, tree, saved_task)
+                        except (ValueError, PermissionError) as exc:
+                            raise ReconciliationRequired(
+                                "Linked verification current authority or inputs require review before delivery"
+                            ) from exc
                     final = final or saved_task.get("evidence", {}).get("checks", [])
                     saved_tree = retained.get("source_tree") or saved_task.get("evidence", {}).get("source_tree")
                     if not final or saved_tree != tree:
@@ -1708,7 +1755,11 @@ class Engine:
             try:
                 await self._observe_stage("end", identifier)
             finally:
-                await credential_scopes.aclose()
+                try:
+                    await credential_scopes.aclose()
+                finally:
+                    if consumed_execution is not None:
+                        consumed_execution.close_snapshot()
 
     async def _worker_feedback(
         self,
@@ -2454,8 +2505,6 @@ class Engine:
             else None,
         )
         commands += policy_commands(run.get("policy_snapshot", {}), run["backend"])
-        if len(commands) > 20:
-            raise ValueError("Selected policies exceed the 20 verification-command limit")
         verification = await self._begin_task(identifier, "verify", workspace, settings)
         evidence = []
         if verification["disposition"] == "completed":
@@ -2611,6 +2660,8 @@ class Engine:
                 preview_bytes=preview_bytes,
                 preview_truncated=preview_bytes < artifact.byte_count,
             )
+            if archives := getattr(self, "source_archives", None):
+                await archives.publish(run, workspace, expected_head or base, tree, assert_current=current)
             return files, source, tree
 
     def _assert_git_metadata(self, workspace: Path) -> None:

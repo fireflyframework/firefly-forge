@@ -268,6 +268,7 @@ class NaturalEffects:
         from firefly_forge.scm_natural_tasks import natural_policy_digest
 
         parent = await self.collaboration.receipt(receipt_id)
+        self.natural.require_effect_transport(parent)
         turn = parent.get("natural_turn") or {}
         if parent["status"] != "processed" or turn.get("state") == "needs_reconciliation":
             raise AccessDenied("Only a known retained natural answer or continuation can be admitted")

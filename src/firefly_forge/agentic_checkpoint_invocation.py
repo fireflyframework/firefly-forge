@@ -10,6 +10,7 @@ import uuid
 from collections.abc import Awaitable, Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
+from dataclasses import dataclass
 from importlib.metadata import version
 from pathlib import Path
 from typing import Any
@@ -18,7 +19,12 @@ from firefly_forge.agent_checkpoint_models import InvocationContext
 from firefly_forge.agent_checkpoints import AgentCheckpoints
 from firefly_forge.agentic_checkpoint_boundary import AgenticBoundary, BoundaryCheckpoint, OriginalCompletion
 from firefly_forge.bridge_completions import BridgeCompletions, _cut, _outside_unit
-from firefly_forge.checkpoint_source_identity import git_head_identity, source_identity
+from firefly_forge.checkpoint_source_identity import (
+    SelectedSourceFence,
+    git_head_identity,
+    source_identity,
+    source_payload_identity,
+)
 from firefly_forge.checkpoint_work_duration import (
     binding_remaining,
     invocation_binding,
@@ -29,7 +35,7 @@ from firefly_forge.git_workspace import git_environment, metadata_digest, truste
 from firefly_forge.journal import digest
 from firefly_forge.process import checked
 from firefly_forge.prompts import prompt_catalog
-from firefly_forge.source_snapshot import git_index_identity
+from firefly_forge.source_snapshot import GitIndexIdentityV1, git_index_identity
 
 FILE_TOOLS = frozenset({"list_files", "read_file", "write_file", "search_text", "edit_lines", "git_diff"})
 STATIC_TOOLS = FILE_TOOLS | {"execute_command", "knowledge_lookup", "read_run_evidence"}
@@ -51,6 +57,11 @@ def checkpoint_invocation(value: CheckpointInvocation | None) -> Iterator[None]:
 
 def runtime_contract() -> str:
     _outside_unit()
+    return _runtime_material_digest()
+
+
+def _runtime_material_digest() -> str:
+    """Bounded local fingerprint, without checkpoint admission or dispatch."""
     root = Path(__file__).parent
     return digest(
         {
@@ -236,6 +247,7 @@ def runtime_contract() -> str:
                     "agent_roles.py",
                     "policies.py",
                     "completed_final_epoch.py",
+                    "consumed_terminal_completions.py",
                     "personal_token_format.py",
                     "personal_token_controllers.py",
                     "personal_tokens.py",
@@ -251,6 +263,43 @@ def runtime_contract() -> str:
                     "product_provenance.py",
                     "engine_activity.py",
                     "engine_activity_persistence.py",
+                    "consumed_terminal_reconciliations.py",
+                    "github_projects.py",
+                    "github_projects_controllers.py",
+                    "github_projects_effects.py",
+                    "github_projects_graphql.py",
+                    "github_projects_models.py",
+                    "github_projects_oauth.py",
+                    "github_projects_persistence.py",
+                    "github_projects_projection.py",
+                    "github_projects_references.py",
+                    "github_projects_requests.py",
+                    "github_projects_worker.py",
+                    "connection_oauth.py",
+                    "connection_oauth_models.py",
+                    "connection_oauth_persistence.py",
+                    "connection_oauth_controllers.py",
+                    "oauth_provider_policies.py",
+                    "oauth_resources.py",
+                    "oauth_authority.py",
+                    "oauth_credential_fingerprints.py",
+                    "linked_verification_models.py",
+                    "linked_verifications.py",
+                    "linked_verification_controllers.py",
+                    "git_linked_verification.py",
+                    "scm_linked_verification.py",
+                    "scm_linked_verification_models.py",
+                    "scm_linked_verification_records.py",
+                    "object_storage.py",
+                    "runner_artifact_publications.py",
+                    "runner_object_artifacts.py",
+                    "source_archive.py",
+                    "source_archive_index.py",
+                    "source_archive_scan_models.py",
+                    "source_archive_service.py",
+                    "source_explorer.py",
+                    "coding_check_grants.py",
+                    "coding_check_models.py",
                 )
             },
         }
@@ -288,9 +337,33 @@ def invocation_cut(run: dict[str, Any]) -> str:
     return digest(value)
 
 
+@dataclass(frozen=True)
+class WorkspaceSourceCapture:
+    cut: dict[str, str]
+    physical_digest: str | None
+    index: GitIndexIdentityV1
+    fence: SelectedSourceFence | None
+
+
 async def workspace_cut(
     store: Any, workspace: Path, *, assert_current: Callable[[], Awaitable[None]] | None = None
 ) -> dict[str, str]:
+    return (await _workspace_source_capture(store, workspace, assert_current=assert_current)).cut
+
+
+async def workspace_source_capture(
+    store: Any, workspace: Path, *, assert_current: Callable[[], Awaitable[None]] | None = None
+) -> WorkspaceSourceCapture:
+    return await _workspace_source_capture(store, workspace, assert_current=assert_current, physical=True)
+
+
+async def _workspace_source_capture(
+    store: Any,
+    workspace: Path,
+    *,
+    assert_current: Callable[[], Awaitable[None]] | None = None,
+    physical: bool = False,
+) -> WorkspaceSourceCapture:
     _outside_unit()
     if assert_current is not None:
         await assert_current()
@@ -317,10 +390,26 @@ async def workspace_cut(
         ):
             raise ValueError("Workspace Git metadata changed during inspection")
 
-    source = await source_identity(workspace, scanner, finalize=finalize)
-    if assert_current is not None:
-        await assert_current()
-    return {"path": str(workspace.resolve()), "head": head, "metadata": metadata, "source": source}
+    physical_digest = None
+    fence = None
+    if physical:
+        captured = await source_payload_identity(workspace, scanner, finalize=finalize)
+        source, physical_digest, fence = captured.source_digest, captured.physical_digest, captured.fence
+    else:
+        source = await source_identity(workspace, scanner, finalize=finalize)
+    try:
+        if assert_current is not None:
+            await assert_current()
+        return WorkspaceSourceCapture(
+            {"path": str(workspace.resolve()), "head": head, "metadata": metadata, "source": source},
+            physical_digest,
+            index,
+            fence,
+        )
+    except BaseException:
+        if fence is not None:
+            fence.close()
+        raise
 
 
 class CheckpointInvocation:

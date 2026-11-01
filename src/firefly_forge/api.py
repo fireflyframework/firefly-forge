@@ -121,6 +121,11 @@ from firefly_forge.git_delivery_policy import GitDeliveryPolicies
 from firefly_forge.git_delivery_requests import GitDeliveryRequests
 from firefly_forge.git_diff_archive import GitDiffArchive
 from firefly_forge.git_diff_controllers import GitDiffController
+from firefly_forge.github_projects import GitHubProjects
+from firefly_forge.github_projects_controllers import GitHubProjectsController
+from firefly_forge.github_projects_persistence import ForgeGitHubProjectsBindingRepository
+from firefly_forge.github_projects_requests import GitHubProjectsRequests
+from firefly_forge.github_projects_worker import GitHubProjectsWorker
 from firefly_forge.identity import AUTH_PREFIX, SESSION_COOKIE, IdentityConfiguration, IdentityService
 from firefly_forge.identity_controllers import IdentityController
 from firefly_forge.identity_persistence import (
@@ -157,6 +162,8 @@ from firefly_forge.learning_persistence import (
     ForgeLearningRepository,
 )
 from firefly_forge.learning_projection import LearningProjection
+from firefly_forge.linked_verification_controllers import LinkedVerificationController
+from firefly_forge.linked_verifications import LinkedVerifications
 from firefly_forge.mcp_controllers import ExternalMCPController
 from firefly_forge.mcp_registry import ExternalMCPRegistry
 from firefly_forge.model_profile_controllers import ModelProfileController
@@ -238,6 +245,7 @@ from firefly_forge.sandbox_persistence import ForgeSandboxRepository
 from firefly_forge.scm_actor_authority import SCMActorAuthority
 from firefly_forge.scm_actor_authority_controllers import SCMActorAuthorityController
 from firefly_forge.scm_connections import SCMConnections
+from firefly_forge.scm_linked_verification import SCMLinkedVerifications
 from firefly_forge.scm_maintain_ticket_controllers import MaintainTicketController
 from firefly_forge.scm_natural_controllers import SCMNaturalController
 from firefly_forge.scm_poll_controllers import SCMPollController
@@ -256,8 +264,10 @@ from firefly_forge.scm_source_edit import SCMSourceEditAuthority
 from firefly_forge.scm_source_edit_controllers import SCMSourceEditController
 from firefly_forge.search_tools import SearchTools
 from firefly_forge.secrets import redact_environment
+from firefly_forge.source_archive_service import SourceArchiveManager
 from firefly_forge.source_budget_allowances import SourceBudgetPolicies
 from firefly_forge.source_budget_controllers import SourceBudgetPolicyController
+from firefly_forge.source_explorer import SourceExplorer, SourceExplorerController
 from firefly_forge.store import Store
 from firefly_forge.task_routing import TaskRouting
 from firefly_forge.tool_broker import ToolInvocationBroker
@@ -811,6 +821,7 @@ class FactoryConfiguration:
         routing: TaskRouting,
         runtime_roles: RuntimeRoles,
         worker_evidence: WorkerEvidence,
+        source_archives: SourceArchiveManager,
         stage_activity: EngineActivity,
     ) -> Engine:
         engine = Engine(
@@ -823,6 +834,7 @@ class FactoryConfiguration:
         )
         engine.assurance = assurance
         engine.worker_evidence = worker_evidence
+        engine.source_archives = source_archives
         engine.sandbox = sandbox
         engine.browser, engine.search = browser, search
         engine.tool_broker = tool_broker
@@ -843,6 +855,24 @@ class FactoryConfiguration:
         handoffs = VerificationHandoffs(store, journal, engine)
         engine.verification_handoffs = handoffs
         return handoffs
+
+    @bean
+    def linked_verifications(
+        self, store: Store, journal: Journal, engine: Engine, requests: ExecutionRequests
+    ) -> LinkedVerifications:
+        verifications = LinkedVerifications(store, journal, requests, engine)
+        requests.linked_verifications = verifications
+        engine.linked_verifications = verifications
+        return verifications
+
+    @bean
+    def scm_linked_verification_authority(
+        self, store: Store, collaboration: Collaboration, verifications: LinkedVerifications
+    ) -> SCMLinkedVerifications:
+        authority = SCMLinkedVerifications(collaboration, verifications)
+        store.scm_linked_verification_authority = authority
+        collaboration.linked_verification_authority = authority
+        return authority
 
     @bean
     def provider_recoveries(self, store: Store, journal: Journal, engine: Engine) -> ProviderRecoveries:
@@ -1026,8 +1056,8 @@ class FactoryConfiguration:
         return BridgeCompletions(store, journal)
 
     @bean
-    def known_worker_completions(self, store: Store, journal: Journal) -> KnownWorkerCompletions:
-        return KnownWorkerCompletions(store, journal)
+    def known_worker_completions(self, store: Store, journal: Journal, engine: Engine) -> KnownWorkerCompletions:
+        return KnownWorkerCompletions(store, journal, engine)
 
     @bean
     def unknown_command_acknowledgements(
@@ -1113,6 +1143,34 @@ class FactoryConfiguration:
     @bean
     def oauth_resources(self, connections: ConnectionOAuth, access: ProjectAccess) -> OAuthResources:
         return OAuthResources(connections, access)
+
+    @bean
+    def github_projects(
+        self,
+        store: Store,
+        access: ProjectAccess,
+        resources: OAuthResources,
+        records: ForgeGitHubProjectsBindingRepository,
+    ) -> GitHubProjects:
+        return GitHubProjects(store, access, resources, records)
+
+    @bean
+    def github_projects_requests(
+        self,
+        manager: GitHubProjects,
+        requests: ExecutionRequests,
+        deliveries: GitDeliveries,
+        collaboration: Collaboration,
+    ) -> GitHubProjectsRequests:
+        return GitHubProjectsRequests(manager, requests, deliveries, collaboration)
+
+    @bean
+    def github_projects_worker(
+        self, tickets: GitHubProjectsRequests, requests: ExecutionRequests
+    ) -> GitHubProjectsWorker:
+        worker = GitHubProjectsWorker(tickets)
+        requests.github_projects = worker
+        return worker
 
     @bean
     def analytics_connection(self, private: ConfigurationStore) -> AnalyticsConnection:
@@ -1432,11 +1490,15 @@ def create_runtime(
         GitDeliveryPolicyController,
         GitDeliveryController,
         KnownWorkerCompletionController,
+        LinkedVerificationController,
         UnknownCommandAcknowledgementController,
         CheckpointModeAdoptionController,
         OriginalSelectionReadmissionController,
         GitDiffArchive,
         GitDiffController,
+        SourceArchiveManager,
+        SourceExplorer,
+        SourceExplorerController,
         JournalController,
         VerificationHandoffController,
         ProviderRecoveryController,
@@ -1510,6 +1572,8 @@ def create_runtime(
         CampaignDeliveryPlanController,
         ProjectCampaignController,
         CampaignExecutionPolicyController,
+        ForgeGitHubProjectsBindingRepository,
+        GitHubProjectsController,
     ]:
         container.register(component)
 

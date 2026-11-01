@@ -31,6 +31,13 @@ class FinalOutcomeCompletionCustodyV1(CompletionCustodyV1):
     original_events_digest: Digest
 
 
+class ConsumedTerminalCustodyV2(CompletionCustodyV1):
+    consume_version: Literal[1]
+    custody: Literal["consumed_terminal_v2"]
+    recovery_witness_digest: Digest
+    reconciliation_record_digest: Digest | None = Field(default=None, exclude_if=lambda value: value is None)
+
+
 class NativeTerminalProofV1(StrictContract):
     model_config = ConfigDict(extra="forbid", strict=True, frozen=True, hide_input_in_errors=True)
     version: Literal[1]
@@ -40,7 +47,9 @@ class NativeTerminalProofV1(StrictContract):
     task_key: str = Field(min_length=1, max_length=64)
     runtime_contract: Digest
     completion_count: int = Field(ge=1)
-    completions: list[CompletionCustodyV1 | RestoredCompletionCustodyV2 | FinalOutcomeCompletionCustodyV1]
+    completions: list[
+        CompletionCustodyV1 | RestoredCompletionCustodyV2 | FinalOutcomeCompletionCustodyV1 | ConsumedTerminalCustodyV2
+    ]
     terminal_report_sha256: Digest
     final_response_sha256: Digest
     observed_hold_digest: Digest
@@ -90,6 +99,44 @@ class NativeTerminalReceiptV1(StrictContract):
 def validate_native_receipt(entry: dict[str, Any], entries: list[dict[str, Any]]) -> NativeTerminalReceiptV1:
     value = NativeTerminalReceiptV1.model_validate(entry["payload"])
     for closure in value.proof.completions:
+        if isinstance(closure, ConsumedTerminalCustodyV2):
+            from firefly_forge.consumed_terminal_completions import validate_witness as validate_consumed_witness
+
+            witnesses = [e for e in entries if e["digest"] == closure.recovery_witness_digest]
+            if len(witnesses) != 1 or witnesses[0]["sequence"] >= entry["sequence"]:
+                raise ValueError("Consumed terminal receipt lost its native reviewed witness")
+            witness = validate_consumed_witness(witnesses[0], entries)
+            expected = {
+                k: v
+                for k, v in closure.model_dump(mode="json").items()
+                if k not in {"consume_version", "custody", "recovery_witness_digest", "reconciliation_record_digest"}
+            }
+            runtime = witness["candidate"]["proof"]["current_runtime_contract"]
+            reconciliations = [
+                e
+                for e in entries
+                if e["kind"] == "consumed_terminal_reconciliation"
+                and e["payload"].get("candidate", {}).get("recovery_digest") == witnesses[0]["digest"]
+            ]
+            if reconciliations:
+                from firefly_forge.consumed_terminal_reconciliations import validate_record
+
+                if (
+                    len(reconciliations) != 1
+                    or closure.reconciliation_record_digest != reconciliations[0]["digest"]
+                    or not witnesses[0]["sequence"] < reconciliations[0]["sequence"] < entry["sequence"]
+                ):
+                    raise ValueError("Consumed terminal receipt lost its exact native reconciliation")
+                authority = validate_record(reconciliations[0], entries)
+                runtime = authority["candidate"]["runtime_contract"]
+            elif closure.reconciliation_record_digest is not None:
+                raise ValueError("Consumed terminal receipt names a foreign reconciliation")
+            if (
+                expected not in witness["candidate"]["proof"]["completions"]
+                or value.proof.runtime_contract != runtime
+                or value.proof.terminal_report_sha256 != witness["candidate"]["proof"]["terminal_report_sha256"]
+            ):
+                raise ValueError("Consumed terminal receipt changed its exact reviewed response")
         if isinstance(closure, FinalOutcomeCompletionCustodyV1):
             from firefly_forge.final_outcome_continuations import validate_witness
 
