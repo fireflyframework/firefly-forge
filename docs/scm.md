@@ -1204,3 +1204,55 @@ This first setup path is native API configuration. The natural coordinator does
 not yet create a maintenance unit or its communication binding from an issue
 request. Controlled host/native tests and a real GitHub acceptance trial are
 separate evidence; configuring the API alone does not establish live delivery.
+
+## Request fresh checks after accepted recovery
+
+An accepted recovery can retain completed implementation output while leaving
+verification held. Fresh checks use a separate linked-verification operation;
+they do not resume coding, repair failed checks, replay the consumed action, or
+reset the parent's history and budget.
+
+The natural path currently supports authenticated GitHub REST polling. The
+mapped person must have current project execute permission and a separate,
+unexpired native factory-administrator role grant for the qualified host
+runner. The SCM actor retains its mapped identity without global administrator
+privileges or an API audience. Existing status, response, resume and functional
+allowances do not substitute for this operation's consent. GitLab, Bitbucket,
+Docker and pooled runners are not supported by this path.
+
+1. Ask forge to prepare fresh verification of the retained source in the linked
+   issue. The server prepares the exact source, runtime, input scope and full
+   number of checks, but does not queue them.
+2. Read the published review. It states the number and source revision, that the
+   operation grants no coding or repair, and that the original history and
+   budget remain intact. An uncertain publication cannot authorize checks.
+3. Reply as the same mapped owner. For one clearly scoped review, ordinary
+   language such as “sí, ejecuta esas comprobaciones” confirms its three
+   declarations; no JSON, slash command or Portal visit is required. If another
+   pending question could also explain a bare “yes,” forge asks which question
+   you mean. It does not answer or consume that other question.
+4. Ask for status in the same issue. A confirmed native receipt supplies this
+   operation's progress. A known failure can include its recorded command,
+   nonzero exit code and privacy-filtered output excerpt. Historical parent
+   checks are not fresh results for the new operation.
+
+The model interprets the message and writes the explanation. Native records
+supply owner identity, confirmed publication, exact review, explicit consent
+and one request identity. Current authority is checked again before admission
+and at worker boundaries. A lost response is read back using that same request;
+absence or uncertainty never permits another POST or a replacement identity.
+Before saving consent, forge checks the pending conversation again under its
+native locks. A newly published competing question requires clarification.
+If an interruption loses the final feedback marker, readback still uses the
+durable review and request instead of reporting historical parent results.
+
+This operation grants no automatic repair or retry. A known failed check can
+still lead to a work-in-progress checkpoint or draft PR when the existing
+delivery policy, current authority and separate delivery consent permit it.
+Later testing or maintenance requires the confirmed remote checkpoint receipt
+and its own execution allowance. An unknown Git or command outcome cannot be
+treated as a confirmed checkpoint or a new coding grant.
+
+Controlled host tests cover this path with verified-observation, persistence,
+input and runner fixtures. They do not establish installed-runtime
+qualification, live GitHub acceptance or delivery of an application change.

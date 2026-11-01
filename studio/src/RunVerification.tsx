@@ -9,6 +9,11 @@ import { ReusedCheckNotice, reusedCheck } from "./VerificationReuse";
 function handoffChecks(journal: unknown, handoff: Record<string, unknown>) {
   const value = asRecord(journal);
   if (value?.valid !== true || !Array.isArray(value.entries)) return null;
+  if (
+    !Number.isSafeInteger(handoff.commands_count) ||
+    Number(handoff.commands_count) < 1
+  )
+    return null;
   const entries = value.entries.flatMap((entry) => {
     const record = asRecord(entry);
     return record ? [record] : [];
@@ -23,7 +28,7 @@ function handoffChecks(journal: unknown, handoff: Record<string, unknown>) {
       payload.request_id === handoff.request_id &&
       Number.isSafeInteger(payload.command_index) &&
       Number(payload.command_index) >= 1 &&
-      Number(payload.command_index) <= 20 &&
+      Number(payload.command_index) <= Number(handoff.commands_count) &&
       Number.isSafeInteger(payload.exit_code) &&
       payload.outcome === "completed" &&
       typeof payload.execution_id === "string" &&

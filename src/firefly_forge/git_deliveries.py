@@ -97,6 +97,9 @@ class GitDeliveries:
         ):
             raise ValueError("Review a quiescent run with its original enabled checkpoint policy")
         await self._authorize(run, actor, "release" if policy.remote == "draft_pr" else "execute")
+        from firefly_forge.git_linked_verification import assert_linked_git_closed
+
+        await assert_linked_git_closed(self, run_id)
         active = self.engine.active.get(run_id)
         if (
             active is not None
@@ -148,9 +151,9 @@ class GitDeliveries:
             await self.store.assert_campaign_current(run)
 
     async def _guard(self, run_id: str, expected: Data, actor: Data | None, *, boundary: object | None = None) -> Data:
-        from firefly_forge.unknown_command_proof import assert_continuation_current
+        from firefly_forge.git_linked_verification import assert_git_continuation_current
 
-        await assert_continuation_current(self.journal, run_id)
+        await assert_git_continuation_current(self, run_id)
         await self.store.assert_ownership()
         current = await self.store.get_run(run_id)
         from firefly_forge.git_failed_unit_adoption import effective_policy
@@ -312,16 +315,20 @@ class GitDeliveries:
     @asynccontextmanager
     async def _owned(self, run_id: str, actor: Data | None) -> AsyncIterator[Any]:
         from firefly_forge.checkpoint_mode_runtime import mode_execution_scope
+        from firefly_forge.git_linked_verification import linked_git_scope
         from firefly_forge.unknown_command_proof import continuation_policy_scope
 
         async with mode_execution_scope(self.journal, run_id):
             with continuation_policy_scope(run_id):
-                async with self._custody_owned(run_id, actor) as session:
+                async with linked_git_scope(self, run_id), self._custody_owned(run_id, actor) as session:
                     yield session
 
     @asynccontextmanager
     async def _custody_owned(self, run_id: str, actor: Data | None) -> AsyncIterator[Any]:
+        from firefly_forge.git_linked_verification import bind_linked_git_writer, linked_git_actor_ids
+
         async with self.store.source_budget_admission_unit() as session:
+            locked = None
             if self.authorization is None:
                 from pyfly.data.relational.sqlalchemy import LockMode
                 from sqlalchemy import text
@@ -337,7 +344,9 @@ class GitDeliveries:
                     text("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))"),
                     {"key": self.store.schema + ":members:" + run["project_id"]},
                 )
-                for user_id in sorted({actor["user_id"], run["execution_actor"]["user_id"]}):
+                for user_id in sorted(
+                    {actor["user_id"], run["execution_actor"]["user_id"]} | linked_git_actor_ids(run_id)
+                ):
                     user = await ForgeIdentityUserRepository().find_by_id(
                         identifier(user_id), lock=LockMode.PESSIMISTIC_WRITE
                     )
@@ -346,8 +355,11 @@ class GitDeliveries:
                 await ForgeProjectRepository().find_by_id(
                     identifier(run["project_id"]), lock=LockMode.PESSIMISTIC_WRITE
                 )
-                await self.journal._run(run_id)
+                locked = await self.journal._run(run_id)
+            cut = await bind_linked_git_writer(self, run_id, locked) if locked is not None else None
             yield session
+            if cut is not None:
+                cut.seal_phase()
 
     async def checkpoint(
         self,

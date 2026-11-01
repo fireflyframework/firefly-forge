@@ -1,0 +1,10 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: scm-natural/verification-review
+version: 1.0.0
+description: Exact native full-scope fresh verification review, not an execution grant.
+system_template: ''
+user_template: |-
+  {"es":"¿Autorizas ejecutar las {{ count }} comprobaciones nuevas sobre la fuente {{ source }}? Esta operación no permite programar ni reparar. Conserva el historial y el presupuesto originales ({{ original_count }} de {{ original_budget }} efectos usados), sin reiniciarlos. Una respuesta afirmativa confirma este alcance completo.","en":"Do you authorize all {{ count }} fresh checks on source {{ source }}? This operation grants no coding or repair. It preserves the original history and budget ({{ original_count }} of {{ original_budget }} effects used), without resetting them. An affirmative reply confirms this whole scope."}
+required_variables: [count, source, original_count, original_budget]
+metadata:
+  defaults: {}

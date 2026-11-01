@@ -166,7 +166,7 @@ export function TimelineEventView({
   );
 }
 
-function CopyButton({ value, label }: { value: string; label: string }) {
+export function CopyButton({ value, label }: { value: string; label: string }) {
   const [state, setState] = useState("");
   async function copy() {
     try {

@@ -15,7 +15,9 @@ pytest_plugins = ["test_invalid_read_retained_epoch_engine_host"]
 
 
 @pytest.fixture(autouse=True)
-def frozen_original_write_grant(monkeypatch):
+def frozen_original_write_grant(monkeypatch, request):
+    if "completed_legacy_final" not in request.fixturenames:
+        return
     import test_invalid_read_native_protocol_host as protocol
 
     original = protocol.continuity_case.__wrapped__

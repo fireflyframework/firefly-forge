@@ -233,6 +233,219 @@ async def test_reviewed_reconciliation_binds_execution_owner(consumed_terminal):
     assert (env.store.run.data, [r.data for r in env.journal.records.rows]) == before
 
 
+async def test_accepted_held_reconciliation_resumes_to_verification_without_replaying_history(
+    consumed_terminal,  # noqa: F811
+    monkeypatch,
+):
+    from firefly_forge.journal import Journal
+
+    env = consumed_terminal
+    await test_reconcile_same_claim_without_replay_or_second_charge(env, monkeypatch, held=True)
+    accepted = copy.deepcopy(await env.store.get_run(env.run_id))
+    prefix = copy.deepcopy(await env.journal.entries(env.run_id))
+    await env.journal.resume(env.run_id)
+    frontier = []
+
+    async def hold_before_command(*args, **kwargs):
+        frontier.append(True)
+        raise RuntimeError("Controlled hold before a new verification effect")
+
+    monkeypatch.setattr(env.engine, "_project_command", hold_before_command)
+    token = CURRENT_PRINCIPAL.set(None)
+    try:
+        await env.engine.execute_run(env.run_id)
+    finally:
+        CURRENT_PRINCIPAL.reset(token)
+    current = await env.store.get_run(env.run_id)
+    assert frontier == [True], current.get("error")
+    assert "Controlled hold before a new verification effect" in current["error"]
+    assert current["verification_handoff"] == accepted["verification_handoff"]
+    assert current["usage"] == accepted["usage"]
+    assert current["attempt"] == current["implementation_rounds"] == accepted["attempt"]
+    assert len(env.posts) == env.initial_posts + 2
+    entries = await env.journal.entries(env.run_id)
+    assert entries[: len(prefix)] == prefix and Journal.verify_chain(entries)
+    for kind in ("consumed_terminal_claim", "consumed_terminal_result", "consumed_terminal_reconciliation"):
+        assert sum(e["kind"] == kind for e in entries) == 1
+
+
+async def test_accepted_reconciled_handoff_refuses_foreign_custody_and_revoked_owner(
+    consumed_terminal,  # noqa: F811
+    monkeypatch,
+):
+    from firefly_forge.consumed_terminal_completions import prepare_accepted_reconciled_handoff
+    from firefly_forge.project_access import AccessDenied
+
+    env = consumed_terminal
+    await test_reconcile_same_claim_without_replay_or_second_charge(env, monkeypatch, held=True)
+    run = copy.deepcopy(await env.store.get_run(env.run_id))
+    entries = copy.deepcopy(await env.journal.entries(env.run_id))
+    terminal = next(e for e in reversed(entries) if e["kind"] == "terminal_completion_receipt")
+    posts = len(env.posts)
+    authority = await prepare_accepted_reconciled_handoff(env.store, env.journal, run, entries, terminal)
+    assert authority is not None and authority.run["verification_handoff"]["status"] == "completed"
+    assert run["verification_handoff"]["status"] == "held"
+    from test_known_worker_completion_proof_host import rechain
+
+    from firefly_forge.journal import Journal
+
+    for change in ("run", "entries"):
+        view_run, view_entries = copy.deepcopy(authority.run), copy.deepcopy(authority.entries)
+        try:
+            if change == "run":
+                authority.run["verification_handoff"]["failed_commands"] += 1
+            else:
+                authority.entries[0]["payload"]["changed_view"] = True
+                rechain(authority.entries)
+                assert Journal.verify_chain(authority.entries)
+            with pytest.raises(ValueError, match="historical view"):
+                await authority.current()
+        finally:
+            authority.run.clear()
+            authority.run.update(view_run)
+            authority.entries[:] = view_entries
+    for change in (
+        "run",
+        "attempt",
+        "request",
+        "claim",
+        "source_proof",
+        "usage",
+        "held",
+        "scope",
+        "provider",
+        "terminal",
+        "foreign_terminal",
+        "reconciliation",
+        "original_outcome",
+        "unaccepted",
+        "settlement",
+        "unsettled",
+    ):
+        changed, history, receipt = copy.deepcopy(run), copy.deepcopy(entries), copy.deepcopy(terminal)
+        if change == "run":
+            changed["id"] = uuid4().hex
+        elif change == "attempt":
+            changed["attempt"] += 1
+        elif change == "request":
+            changed["consumed_terminal_recovery"]["request_id"] = uuid4().hex
+        elif change == "claim":
+            changed["consumed_terminal_recovery"]["claim_digest"] = "f" * 64
+        elif change == "source_proof":
+            changed["usage"]["retained_source"]["source_digest"] = "f" * 64
+        elif change == "usage":
+            changed["usage"]["requests"] += 1
+        elif change == "held":
+            changed["verification_handoff"]["failed_commands"] += 1
+        elif change == "scope":
+            changed["brief"] = "Unrelated source request"
+        elif change == "provider":
+            changed["config_revision"] = uuid4().hex
+        elif change == "terminal":
+            receipt["payload"]["proof"]["completions"][0]["reconciliation_record_digest"] = "f" * 64
+        elif change == "foreign_terminal":
+            receipt = next(e for e in history if e["kind"] == "terminal_completion_receipt")
+        elif change == "reconciliation":
+            history = [e for e in history if e["kind"] != "consumed_terminal_reconciliation"]
+        elif change == "unaccepted":
+            changed["consumed_terminal_recovery"]["state"] = "claimed"
+        elif change == "settlement":
+            changed["bridge_completion_settlement"]["record_digest"] = "f" * 64
+        elif change == "unsettled":
+            changed["bridge_completion_hold"] = {"unknown": True}
+        else:
+            next(
+                e
+                for e in history
+                if e["kind"] == "verification_handoff_outcome" and e["payload"].get("status") == "completed"
+            )["payload"]["failed_commands"] = 1
+        with pytest.raises((ValueError, KeyError)):
+            await prepare_accepted_reconciled_handoff(env.store, env.journal, changed, history, receipt)
+    owner = env.store.execution_ownership_token
+    task = await env.journal._task(env.run_id, "implement")
+    for change in ("owner", "task", "configuration", "projection", "record"):
+        generation = env.store.configuration.write_generation
+        rows = copy.deepcopy(env.journal.records.rows)
+        try:
+            if change == "owner":
+                env.store.execution_ownership_token = object()
+            elif change == "task":
+                task.attempt += 1
+            elif change == "configuration":
+                env.store.configuration._write(env.store.configuration.directory / "fixture-change.json", {})
+            elif change == "projection":
+                env.store.run.data["verification_handoff"]["failed_commands"] += 1
+            else:
+                env.journal.records.rows[-1].data["payload"]["source_tree"] = "f" * 40
+            with pytest.raises((ValueError, AccessDenied)):
+                await authority.current()
+        finally:
+            env.store.execution_ownership_token = owner
+            env.store.run.data = copy.deepcopy(run)
+            task.attempt = run["attempt"]
+            env.journal.records.rows = rows
+            if change == "configuration":
+                # A fresh authority is required after a local configuration generation changes.
+                assert env.store.configuration.write_generation is not generation
+                authority = await prepare_accepted_reconciled_handoff(env.store, env.journal, run, entries, terminal)
+    assert len(env.posts) == posts
+    assert await env.store.get_run(env.run_id) == run
+    assert await env.journal.entries(env.run_id) == entries
+
+    checks = 0
+    owned = env.store.assert_ownership
+
+    async def revoke_after_final_owner_query():
+        nonlocal checks
+        await owned()
+        checks += 1
+        if checks == 2:
+            env.store.execution_ownership_token = object()
+
+    monkeypatch.setattr(env.store, "assert_ownership", revoke_after_final_owner_query)
+    with pytest.raises(AccessDenied, match="lost its owner"):
+        await authority.current()
+    assert checks == 2 and len(env.posts) == posts
+    env.store.execution_ownership_token = owner
+
+
+async def test_reconciled_historical_view_captures_validated_inputs_before_final_await(
+    consumed_terminal,  # noqa: F811
+    monkeypatch,
+):
+    from test_known_worker_completion_proof_host import rechain
+
+    from firefly_forge.consumed_terminal_completions import prepare_accepted_reconciled_handoff
+    from firefly_forge.journal import Journal
+
+    env = consumed_terminal
+    await test_reconcile_same_claim_without_replay_or_second_charge(env, monkeypatch, held=True)
+    run = await env.store.get_run(env.run_id)
+    entries = await env.journal.entries(env.run_id)
+    original = copy.deepcopy(entries)
+    terminal = next(e for e in reversed(entries) if e["kind"] == "terminal_completion_receipt")
+    witness = next(e for e in entries if e["kind"] == "consumed_terminal_recovery")
+    owned, calls = env.store.assert_ownership, 0
+
+    async def mutate_callers_after_final_query():
+        nonlocal calls
+        await owned()
+        calls += 1
+        if calls == 2:
+            witness["payload"]["run"]["verification_handoff"]["failed_commands"] = 1
+            entries[0]["payload"]["changed_view"] = True
+            rechain(entries)
+            assert Journal.verify_chain(entries)
+
+    monkeypatch.setattr(env.store, "assert_ownership", mutate_callers_after_final_query)
+    view = await prepare_accepted_reconciled_handoff(env.store, env.journal, run, entries, terminal)
+    assert calls == 2
+    assert view.run["verification_handoff"]["failed_commands"] == 0
+    assert view.entries == original[: witness["sequence"] - 1]
+    await view.current()
+    assert await env.journal.entries(env.run_id) == original
+
+
 async def test_reviewed_reconciliation_refuses_runtime_profile_policy_and_index_drift(consumed_terminal, monkeypatch):  # noqa: F811
     import firefly_forge.consumed_terminal_reconciliations as reconciliation
 

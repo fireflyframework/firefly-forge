@@ -38,6 +38,7 @@ from firefly_forge.models import RepositoryInput, RunInput, capture_new_work_com
 if TYPE_CHECKING:
     from firefly_forge.native_location_runtime import NativeLocationState
     from firefly_forge.project_access import PersonalObservationAuthority
+    from firefly_forge.scm_linked_verification import SCMLinkedVerifications
 
 from firefly_forge.persistence import (
     ForgeDeploymentEntity,
@@ -259,6 +260,7 @@ class Store:
         self.run_creation_records = ForgeRunCreationRequestRepository()
         self.scm_polling: Any = None
         self.scm_poll_functional: Any = None
+        self.scm_linked_verification_authority: SCMLinkedVerifications | None = None
         self.scm_resume_authorities: dict[str, Any] = {}
         if not existing_only:
             self.path.parent.mkdir(parents=True, exist_ok=True)

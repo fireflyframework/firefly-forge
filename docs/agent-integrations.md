@@ -317,9 +317,36 @@ forge product apply-change REPOSITORY_ID change.json
 
 Python exposes `model_profiles`, `save_model_profile`, `test_model_profile`, `task_routing`, `save_task_routing`, `preview_product_change` and `apply_product_change`. Typed configuration methods can receive secrets from an application secret manager. The SDK filters profile responses and suppresses configuration errors that could reflect a submitted secret.
 
+## Request independent fresh verification
+
+Linked verification is a separate operation for the exact configured checks of an accepted implementation. Read its candidate first. It binds the current operator, source, runtime, runner, inputs and command count. Reading a candidate grants no execution authority.
+
+| Operation | Python SDK | Factory MCP |
+| --- | --- | --- |
+| Review current scope | `linked_verification_candidate(run_id)` | `get_linked_verification_candidate` |
+| Submit explicit consent once | `request_linked_verification(run_id, request)` | `request_linked_verification` |
+| Read the same operation | `linked_verification_status(run_id, request_id)` | `get_linked_verification_status` |
+
+Python and MCP accept the native `LinkedVerificationInputV1` body: `version: 1`, the retained lowercase hexadecimal `request_id`, the reviewed `candidate_digest` and all three acknowledgments set to `true`. The CLI requires each acknowledgment explicitly and never prompts for implicit consent:
+
+```sh
+forge linked-verifications candidate RUN_ID
+forge linked-verifications request RUN_ID \
+  --request-id REQUEST_ID \
+  --candidate-digest REVIEWED_CANDIDATE_DIGEST \
+  --acknowledge-all-fresh-checks \
+  --acknowledge-no-coding-or-repair \
+  --acknowledge-original-history-and-budget-preserved
+forge linked-verifications status RUN_ID REQUEST_ID
+```
+
+Save the request ID, complete candidate and exact consent before the POST. These adapters submit once. A timeout, refusal or stale candidate never triggers another POST, a replacement identity or a budget reset. After uncertain delivery, read status for the original request. A missing receipt leaves the outcome unknown.
+
+The initial worker path requires a configured, qualified host runner. Unsupported transports refuse without fallback. The worker owns execution of the frozen commands and the independent operation ledger. This consent grants no coding or repair and preserves the original implementation history and budget. `queued` and `executing` are progress states; `failed` or `needs_reconciliation` do not establish successful checks. Only `completed` includes the typed parent-verification settlement. Git delivery keeps its own policy and consent gates.
+
 ## Grant check access to a coding recovery
 
-The scoped coding channel is separate from `forge mcp`. It lets an official Codex or Claude invocation request selected checks already retained by the run. The caller supplies a command index and request identity; the factory owns the actual command, runner, current authority and budget. It does not expose the operator token or the factory's 199 operator tools to that coding process.
+The scoped coding channel is separate from `forge mcp`. It lets an official Codex or Claude invocation request selected checks already retained by the run. The caller supplies a command index and request identity; the factory owns the actual command, runner, current authority and budget. It does not expose the operator token or the factory's 202 operator tools to that coding process.
 
 Use the native SDK methods `coding_check_candidate`, `grant_coding_checks`, `coding_check_receipt`, `coding_check_current` and `revoke_coding_checks`, or the matching CLI commands:
 
