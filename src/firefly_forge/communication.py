@@ -906,8 +906,8 @@ class CommunicationWriter:
         )
         context: Data = {"fact_packet_sha256": content_digest(facts)}
         if status_draft is not None:
-            if not isinstance(status_draft, str) or not 1 <= len(status_draft) <= 4000 or conversation is None:
-                raise ValueError("A classifier draft requires bounded conversation context")
+            if not isinstance(status_draft, str) or not status_draft.strip() or conversation is None:
+                raise ValueError("A classifier draft requires nonempty text and conversation context")
             context["classifier_draft"] = {
                 "quotation": status_draft,
                 "source_sha256": hashlib.sha256(status_draft.encode()).hexdigest(),

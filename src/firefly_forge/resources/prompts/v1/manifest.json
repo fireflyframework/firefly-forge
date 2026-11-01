@@ -3180,7 +3180,7 @@
       "id": "collaboration/communication-delivery-references",
       "version": "1.0.0",
       "path": "collaboration/communication-delivery-references.yaml",
-      "sha256": "b59705cb565452cf8ae205bedfc14c951450b96d003e768308604078e382227d",
+      "sha256": "dad8925e766981ebc1e740a504f81784363879265a05283e1a65bfa0aeb30b37",
       "field": "user",
       "variables": {
         "references": "string"

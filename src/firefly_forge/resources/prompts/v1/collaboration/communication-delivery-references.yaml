@@ -5,7 +5,7 @@ description: Native verified delivery links retained separately from AI prose an
 system_template: ''
 user_template: |-
   <details>
-  <summary>Recorded delivery references (not current acceptance)</summary>
+  <summary>Open recorded commits and pull requests</summary>
 
   {{ references }}
   </details>

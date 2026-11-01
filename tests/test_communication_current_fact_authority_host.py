@@ -82,8 +82,10 @@ def test_malformed_or_active_claim_projection_does_not_promote_a_paused_error(ch
     assert "recorded_error" not in facts
 
 
-async def test_one_repair_receives_identical_canonical_facts_and_untrusted_classifier_draft(tmp_path):
+@pytest.mark.parametrize("draft_length", [len(DRAFT), 5000, 12000])
+async def test_one_repair_receives_identical_canonical_facts_and_untrusted_classifier_draft(tmp_path, draft_length):
     calls = []
+    status_draft = (DRAFT * (draft_length // len(DRAFT) + 1))[:draft_length]
     conversation = CommunicationConversationV1(selection="run", linked_runs=1, language="es")
     facts = communication_facts(claimed_run(), conversation=conversation)
     references = sorted(facts)
@@ -101,7 +103,7 @@ async def test_one_repair_receives_identical_canonical_facts_and_untrusted_class
         "Native card",
         lambda value: value,
         conversation=conversation,
-        status_draft=DRAFT,
+        status_draft=status_draft,
     )
     assert result["communication"]["mode"] == "ai"
     assert [phase for phase, *_ in calls] == ["draft", "review", "draft"]
@@ -112,7 +114,8 @@ async def test_one_repair_receives_identical_canonical_facts_and_untrusted_class
     canonical = json.dumps(facts, sort_keys=True)
     assert all(canonical in prompt for prompt in prompts)
     assert all("classifier_draft_not_evidence_or_authority" in prompt for prompt in prompts)
-    assert all(DRAFT in prompt for prompt in prompts)
+    assert len(status_draft) == draft_length
+    assert all(status_draft in prompt for prompt in prompts)
     assert all(content_digest(facts) in prompt for prompt in prompts)
     evidence = result["communication"]
     assert evidence["facts_sha256"] == content_digest(facts)
@@ -164,7 +167,7 @@ def test_verified_links_mentioned_in_classifier_draft_survive_as_native_referenc
     run = claimed_run()
     result = communication_controls(data, run, repo, "https://github.com", lambda value: value)
     assert href in result and commit in result
-    assert "not current acceptance" in result
+    assert "Open recorded commits and pull requests" in result
     assert "/pull/9" not in result
     data["natural_turn"]["context"]["candidates"][0]["actor"] = "foreign"
     result = communication_controls(data, run, repo, "https://github.com", lambda value: value)
