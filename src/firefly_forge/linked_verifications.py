@@ -321,7 +321,8 @@ class PreparedLinkedVerification:
         if self.scm is not None:
             self._scm_view()
             await self.scm.current()
-            self._authority_fence()
+            self._scm_view()
+            self.scm.fence()
         await self.service.store.assert_ownership()
         await self.service._authority(self.run, self.actor)
         async with self.service.store._unit():
