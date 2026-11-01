@@ -11,20 +11,24 @@ from test_sandbox_command_ordinals_host import command_case as command_case
 from firefly_forge.journal import digest
 from firefly_forge.project_access import ProjectAccess
 from firefly_forge.sandbox_command_slots import _canonical
+from firefly_forge.sandbox_models import SandboxInput, capture_sandbox
 from firefly_forge.verification_models import verification_scope
 
 
 @pytest.fixture(params=["red", "green"])
 async def completed(command_case, monkeypatch, request):
     c = command_case
-    known_red = request.param == "red"
+    known_red = request.param in {"red", "elastic51-red"}
+    count = 51 if request.param in {"elastic51-red", "elastic51-green"} else 7
+    if count == 51:
+        c.store.run.data["sandbox_snapshot"] = capture_sandbox(SandboxInput(command_limit=100))
     c.store.configuration = SimpleNamespace(load_snapshot=lambda _: {})
 
     async def authorized(*args, **kwargs):
         return True
 
     monkeypatch.setattr(ProjectAccess, "authorize_execution", authorized)
-    commands = [{"argv": ["controlled-check", str(i)], "timeout": 2} for i in range(7)]
+    commands = [{"argv": ["controlled-check", str(i)], "timeout": 2} for i in range(count)]
     pending = {
         "id": "controlled-verification",
         "kind": "verification",
@@ -57,11 +61,11 @@ async def completed(command_case, monkeypatch, request):
         "scope_digest": verification_scope(c.store.run.data),
         "continuation": 1,
         "max_continuations": 4,
-        "commands_count": 7,
+        "commands_count": count,
         "parent_attempt": 1,
         "parent_round": 1,
-        "ordinals": list(range(1, 8)),
-        "timeouts": [2] * 7,
+        "ordinals": list(range(1, count + 1)),
+        "timeouts": [2] * count,
         "sandbox_digest": c.store.run.data["sandbox_snapshot"]["digest"],
         "workspace": "/controlled/workspace",
         "cwd": ".",

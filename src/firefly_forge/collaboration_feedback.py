@@ -115,9 +115,10 @@ def verification_handoff(run: Data) -> Data:
         and value.get("status") in {"pending", "running"}
         or value.get("status") not in {"pending", "running", "completed", "held"}
         or any(
-            type(value.get(key, 0)) is not int or not 0 <= value.get(key, 0) <= 20
+            type(value.get(key, 0)) is not int or value.get(key, 0) < 0
             for key in ("commands_count", "completed_commands", "failed_commands")
         )
+        or not value.get("failed_commands", 0) <= value.get("completed_commands", 0) <= value.get("commands_count", 0)
     ):
         return {}
     return {

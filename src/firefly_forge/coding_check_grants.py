@@ -67,7 +67,7 @@ class CodingCheckGrants:
         used = len(await r.journal.sandbox_executions(run["id"]))
         remaining = max(0, configuration.command_limit - used)
         final_count = len(commands) + len(policy_commands(run.get("policy_snapshot", {}), run["backend"]))
-        if final_count > 20 or remaining < final_count:
+        if remaining < final_count:
             raise ValueError("Remaining shared command budget cannot cover final configured verification")
         state = run.get("coding_check_grant") or {}
         value = dict(

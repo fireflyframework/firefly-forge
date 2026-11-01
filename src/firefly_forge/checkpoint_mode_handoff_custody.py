@@ -65,7 +65,7 @@ def _validate(
     total = len(commands)
     ordinals, timeouts = intent["ordinals"], intent["timeouts"]
     if (
-        not 1 <= total <= 20
+        total < 1
         or type(intent["commands_count"]) is not int
         or intent["commands_count"] != total
         or type(intent["parent_attempt"]) is not int

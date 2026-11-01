@@ -130,6 +130,81 @@ it("supports index19 without inventing a product-specific check count", () => {
       codingInput(parsed, grantId, indices as number[], 1, 30, "Reason"),
     ).toThrow();
 });
+it("retains full large-suite scope and receipts within the existing final reserve", async () => {
+  const value = structuredClone(fixture.candidate);
+  value.commands = Array.from({ length: 51 }, (_, command_index) => ({
+    command_index,
+    argv: ["check", String(command_index)],
+    timeout: 30,
+  }));
+  value.command_indices = value.commands.map(
+    (command) => command.command_index,
+  );
+  Object.assign(value, {
+    command_count: 51,
+    independent_final_check_count: 51,
+    shared_command_limit: 100,
+    shared_commands_used: 0,
+    shared_commands_remaining: 100,
+    interactive_commands_remaining: 49,
+  });
+  value.runner.configuration.command_limit = 100;
+  const parsed = codingCandidate(value, context, recoveryId, 11447);
+  const body = codingInput(
+    parsed,
+    grantId,
+    [0, 50],
+    30,
+    300,
+    "Review the declared suite.",
+  );
+  expect(body.command_indices).toEqual([0, 50]);
+  const marker = await retainCodingGrant(
+    storage(),
+    locks,
+    context,
+    parsed,
+    body,
+  );
+  expect(
+    (await readCodingMarker(JSON.stringify(marker), context))?.grant,
+  ).toEqual(body);
+  const receipt = {
+    ...fixture.immutable_grant_receipt,
+    request: body,
+    candidate: parsed,
+    call_limit: 30,
+  };
+  expect(
+    (
+      await codingReceipt(
+        { ...receipt, receipt_digest: await attemptDigest(receipt) },
+        marker,
+      )
+    ).callLimit,
+  ).toBe(30);
+  for (const selected of [
+    [51],
+    [true],
+    [50, 50],
+    [Number.MAX_SAFE_INTEGER + 1],
+  ])
+    expect(() =>
+      codingInput(parsed, grantId, selected as number[], 30, 300, "Reviewed"),
+    ).toThrow();
+  for (const calls of [0, true, 50, Number.MAX_SAFE_INTEGER + 1])
+    expect(() =>
+      codingInput(parsed, grantId, [50], calls as number, 300, "Reviewed"),
+    ).toThrow();
+  expect(() =>
+    codingCandidate(
+      { ...value, shared_commands_remaining: 50 },
+      context,
+      recoveryId,
+      11447,
+    ),
+  ).toThrow();
+});
 it("preserves independent final verification capacity and rejects excess, boolean or expired bounds", () => {
   for (const values of [
     [8, 900],

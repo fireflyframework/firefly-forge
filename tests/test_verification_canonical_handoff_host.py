@@ -19,3 +19,18 @@ async def test_completed_handoff_rejects_numeric_type_drift_in_raw_projection(co
         state["version"] = float(state["version"])
     with pytest.raises(ValueError):
         validate(c)
+
+
+@pytest.mark.parametrize("completed", ["elastic51-red", "elastic51-green"], indirect=True)
+async def test_complete_large_handoff_preserves_all_native_effect_custody(completed):
+    from firefly_forge.journal import Journal
+
+    c = completed
+    assert len(c.run["commands"]) == len(c.rows) == 51
+    assert c.run["sandbox_snapshot"]["configuration"]["command_limit"] == 100
+    assert Journal.verify_chain(c.entries)
+    assert validate(c)
+    assert c.run["verification_handoff"]["completed_commands"] == 51
+    del c.values[c.rows[-1].id.hex]
+    with pytest.raises(ValueError, match="Canonical completed verification custody"):
+        validate(c)

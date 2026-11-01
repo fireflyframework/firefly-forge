@@ -565,7 +565,7 @@ def communication_facts(
         facts["factory_verification"] = factory_verification
     if (
         handoff.get("status") == "completed"
-        and 1 <= handoff["commands_count"] <= 20
+        and handoff["commands_count"] >= 1
         and 0 <= handoff["failed_commands"] <= handoff["completed_commands"] <= handoff["commands_count"]
     ):
         facts["check_batch"] = {
