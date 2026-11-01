@@ -255,7 +255,7 @@ async def test_native_dashboard_observes_only_current_engine_stage_then_receipt_
     from firefly_forge.project_access import ProjectAccess
 
     c = stage
-    assert SCHEMA_REVISION == 33
+    assert SCHEMA_REVISION == 34
     await begin(c)
     actor = Principal(c.user, "local:bootstrap", "operator", authentication_method="local_bootstrap")
     dashboard = FactoryDashboard(c.store, ProjectAccess(c.store), FactoryDashboardRepository())
@@ -338,7 +338,7 @@ async def test_native_pat_reader_observes_engine_stage_without_execution_or_fore
         await dashboard.observe(reader, selected, DashboardPageInput())
 
 
-async def test_native_schema32_upgrade_adds_only_observation_table_and_preserves_all_retained_rows(
+async def test_native_schema32_to34_upgrade_preserves_retained_rows_and_adds_declared_tables(
     store_factory, tmp_path, monkeypatch
 ):
     import hashlib
@@ -360,7 +360,7 @@ async def test_native_schema32_upgrade_adds_only_observation_table_and_preserves
     assert spec is not None and spec.loader is not None
     legacy = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(legacy)
-    assert legacy.SCHEMA_REVISION == 32 and SCHEMA_REVISION == 33
+    assert legacy.SCHEMA_REVISION == 32 and SCHEMA_REVISION == 34
     monkeypatch.setattr(store_module, "migrate", legacy.migrate)
     store = await store_factory(tmp_path / "schema32/factory.db")
     user, repo, run = (uuid4() for _ in range(3))
@@ -378,15 +378,23 @@ async def test_native_schema32_upgrade_adds_only_observation_table_and_preserves
             )
         )
     before = await retained_rows(store)
-    assert "forge_engine_activity" not in before
+    added_tables = {
+        "forge_engine_activity",
+        "forge_github_projects_bindings",
+        "forge_github_projects_configuration_receipts",
+        "forge_github_projects_creations",
+        "forge_github_projects_creation_receipts",
+    }
+    assert added_tables.isdisjoint(before)
     monkeypatch.setattr(store_module, "migrate", migrate)
     async with store._unit() as session:
         await migrate(session, store.schema)
         await migrate(session, store.schema)
         assert list(await session.scalars(text("SELECT revision FROM forge_schema_migrations ORDER BY revision"))) == [
             32,
-            33,
+            34,
         ]
-        assert await session.scalar(text("SELECT count(*) FROM forge_engine_activity")) == 0
+        for table in sorted(added_tables):
+            assert await session.scalar(text(f'SELECT count(*) FROM "{table}"')) == 0
     assert await retained_rows(store, tuple(before)) == before
-    assert set(await retained_rows(store)) - set(before) == {"forge_engine_activity"}
+    assert set(await retained_rows(store)) - set(before) == added_tables
