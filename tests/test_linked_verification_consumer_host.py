@@ -22,7 +22,7 @@ from firefly_forge.identity import Principal
 from firefly_forge.journal import Journal, digest
 from firefly_forge.linked_verification_controllers import LinkedVerificationController
 from firefly_forge.linked_verification_models import LinkedVerificationInputV1
-from firefly_forge.linked_verifications import LinkedVerifications
+from firefly_forge.linked_verifications import LinkedVerifications, final_commands
 from firefly_forge.process import ProcessResult
 from firefly_forge.project_access import CURRENT_PRINCIPAL
 from firefly_forge.verification_scope_attestation import PreparedBuildScope, VerificationScopeV1
@@ -59,7 +59,7 @@ async def linked_case(consumed_terminal, monkeypatch):
             run_id=run["id"],
             handoff_intent_digest=source["handoff_intent_digest"],
             source_digest=source["source_digest"],
-            commands_digest=source["commands_digest"],
+            commands_digest=digest({"commands": final_commands(run, workspace)}),
             scope_digest=source["scope_digest"],
             runtime_contract="1" * 64,
             dependency_digest=digest({"fixture": observed}),

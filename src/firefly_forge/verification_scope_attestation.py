@@ -25,13 +25,14 @@ from firefly_forge.native_location_projection import current_native_location, pr
 from firefly_forge.private_identity import private_identity
 from firefly_forge.sandbox_models import validate_sandbox_snapshot
 from firefly_forge.secrets import runtime_environment
-from firefly_forge.source_catalog import _json, _private, _stamp
+from firefly_forge.source_catalog import SourceCatalogRefV1, _json, _private, _stamp
 from firefly_forge.verification_dependencies import prepare_dependency_capture, prepare_public_source_cut
 from firefly_forge.verification_scope import (
     SANDBOX_EXEC,
     build_check_kind,
     build_profile,
     fresh_build_check,
+    vitest_no_cache_argv,
     wrap_build_argv,
 )
 from firefly_forge.verification_source_preparation import verification_catalog_root
@@ -452,6 +453,7 @@ class PreparedBuildScope:
     _measure: Callable[[], Awaitable[VerificationScope]]
     _fence: Callable[[], Awaitable[None]]
     _environment: Callable[[], dict[str, str]]
+    source_catalog: SourceCatalogRefV1 | None = None
 
     def environment(self) -> dict[str, str]:
         return self._environment()
@@ -474,7 +476,11 @@ async def prepare_build_scope(
     current: Authority,
     *,
     scratch_identity: str | None = None,
+    output_policy: Literal["vitest_no_cache_v1"] | None = None,
+    fresh_commands: list[Data] | None = None,
 ) -> PreparedBuildScope | None:
+    if output_policy not in {None, "vitest_no_cache_v1"}:
+        raise ValueError("Unknown verification output policy")
     config = validate_sandbox_snapshot(run["sandbox_snapshot"])
     if sys.platform != "darwin" or config.mode != "host" or config.pool_binding is not None:
         return None
@@ -483,6 +489,8 @@ async def prepare_build_scope(
         return None
     from firefly_forge.verification_models import verification_build_declarations
 
+    if fresh_commands is not None and not fresh_commands:
+        raise ValueError("Independent verification requires its complete nonempty command scope")
     location = await current_native_location(store)
     location_record = location.record() if location is not None else None
     workspace = Path(
@@ -493,8 +501,12 @@ async def prepare_build_scope(
         BuildCheckV1(
             command_index=index + 1, kind=kind, argv=command["argv"], wrapped_argv=wrap_build_argv(command["argv"])
         )
-        for index, command in enumerate(run["commands"])
-        if (digest(command) in declared or (declared and fresh_build_check(command["argv"])))
+        for index, command in enumerate(run["commands"] if fresh_commands is None else fresh_commands)
+        if (
+            fresh_commands is not None
+            or digest(command) in declared
+            or (declared and fresh_build_check(command["argv"]))
+        )
         and (kind := build_check_kind(command["argv"], workspace)) is not None
     ]
     if not checks:
@@ -587,15 +599,18 @@ async def prepare_build_scope(
         )
         bound_checks = []
         for logical, physical in zip(checks, physical_checks, strict=True):
+            execution_argv = (
+                vitest_no_cache_argv(physical.argv, workspace) if output_policy is not None else physical.argv
+            )
             wrapped = wrap_build_argv(
-                physical.argv,
+                execution_argv,
                 build_profile(
                     workspace, roots, scratch / str(logical.command_index), fresh_build=fresh_build_check(logical.argv)
                 ),
             )
             fields = {**logical.model_dump(mode="json"), "wrapped_argv": wrapped}
             bound_checks.append(
-                BuildCheckV2(**fields, physical_argv=physical.argv)
+                BuildCheckV2(**fields, physical_argv=execution_argv)
                 if location_record is not None
                 else BuildCheckV1(**fields)
             )
@@ -611,7 +626,9 @@ async def prepare_build_scope(
             run_id=run["id"],
             handoff_intent_digest=handoff["digest"],
             source_digest=intent["source_digest"],
-            commands_digest=intent["commands_digest"],
+            commands_digest=intent["commands_digest"]
+            if fresh_commands is None
+            else digest({"commands": fresh_commands}),
             scope_digest=intent["scope_digest"],
             runtime_contract=runtime_contract(),
             dependency_digest=sealed(dependencies.digest),

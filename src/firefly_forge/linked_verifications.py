@@ -9,9 +9,9 @@ import hashlib
 import os
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from contextlib import nullcontext
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, cast
 
@@ -41,10 +41,14 @@ from firefly_forge.known_worker_completions import _entries, _task
 from firefly_forge.linked_verification_models import (
     KIND,
     LinkedVerificationCandidateV1,
+    LinkedVerificationCommandPlanV1,
     LinkedVerificationHoldDiagnosticV1,
     LinkedVerificationInputV1,
+    LinkedVerificationProvenanceV1,
     LinkedVerificationReceiptV1,
+    LinkedVerificationSuccessorV1,
     VerificationHoldPhase,
+    linked_verification_frontier,
     verification_progress,
 )
 from firefly_forge.native_terminal_completion_models import validate_native_receipt
@@ -66,6 +70,10 @@ from firefly_forge.work_duration_models import effective_work_timeout
 from firefly_forge.workspace_tools import _descriptor_path
 
 Data = dict[str, Any]
+
+
+def _history_digest(history: Sequence[LinkedVerificationReceiptV1]) -> str:
+    return digest({"operations": [value.model_dump(mode="json") for value in history]})
 
 
 def _hold_diagnostic(phase: VerificationHoldPhase, error: Exception) -> LinkedVerificationHoldDiagnosticV1:
@@ -233,6 +241,11 @@ class PreparedLinkedVerification:
     scm: PreparedSCMLinkedVerificationAdmission | None = None
     scm_seal: SCMLinkedVerificationAdmissionV1 | None = None
     scm_digest: str | None = None
+    operation_id: str | None = None
+    history: tuple[LinkedVerificationReceiptV1, ...] = ()
+    history_digest: str | None = None
+    history_rows: tuple[tuple[Any, str], ...] = ()
+    history_unit: Any = None
 
     def bind_scm(self, prepared: PreparedSCMLinkedVerificationAdmission, request: LinkedVerificationInputV1) -> None:
         # Capture the validated seal before the authority's first awaited revalidation.
@@ -254,6 +267,14 @@ class PreparedLinkedVerification:
 
     def _authority_fence(self) -> None:
         store = self.service.store
+        LinkedVerificationCandidateV1.model_validate(self.candidate.model_dump(mode="json"))
+        if self.candidate.successor is not None:
+            if self.history_digest != _history_digest(self.history):
+                raise ValueError("Verification predecessor view changed after preparation")
+            if current_unit_of_work() is not None and self.history_unit is not current_unit_of_work():
+                raise AccessDenied("Verification successor requires its current native history locks")
+            if any(self.service._history_row_digest(row) != expected for row, expected in self.history_rows):
+                raise ValueError("Verification predecessor native view changed")
         self._scm_view()
         if self.scm is not None:
             self.scm.fence()
@@ -311,6 +332,12 @@ class PreparedLinkedVerification:
                 or _task(await self.service.journal._task(self.run["id"], "verify")) != self.verify_task
             ):
                 raise ValueError("Linked verification parent frontier changed")
+            if self.candidate.successor is not None:
+                rows, receipts = await self.service._history(self.run["id"], exclude=self.operation_id, lock=True)
+                if _history_digest(receipts) != self.history_digest:
+                    raise ValueError("Verification predecessor history changed after explicit review")
+                self.history_rows = tuple((row, self.service._history_row_digest(row)) for row in rows)
+                self.history_unit = current_unit_of_work()
         self._authority_fence()
 
     async def current(self) -> None:
@@ -463,7 +490,14 @@ class LinkedVerifications:
         return self.engine.sandbox.backends.select(config)
 
     async def _inputs(
-        self, run: Data, entries: list[Data], workspace: Path, current: Any, *, actor: Principal
+        self,
+        run: Data,
+        entries: list[Data],
+        workspace: Path,
+        current: Any,
+        *,
+        actor: Principal,
+        successor: LinkedVerificationSuccessorV1 | None = None,
     ) -> PreparedBuildScope:
         proof = RetainedVerifiedSourceV1.model_validate(run["usage"]["retained_source"])
         source = await prepare_verification_source(
@@ -490,14 +524,31 @@ class LinkedVerifications:
                     "commands": final_commands(run, workspace),
                     "runtime": runtime_contract(),
                     "policy": policy_digest(),
+                    **({"successor": successor.model_dump(mode="json")} if successor is not None else {}),
                 }
             ),
+            output_policy=successor.output_policy if successor is not None else None,
+            fresh_commands=final_commands(run, workspace),
         )
         if inputs is None:
             raise ValueError("Linked verification requires its current qualified dependency input scope")
-        return inputs
+        original_fence = inputs._fence
 
-    async def _prepare(self, run_id: str, actor: Principal) -> PreparedLinkedVerification:
+        async def fence() -> None:
+            source.fence()
+            await original_fence()
+            source.fence()
+
+        return replace(inputs, _fence=fence, source_catalog=source.reference)
+
+    async def _prepare(
+        self,
+        run_id: str,
+        actor: Principal,
+        *,
+        successor: LinkedVerificationSuccessorV1 | None = None,
+        operation_id: str | None = None,
+    ) -> PreparedLinkedVerification:
         _outside_unit()
         identifier(run_id)
         run = await self.store.get_run(run_id)
@@ -590,14 +641,49 @@ class LinkedVerifications:
                 raise AccessDenied("Linked verification input owner changed")
 
         workspace = self.engine.workspaces / run_id
+        history: list[LinkedVerificationReceiptV1] = []
+        if successor is not None:
+            _rows, history = await self._history(run_id, exclude=operation_id)
+            frontier = linked_verification_frontier(
+                history,
+                run_id=run_id,
+                implementation_receipt_digest=receipts[0]["digest"],
+                terminal_receipt_digest=terminals[0]["digest"],
+                parent_attempt=run["attempt"],
+            )
+            if (
+                frontier is None
+                or frontier.request_id != successor.predecessor_request_id
+                or frontier.event_digest != successor.predecessor_event_digest
+                or frontier.status != "needs_reconciliation"
+                or frontier.progress.unknown
+                or frontier.progress.failed
+                or frontier.progress.started != frontier.progress.completed
+                or successor.parent_attempt != run["attempt"]
+            ):
+                raise ValueError("Review the exact known stopped verification frontier before proposing a successor")
         source = await workspace_source_capture(self.store, workspace, assert_current=current)
         try:
             await checked(
                 ["git", "diff", "--cached", "--quiet", "--no-ext-diff", "--no-textconv", tree, "--"], workspace
             )
             inputs = await self._inputs(
-                run, entries, self.engine.component_directory(run, workspace), current, actor=actor
+                run,
+                entries,
+                self.engine.component_directory(run, workspace),
+                current,
+                actor=actor,
+                **({"successor": successor} if successor is not None else {}),
             )
+            if inputs.source_catalog is None:
+                catalog = await prepare_verification_source(
+                    self.engine.component_directory(run, workspace),
+                    verification_catalog_root(self.store.path, run_id),
+                    budget=self.journal.source_catalog_budget,
+                    assert_current=current,
+                )
+                inputs = replace(inputs, source_catalog=catalog.reference)
+            plan = await self._execution_plan(run, commands, inputs, successor=successor)
             config = validate_sandbox_snapshot(run["sandbox_snapshot"])
             value = dict(
                 version=1,
@@ -619,9 +705,18 @@ class LinkedVerifications:
                 owner_digest=digest({"owner": self.store.execution_ownership_identity, "generation": id(generation)}),
                 run_digest=digest(run),
                 journal_digest=digest({"entries": entries}),
+                execution_plan=[item.model_dump(mode="json") for item in plan],
+                **({"successor": successor.model_dump(mode="json")} if successor is not None else {}),
             )
             value["digest"] = digest(value)
             candidate = LinkedVerificationCandidateV1.model_validate(value)
+            if successor is not None:
+                assert frontier is not None
+                if (
+                    candidate.commands_digest != frontier.candidate.commands_digest
+                    or candidate.effect_budget != frontier.candidate.effect_budget
+                ):
+                    raise ValueError("A fresh successor cannot change its predecessor's logical check scope")
             prepared = PreparedLinkedVerification(
                 candidate,
                 run,
@@ -636,6 +731,9 @@ class LinkedVerifications:
                 generation,
                 self,
                 active,
+                operation_id=operation_id,
+                history=tuple(history),
+                history_digest=_history_digest(history) if successor is not None else None,
             )
             await prepared.revalidate()
             return prepared
@@ -644,10 +742,128 @@ class LinkedVerifications:
                 source.fence.close()
             raise
 
-    async def candidate(self, run_id: str) -> Data:
+    @staticmethod
+    def _history_row_digest(row: Any) -> str:
+        return digest(
+            {
+                "id": row.id.hex,
+                "run_id": row.run_id.hex,
+                "kind": row.kind,
+                "status": row.status,
+                "request_key": getattr(row, "request_key", None),
+                "data": row.data,
+            }
+        )
+
+    async def _history(
+        self, run_id: str, *, exclude: str | None = None, lock: bool = False
+    ) -> tuple[list[Any], list[LinkedVerificationReceiptV1]]:
+        rows, receipts = [], []
+        cursor = None
+        async with self.store._unit():
+            while True:
+                page = await self.requests.records.for_run_page(identifier(run_id), KIND, after=cursor, limit=64)
+                for observed in page:
+                    row = (
+                        (await self.requests.records.find_by_id(observed.id, lock=LockMode.PESSIMISTIC_WRITE))
+                        if lock
+                        else observed
+                    )
+                    if row is None or row.run_id != identifier(run_id):
+                        raise ValueError("Verification history lost its native parent")
+                    self._operation(row)
+                    if row.id.hex == exclude:
+                        continue
+                    before = self._history_row_digest(row)
+                    events = await self._events(row)
+                    value = await self._receipt(row, events)
+                    if self._history_row_digest(row) != before:
+                        raise ValueError("Verification history changed during its native read")
+                    rows.append(row)
+                    receipts.append(LinkedVerificationReceiptV1.model_validate(value))
+                if len(page) < 64:
+                    break
+                if cursor is not None and page[-1].id <= cursor:
+                    raise ValueError("Verification history page did not advance")
+                cursor = page[-1].id
+        return rows, receipts
+
+    async def _frontier(
+        self, run_id: str, *, lock: bool = False
+    ) -> tuple[list[Any], list[LinkedVerificationReceiptV1], LinkedVerificationReceiptV1 | None]:
+        """Read the complete native graph; callers independently authorize its use."""
+        rows, history = await self._history(run_id, lock=lock)
+        if not history:
+            return rows, history, None
+        run = await self.store.get_run(run_id)
+        first = history[0].candidate
+        frontier = linked_verification_frontier(
+            history,
+            run_id=run_id,
+            implementation_receipt_digest=first.implementation_receipt_digest,
+            terminal_receipt_digest=first.terminal_receipt_digest,
+            parent_attempt=run["attempt"],
+        )
+        return rows, history, frontier
+
+    async def _execution_plan(
+        self,
+        run: Data,
+        commands: list[Data],
+        inputs: PreparedBuildScope,
+        *,
+        successor: LinkedVerificationSuccessorV1 | None,
+    ) -> list[LinkedVerificationCommandPlanV1]:
+        from firefly_forge.native_location_projection import runner_location
+        from firefly_forge.verification_scope import vitest_no_cache_argv
+
+        result = []
+        workspace = self.engine.component_directory(run, self.engine.workspaces / run["id"])
+        for ordinal, command in enumerate(commands, 1):
+            argv, _location, guard = await runner_location(self.store, run["id"], "verify", command["argv"])
+            if guard is not None:
+                await guard()
+            effective = vitest_no_cache_argv(argv, workspace) if successor is not None else argv
+            selected = next((v for v in inputs.witness.checks if v.command_index == ordinal), None)
+            if selected is not None:
+                if selected.argv != command["argv"] or list(selected.wrapped_argv)[-len(effective) :] != effective:
+                    raise ValueError("Verification physical plan differs from its qualified input witness")
+                physical = list(selected.wrapped_argv)
+            else:
+                if effective != argv:
+                    raise ValueError("Vitest output policy requires its qualified build wrapper")
+                physical = argv
+            result.append(
+                LinkedVerificationCommandPlanV1(
+                    ordinal=ordinal,
+                    logical_command_digest=digest(command),
+                    physical_argv=physical,
+                    output_policy="vitest_no_cache_v1" if effective != argv else "unchanged",
+                )
+            )
+        return result
+
+    async def candidate(self, run_id: str, *, predecessor_request_id: str | None = None) -> Data:
         actor = await self._actor()
         async with mode_execution_scope(self.journal, run_id):
-            prepared = await self._prepare(run_id, actor)
+            successor = None
+            if predecessor_request_id is not None:
+                identifier(predecessor_request_id)
+                run = await self.store.get_run(run_id)
+                await self._authority(run, actor)
+                async with self.store._unit():
+                    predecessor = await self.requests.records.find_by_id(identifier(predecessor_request_id))
+                    if predecessor is None or predecessor.run_id != identifier(run_id):
+                        raise KeyError("Verification predecessor not found")
+                    self._operation(predecessor)
+                    events = await self._events(predecessor)
+                successor = LinkedVerificationSuccessorV1(
+                    predecessor_request_id=predecessor_request_id,
+                    predecessor_event_digest=events[-1]["digest"],
+                    parent_attempt=run["attempt"],
+                    output_policy="vitest_no_cache_v1",
+                )
+            prepared = await self._prepare(run_id, actor, successor=successor)
             try:
                 value = prepared.candidate.model_dump(mode="json")
                 await self.store.admit_credentials(value)
@@ -691,6 +907,23 @@ class LinkedVerifications:
             or digest({"actor": data["actor"], "identity": data["identity"]}) != candidate.actor_digest
         ):
             raise ValueError("Linked verification native projection differs from its sealed consent")
+        if candidate.execution_plan is not None:
+            provenance = LinkedVerificationProvenanceV1.model_validate(data.get("provenance"))
+            if (
+                provenance.model_dump(mode="json") != data["provenance"]
+                or digest(provenance.input_witness.model_dump(mode="json")) != candidate.input_scope_digest
+                or provenance.input_witness.run_id != candidate.run_id
+                or provenance.input_witness.commands_digest != candidate.commands_digest
+                or provenance.source_catalog.source_digest != provenance.input_witness.source_digest
+            ):
+                raise ValueError("Verification lost its exact native build witness and source catalog")
+            for plan, command in zip(candidate.execution_plan, data["commands"], strict=True):
+                check = next((v for v in provenance.input_witness.checks if v.command_index == plan.ordinal), None)
+                if plan.logical_command_digest != digest(command) or (
+                    check is not None
+                    and (check.argv != command["argv"] or plan.physical_argv != list(check.wrapped_argv))
+                ):
+                    raise ValueError("Verification execution plan differs from its native input provenance")
 
     async def _event(self, row: Any, kind: str, evidence: Data) -> Data:
         events = await self._events(row)
@@ -785,7 +1018,7 @@ class LinkedVerifications:
                 raise ValueError("Linked verification identity already belongs to different consent")
             return await self.get(run_id, body.request_id)
         async with self.engine.publication_lock, mode_execution_scope(self.journal, run_id):
-            prepared = await self._prepare(run_id, actor)
+            prepared = await self._prepare(run_id, actor, successor=body.successor, operation_id=body.request_id)
             try:
                 if body.candidate_digest != prepared.candidate.digest:
                     raise ValueError("Reviewed fresh verification inputs changed")
@@ -793,7 +1026,7 @@ class LinkedVerifications:
                     grant = await self._scm_authority().admit(actor, run_id, prepared.candidate, body)
                     prepared.bind_scm(grant, body)
                     await prepared.current()
-                data = dict(
+                data: Data = dict(
                     id=body.request_id,
                     run_id=run_id,
                     kind=KIND,
@@ -813,6 +1046,11 @@ class LinkedVerifications:
                     created_at=now(),
                     updated_at=now(),
                 )
+                if prepared.inputs.source_catalog is None:
+                    raise ValueError("Verification admission requires its retained source catalog")
+                data["provenance"] = LinkedVerificationProvenanceV1(
+                    input_witness=prepared.inputs.witness, source_catalog=prepared.inputs.source_catalog
+                ).model_dump(mode="json")
                 if prepared.scm_seal is not None:
                     data["scm_authority"] = prepared.scm_seal.model_dump(mode="json")
                 await self.store.admit_credentials(data)
@@ -823,19 +1061,27 @@ class LinkedVerifications:
                     register_synchronization(ReconciliationCommitFence(unit, task, prepared.fence))
                     await self.completions._writer(prepared.run, actor)
                     await self.journal._run(run_id)
-                    if await self.requests.records.count_for_run(identifier(run_id), KIND):
+                    if body.successor is None and await self.requests.records.count_for_run(identifier(run_id), KIND):
                         raise ValueError("This accepted frontier already has an independent verification operation")
                     await prepared.current()
                     row = ForgeExecutionRequestEntity(
                         id=identifier(body.request_id),
                         run_id=identifier(run_id),
                         kind=KIND,
-                        request_key=prepared.candidate.implementation_receipt_digest,
+                        request_key=(
+                            digest(body.successor.model_dump(mode="json"))
+                            if body.successor is not None
+                            else prepared.candidate.implementation_receipt_digest
+                        ),
                         status="queued",
                         data=data,
                     )
                     await self.requests.records.save(row)
-                    await self._event(row, "linked_verification_admitted", {"request_digest": data["request_digest"]})
+                    await self._event(
+                        row,
+                        "linked_verification_admitted",
+                        {"request_digest": data["request_digest"], "provenance_digest": digest(data["provenance"])},
+                    )
             finally:
                 prepared.close()
         return await self.get(run_id, body.request_id)
@@ -930,7 +1176,8 @@ class LinkedVerifications:
                     if not await self.engine.reserve_agent_restore(run_id):
                         raise ValueError("Fresh verification requires its owned inactive repository slot")
                     reserved = True
-                prepared = await self._prepare(run_id, actor)
+                request = LinkedVerificationInputV1.model_validate(observed["request"])
+                prepared = await self._prepare(run_id, actor, successor=request.successor, operation_id=operation_id)
                 if prepared.candidate.model_dump(mode="json") != observed["candidate"]:
                     raise ValueError("Fresh verification inputs changed after explicit consent")
                 if actor.authentication_method == "scm_mapping":
@@ -975,6 +1222,10 @@ class LinkedVerifications:
                         (check for check in prepared.inputs.witness.checks if check.command_index == ordinal), None
                     )
                     physical = list(selected.wrapped_argv) if selected is not None else argv
+                    if prepared.candidate.execution_plan is not None:
+                        plan = prepared.candidate.execution_plan[ordinal - 1]
+                        if plan.logical_command_digest != digest(command) or plan.physical_argv != physical:
+                            raise ValueError("Verification dispatch differs from its reviewed physical plan")
                     scratch = Path(prepared.inputs.witness.scratch) / str(ordinal) if selected is not None else None
                     if scratch is not None and any(any((scratch / part).iterdir()) for part in ("home", "tmp")):
                         raise ValueError("A fresh verification check requires its empty owned scratch inputs")
@@ -1107,6 +1358,10 @@ class LinkedVerifications:
         from firefly_forge.unknown_command_proof import continuation_scope
 
         link = task["evidence"]["linked_verification"]
+        _rows, history, frontier = await self._frontier(run_id)
+        if frontier is None or frontier.request_id != link["request_id"] or frontier.status != "completed":
+            raise ValueError("Parent verification requires its complete current successor frontier")
+        history_digest = _history_digest(history)
         async with self.store._unit():
             row = await self.requests.records.find_by_id(identifier(link["request_id"]))
             if row is None:
@@ -1200,8 +1455,12 @@ class LinkedVerifications:
                 grant.fence()
             await self.store.assert_ownership()
             await self._authority(run, actor)
+            _rows, latest, leaf = await self._frontier(run_id)
             if (
-                await self.store.get_run(run_id) != run
+                leaf is None
+                or leaf.request_id != link["request_id"]
+                or _history_digest(latest) != history_digest
+                or await self.store.get_run(run_id) != run
                 or self.store.execution_ownership_token is not owner
                 or self.store.configuration.write_generation is not generation
                 or CURRENT_PRINCIPAL.get() != reader
@@ -1227,6 +1486,7 @@ class LinkedVerifications:
             self.engine.component_directory(run, self.engine.workspaces / run_id),
             current,
             actor=actor,
+            **({"successor": candidate.successor} if candidate.successor is not None else {}),
         )
         if digest(inputs.witness.model_dump(mode="json")) != candidate.input_scope_digest:
             raise ValueError("Linked verification current dependencies or inputs changed after success")
