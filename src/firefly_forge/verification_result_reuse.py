@@ -208,6 +208,8 @@ async def prepare_verification_reuse(
         if type(verify_attempt) is not int or task.data.get("idempotency_key") != key:
             raise ValueError("Verification reuse requires the current native task intent")
     values = {r.id.hex: _canonical(r, entries, run["id"]) for r in rows}
+    if reconciled is not None:
+        await reconciled.current()
     custody = validate_completed_handoff(
         reconciled.run if reconciled is not None else run,
         reconciled.entries if reconciled is not None else entries,
