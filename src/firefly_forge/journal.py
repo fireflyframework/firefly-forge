@@ -2214,9 +2214,15 @@ class Journal:
         current = await self.store.get_run(run_id)
         requests = getattr(self.store, "execution_requests", None)
         if requests is not None:
-            async with self.store._unit():
-                linked = await requests.records.for_run(identifier(run_id), "linked_verify")
-            if any(row.status != "completed" for row in linked):
+            service = getattr(requests, "linked_verifications", None)
+            if service is not None:
+                _rows, _history, frontier = await service._frontier(run_id)
+                unsettled = frontier is not None and frontier.status != "completed"
+            else:
+                async with self.store._unit():
+                    linked = await requests.records.for_run(identifier(run_id), "linked_verify")
+                unsettled = bool(linked)
+            if unsettled:
                 raise ValueError("Read the existing linked verification operation; it cannot be replayed by resume")
         from firefly_forge.invalid_read_dispatch_guard import assert_generic_dispatch_allowed
 

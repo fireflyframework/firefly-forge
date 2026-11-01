@@ -10,6 +10,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from firefly_forge.execution_requests import ExecutionRequests, digest
 from firefly_forge.journal import digest as native_digest
+from firefly_forge.source_catalog import SourceCatalogRefV1
+from firefly_forge.verification_scope_attestation import VerificationScopeV1, VerificationScopeV2
 
 Data = dict[str, Any]
 KIND = "linked_verify"
@@ -35,6 +37,12 @@ class LinkedVerificationCommandPlanV1(BaseModel):
         if self.output_policy == "vitest_no_cache_v1" and self.physical_argv[-2:] != ["--", "--no-cache"]:
             raise ValueError("The reviewed Vitest physical plan must explicitly disable its cache")
         return self
+
+
+class LinkedVerificationProvenanceV1(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True, hide_input_in_errors=True)
+    input_witness: VerificationScopeV1 | VerificationScopeV2
+    source_catalog: SourceCatalogRefV1
 
 
 class LinkedVerificationInputV1(BaseModel):
@@ -115,11 +123,15 @@ class LinkedVerificationCandidateV1(BaseModel):
 
     @model_validator(mode="after")
     def sealed_candidate(self) -> LinkedVerificationCandidateV1:
-        if (self.successor is None) != (self.execution_plan is None):
+        if self.successor is not None and self.execution_plan is None:
             raise ValueError("A successor requires its complete visible physical execution plan")
         if self.execution_plan is not None and (
             [item.ordinal for item in self.execution_plan] != list(range(1, self.effect_budget + 1))
-            or not any(item.output_policy == "vitest_no_cache_v1" for item in self.execution_plan)
+            or (
+                self.successor is not None
+                and not any(item.output_policy == "vitest_no_cache_v1" for item in self.execution_plan)
+            )
+            or (self.successor is None and any(item.output_policy != "unchanged" for item in self.execution_plan))
         ):
             raise ValueError("Successor execution plan differs from its full independent effect budget")
         if native_digest(self.model_dump(exclude={"digest"})) != self.digest:
@@ -367,7 +379,13 @@ def verification_progress(operation: Data, events: list[Data]) -> VerificationPr
             raise ValueError("A closed verification ledger cannot admit another event")
         kind, evidence = event["kind"], event["evidence"]
         if index == 0:
-            if kind != "linked_verification_admitted" or evidence != {"request_digest": operation["request_digest"]}:
+            expected = {"request_digest": operation["request_digest"]}
+            if operation.get("provenance") is not None:
+                provenance = LinkedVerificationProvenanceV1.model_validate(operation["provenance"])
+                if provenance.model_dump(mode="json") != operation["provenance"]:
+                    raise ValueError("Verification provenance differs from its exact native record")
+                expected["provenance_digest"] = native_digest(operation["provenance"])
+            if kind != "linked_verification_admitted" or evidence != expected:
                 raise ValueError("Linked verification requires its exact native admission")
         elif kind == "linked_verification_claimed":
             if claimed or index != 1 or evidence != {"request_digest": operation["request_digest"]}:

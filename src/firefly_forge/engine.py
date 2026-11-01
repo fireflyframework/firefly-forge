@@ -122,6 +122,16 @@ def final_verification_commands(run: dict[str, Any], workspace: Path) -> list[Co
     return commands + policy_commands(run.get("policy_snapshot", {}), run["backend"]) + framework_commands(run)
 
 
+def _write_workspace_exclusions(workspace: Path) -> None:
+    exclusions = workspace / ".git" / "info" / "exclude"
+    existing = exclusions.read_text() if exclusions.exists() else ""
+    # Directory-only patterns miss read-only dependency symlinks.
+    exclusions.write_text(
+        existing + "\n.venv\nnode_modules\nvendor\n__pycache__/\n*.pyc\n"
+        "dist/\nbuild/\n.pytest_cache/\n.mypy_cache/\n.ruff_cache/\n.cache/\n"
+    )
+
+
 def private_path(path: str) -> bool:
     parts = Path(path).parts
     return any(
@@ -620,13 +630,7 @@ class Engine:
                     ):
                         raise ValueError("The cloned source differs from the admitted checkpoint")
                 if not run.get("git_metadata_digest"):
-                    exclusions = workspace / ".git" / "info" / "exclude"
-                    existing = exclusions.read_text() if exclusions.exists() else ""
-                    # Directory-only patterns miss read-only dependency symlinks.
-                    exclusions.write_text(
-                        existing + "\n.venv\nnode_modules\nvendor\n__pycache__/\n*.pyc\n"
-                        "dist/\nbuild/\n.pytest_cache/\n.mypy_cache/\n.ruff_cache/\n"
-                    )
+                    _write_workspace_exclusions(workspace)
                     baseline_metadata = metadata_digest(workspace)
                     self.git_metadata[workspace.resolve()] = baseline_metadata
                     await self.store.update(identifier, git_metadata_digest=baseline_metadata)
