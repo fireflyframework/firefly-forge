@@ -1241,8 +1241,17 @@ supply owner identity, confirmed publication, exact review, explicit consent
 and one request identity. Current authority is checked again before admission
 and at worker boundaries. A lost response is read back using that same request;
 absence or uncertainty never permits another POST or a replacement identity.
-A failed or unknown check remains held. This operation offers no automatic
-repair or retry; a separately authorized local repair successor is not provided.
+Before saving consent, forge checks the pending conversation again under its
+native locks. A newly published competing question requires clarification.
+If an interruption loses the final feedback marker, readback still uses the
+durable review and request instead of reporting historical parent results.
+
+This operation grants no automatic repair or retry. A known failed check can
+still lead to a work-in-progress checkpoint or draft PR when the existing
+delivery policy, current authority and separate delivery consent permit it.
+Later testing or maintenance requires the confirmed remote checkpoint receipt
+and its own execution allowance. An unknown Git or command outcome cannot be
+treated as a confirmed checkpoint or a new coding grant.
 
 Controlled host tests cover this path with verified-observation, persistence,
 input and runner fixtures. They do not establish installed-runtime

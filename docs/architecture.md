@@ -649,6 +649,10 @@ The worker reserves the repository's execution slot and records each command int
 
 Successful settlement requires every declared check and its matching result. The parent verification receipt binds the operation, source and command list; ordinary Engine continuation validates that receipt again before the Git checkpoint. A failure retains its actual command ordinal, exit code and bounded output preview for the operator and communication model. Neither a failed check nor an uncertain outcome grants another coding attempt.
 
+Builds may create ignored output directories such as `dist` or `.cache`. After a successful result is durably recorded, the worker can refresh that directory witness only if the canonical selected source, physical payload and exact Git index remain unchanged. Original selected-file metadata and Git metadata stay protected, including tracked files inside ignored directories. A source edit, index change, replaced selected file or new trackable file stops continuation. An uncertain command result cannot use this refresh path.
+
+Git delivery retains the exact prepared SCM consent through its native writer, including locks for the QA actor. A transaction synchronization checks current authority, runtime, profile, build inputs, selected payload and index before commit. It permits the writer's own checkpoint progress fields without accepting changes to source, grants or spent usage. Changes to this implementation invalidate the measured runtime and admission bindings; earlier qualification cannot authorize the new code.
+
 This recovery path currently supports the configured host backend and requires current factory-administrator authority. Docker and runner-pool transports are refused explicitly. Candidate inspection and admission require the owning leader; API replicas can serve authorized status reads. The [operator integration guide](agent-integrations.md) describes the SDK, CLI and MCP contracts. Full runner, Git and source-control acceptance remains separate from a successful isolated consumer test.
 
 ### Persistent human decisions and image evidence
