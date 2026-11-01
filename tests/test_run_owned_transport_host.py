@@ -105,6 +105,8 @@ def test_controller_advertises_run_renewal_only_for_the_explicit_profile():
         ),
     )
     service.executions = SimpleNamespace(git_snapshot=None)
+    service.artifacts = SimpleNamespace(objects=None)
+    assert "artifact_protocols" not in service.profile()
     assert service.profile()["run_liveness_protocols"] == ["forge-run-owned-liveness-v1"]
     service.settings.authority.profile = profile()
     assert "run_liveness_protocols" not in service.profile()

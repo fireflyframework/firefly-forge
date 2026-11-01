@@ -769,9 +769,9 @@ export function CodingCheckRecovery({
                   <>
                     <p>
                       {selected.length} selected checks. Up to{" "}
-                      {Math.min(20, candidate.interactive_commands_remaining)}{" "}
-                      interactive calls can be granted without consuming
-                      independent final verification capacity.
+                      {candidate.interactive_commands_remaining} interactive
+                      calls can be granted without consuming independent final
+                      verification capacity.
                     </p>
                     <div className="coding-check-fields">
                       <label className="field">
@@ -779,10 +779,7 @@ export function CodingCheckRecovery({
                         <input
                           type="number"
                           min="1"
-                          max={Math.min(
-                            20,
-                            candidate.interactive_commands_remaining,
-                          )}
+                          max={candidate.interactive_commands_remaining}
                           step="1"
                           value={calls}
                           onChange={(event) => setCalls(event.target.value)}

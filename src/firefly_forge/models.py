@@ -121,7 +121,7 @@ class RunInput(BaseModel):
     frontend: Frontend = "react"
     agent: Literal["codex", "claude", "bridge", "agentic", "api"] = "codex"
     model_profile_id: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9-]{0,63}$")
-    commands: list[Command | NewWorkCommand] = Field(default_factory=list, max_length=20)
+    commands: list[Command | NewWorkCommand] = Field(default_factory=list)
     publish: bool = False
     operation: Literal["build", "maintain", "test"] = "build"
     assurance: AssuranceInput = Field(default_factory=AssuranceInput)

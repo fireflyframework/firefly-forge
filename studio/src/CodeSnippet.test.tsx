@@ -174,3 +174,30 @@ it("reports clipboard failure while keeping all source selectable", async () => 
     "Complete source\n",
   );
 });
+
+it("adds an optional line gutter without changing source, clipboard text or the default Markdown view", async () => {
+  const value = 'const city = "España 😀";\r\n\n';
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  vi.stubGlobal("navigator", { clipboard: { writeText } });
+  const view = render(
+    <CodeSnippet
+      value={value}
+      language="ts"
+      lineNumbers
+      label="Recorded source code"
+    />,
+  );
+  const pre = screen.getByLabelText("Recorded source code");
+  await waitFor(() =>
+    expect(pre.querySelector(".hljs-keyword")).not.toBeNull(),
+  );
+  expect(pre.querySelector("code")?.textContent).toBe(value);
+  expect(pre.querySelector(".code-line-numbers")?.textContent).toBe("1\n2\n3");
+  expect(
+    pre.querySelector(".code-line-numbers")?.getAttribute("aria-hidden"),
+  ).toBe("true");
+  fireEvent.click(screen.getByRole("button", { name: "Copy code" }));
+  await waitFor(() => expect(writeText).toHaveBeenCalledExactlyOnceWith(value));
+  view.rerender(<CodeSnippet value={value} language="ts" />);
+  expect(view.container.querySelector(".code-line-numbers")).toBeNull();
+});

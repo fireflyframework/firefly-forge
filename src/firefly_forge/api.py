@@ -162,6 +162,8 @@ from firefly_forge.learning_persistence import (
     ForgeLearningRepository,
 )
 from firefly_forge.learning_projection import LearningProjection
+from firefly_forge.linked_verification_controllers import LinkedVerificationController
+from firefly_forge.linked_verifications import LinkedVerifications
 from firefly_forge.mcp_controllers import ExternalMCPController
 from firefly_forge.mcp_registry import ExternalMCPRegistry
 from firefly_forge.model_profile_controllers import ModelProfileController
@@ -261,8 +263,10 @@ from firefly_forge.scm_source_edit import SCMSourceEditAuthority
 from firefly_forge.scm_source_edit_controllers import SCMSourceEditController
 from firefly_forge.search_tools import SearchTools
 from firefly_forge.secrets import redact_environment
+from firefly_forge.source_archive_service import SourceArchiveManager
 from firefly_forge.source_budget_allowances import SourceBudgetPolicies
 from firefly_forge.source_budget_controllers import SourceBudgetPolicyController
+from firefly_forge.source_explorer import SourceExplorer, SourceExplorerController
 from firefly_forge.store import Store
 from firefly_forge.task_routing import TaskRouting
 from firefly_forge.tool_broker import ToolInvocationBroker
@@ -816,6 +820,7 @@ class FactoryConfiguration:
         routing: TaskRouting,
         runtime_roles: RuntimeRoles,
         worker_evidence: WorkerEvidence,
+        source_archives: SourceArchiveManager,
         stage_activity: EngineActivity,
     ) -> Engine:
         engine = Engine(
@@ -828,6 +833,7 @@ class FactoryConfiguration:
         )
         engine.assurance = assurance
         engine.worker_evidence = worker_evidence
+        engine.source_archives = source_archives
         engine.sandbox = sandbox
         engine.browser, engine.search = browser, search
         engine.tool_broker = tool_broker
@@ -848,6 +854,15 @@ class FactoryConfiguration:
         handoffs = VerificationHandoffs(store, journal, engine)
         engine.verification_handoffs = handoffs
         return handoffs
+
+    @bean
+    def linked_verifications(
+        self, store: Store, journal: Journal, engine: Engine, requests: ExecutionRequests
+    ) -> LinkedVerifications:
+        verifications = LinkedVerifications(store, journal, requests, engine)
+        requests.linked_verifications = verifications
+        engine.linked_verifications = verifications
+        return verifications
 
     @bean
     def provider_recoveries(self, store: Store, journal: Journal, engine: Engine) -> ProviderRecoveries:
@@ -1465,11 +1480,15 @@ def create_runtime(
         GitDeliveryPolicyController,
         GitDeliveryController,
         KnownWorkerCompletionController,
+        LinkedVerificationController,
         UnknownCommandAcknowledgementController,
         CheckpointModeAdoptionController,
         OriginalSelectionReadmissionController,
         GitDiffArchive,
         GitDiffController,
+        SourceArchiveManager,
+        SourceExplorer,
+        SourceExplorerController,
         JournalController,
         VerificationHandoffController,
         ProviderRecoveryController,

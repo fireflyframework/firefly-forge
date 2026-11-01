@@ -283,6 +283,9 @@ def _runtime_material_digest() -> str:
                     "oauth_resources.py",
                     "oauth_authority.py",
                     "oauth_credential_fingerprints.py",
+                    "linked_verification_models.py",
+                    "linked_verifications.py",
+                    "linked_verification_controllers.py",
                 )
             },
         }

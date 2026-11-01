@@ -472,6 +472,8 @@ async def prepare_build_scope(
     intent: Data,
     handoff: Data,
     current: Authority,
+    *,
+    scratch_identity: str | None = None,
 ) -> PreparedBuildScope | None:
     config = validate_sandbox_snapshot(run["sandbox_snapshot"])
     if sys.platform != "darwin" or config.mode != "host" or config.pool_binding is not None:
@@ -498,7 +500,11 @@ async def prepare_build_scope(
     if not checks:
         return None
     root = verification_catalog_root(store.path, run["id"])
-    scratch = root / ("build-scratch-" + intent["id"])
+    if scratch_identity is not None and (
+        len(scratch_identity) != 64 or any(character not in "0123456789abcdef" for character in scratch_identity)
+    ):
+        raise ValueError("Fresh build scratch requires an exact sealed operation identity")
+    scratch = root / ("build-scratch-" + ("linked-" + scratch_identity if scratch_identity else intent["id"]))
     for folder in (
         scratch,
         *(scratch / str(c.command_index) for c in checks),

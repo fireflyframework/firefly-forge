@@ -56,6 +56,7 @@ RETAINED_EXECUTION_FENCES: set[FileLock] = set()
 if TYPE_CHECKING:
     from firefly_forge.consumed_terminal_completions import ConsumedTerminalExecution
     from firefly_forge.git_deliveries import GitDeliveries
+    from firefly_forge.source_archive_service import SourceArchiveManager
 
 
 async def checked(argv: list[str], cwd: Path, timeout: int = 300, *, env: dict[str, str] | None = None) -> str:
@@ -111,6 +112,16 @@ def framework_commands(run: dict[str, Any]) -> list[Command | NewWorkCommand]:
     ]
 
 
+def final_verification_commands(run: dict[str, Any], workspace: Path) -> list[Command | NewWorkCommand]:
+    commands = configured_commands(run) or default_commands(
+        workspace,
+        work_duration=WorkDurationPolicyV2.model_validate(run["work_duration"])
+        if run.get("work_duration") is not None
+        else None,
+    )
+    return commands + policy_commands(run.get("policy_snapshot", {}), run["backend"]) + framework_commands(run)
+
+
 def private_path(path: str) -> bool:
     parts = Path(path).parts
     return any(
@@ -159,6 +170,7 @@ class Engine:
 
         self.communication_writer = CommunicationWriter(store)
         self.git_deliveries: GitDeliveries | None = None
+        self.linked_verifications: Any = None
         self.knowledge: Any = None
         self.assurance: Any = None
         self.workspaces = workspaces
@@ -196,6 +208,7 @@ class Engine:
         self.knowledge_first: Any = None
         self.git_metadata: dict[Path, str] = {}
         self.worker_evidence: Any = None
+        self.source_archives: SourceArchiveManager | None = None
 
     async def start(self) -> None:
         if self.store.runtime_roles and not self.store.runtime_roles.executes_jobs:
@@ -1516,16 +1529,7 @@ class Engine:
                     await self.git_deliveries.automatic(identifier)
                     run = await self.store.get_run(identifier)
                 (await self.store.update(identifier, **snapshot_run_fields(files, diff), status="validating"))
-                commands = configured_commands(run) or default_commands(
-                    self.component_directory(run, workspace),
-                    work_duration=WorkDurationPolicyV2.model_validate(run["work_duration"])
-                    if run.get("work_duration") is not None
-                    else None,
-                )
-                commands += policy_commands(run.get("policy_snapshot", {}), run["backend"])
-                commands += framework_commands(run)
-                if len(commands) > 20:
-                    raise ValueError("Selected policies exceed the 20 verification-command limit")
+                commands = final_verification_commands(run, self.component_directory(run, workspace))
                 verification = await self._begin_task(identifier, "verify", workspace, settings, repair_failures)
                 active_key = verification.get("idempotency_key")
                 retained = await self.store.get_run(identifier)
@@ -1536,6 +1540,15 @@ class Engine:
                     saved_task = next(
                         item for item in (await self.journal.plan(identifier))["tasks"] if item["id"] == "verify"
                     )
+                    if saved_task.get("evidence", {}).get("linked_verification"):
+                        if self.linked_verifications is None:
+                            raise ReconciliationRequired("The linked verification receipt consumer is unavailable")
+                        try:
+                            await self.linked_verifications.validate_settlement(identifier, tree, saved_task)
+                        except (ValueError, PermissionError) as exc:
+                            raise ReconciliationRequired(
+                                "Linked verification current authority or inputs require review before delivery"
+                            ) from exc
                     final = final or saved_task.get("evidence", {}).get("checks", [])
                     saved_tree = retained.get("source_tree") or saved_task.get("evidence", {}).get("source_tree")
                     if not final or saved_tree != tree:
@@ -2492,8 +2505,6 @@ class Engine:
             else None,
         )
         commands += policy_commands(run.get("policy_snapshot", {}), run["backend"])
-        if len(commands) > 20:
-            raise ValueError("Selected policies exceed the 20 verification-command limit")
         verification = await self._begin_task(identifier, "verify", workspace, settings)
         evidence = []
         if verification["disposition"] == "completed":
@@ -2649,6 +2660,8 @@ class Engine:
                 preview_bytes=preview_bytes,
                 preview_truncated=preview_bytes < artifact.byte_count,
             )
+            if archives := getattr(self, "source_archives", None):
+                await archives.publish(run, workspace, expected_head or base, tree, assert_current=current)
             return files, source, tree
 
     def _assert_git_metadata(self, workspace: Path) -> None:

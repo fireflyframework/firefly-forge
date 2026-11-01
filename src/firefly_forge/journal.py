@@ -2212,6 +2212,12 @@ class Journal:
         source_budget_readmission: str | None = None,
     ) -> Data:
         current = await self.store.get_run(run_id)
+        requests = getattr(self.store, "execution_requests", None)
+        if requests is not None:
+            async with self.store._unit():
+                linked = await requests.records.for_run(identifier(run_id), "linked_verify")
+            if any(row.status != "completed" for row in linked):
+                raise ValueError("Read the existing linked verification operation; it cannot be replayed by resume")
         from firefly_forge.invalid_read_dispatch_guard import assert_generic_dispatch_allowed
 
         await assert_generic_dispatch_allowed(self.store, self, current)

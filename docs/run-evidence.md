@@ -7,6 +7,21 @@ description: Read and export a consistent cut of retained run activity, task sta
 
 A run's evidence reader collects its retained activity, development plan, task state, WAL and tool results. It returns a consistent cut with exact record references. Reading evidence does not execute commands, replay tools, resume a run or resolve an unknown outcome.
 
+## Inspect the recorded source in Studio
+
+Open a run from **Factory**, then choose **Code**. This view answers which files were retained for that run and what those files contain. Each snapshot has its own recorded branch, revision and source identity. Selecting another snapshot changes the evidence you are reading.
+
+1. Use the branch and snapshot selector to choose a recorded revision. Expand its details when you need to compare the commit or publication identity.
+2. Open folders in **Files** and select a file. On a phone, use **Browse files** to open the tree. The header shows the complete selected path; **Copy path** copies that path.
+3. Read the highlighted source. Large files have successive windows; **Next window** reads the next portion. **Copy file** is available for a complete text preview, while **Copy code window** copies the displayed portion of a larger file. Binary files retain their metadata without a text preview.
+4. Open **Technical details** when investigating a hash, byte boundary or integrity failure. Record the snapshot and file identities alongside the issue or pull request so another reviewer can inspect the same source.
+
+Source recording requires a project and configured archival storage. **No recorded source** explains when recording is disabled or no publication exists. A missing publication remains unavailable until its bytes have been archived and reviewed. Current project access and integrity checks also apply after the original execution workspace has been removed. See the [recorded-source API contract](api.md#read-recorded-source) for revision, catalog and file reads.
+
+Use **Timeline** for observed activity, **Plan** for task progress and **Verification** for check results. Source files and provider output have separate provenance: a retained file establishes its recorded bytes, and a reported command result establishes only the outcome supported by its receipt.
+
+## Query activity records from a client
+
 Start with a small page:
 
 ```bash

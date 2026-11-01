@@ -12,6 +12,7 @@ import uuid
 from asyncio import Task
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
+from dataclasses import field as dataclass_field
 from importlib.metadata import version
 from pathlib import Path
 from typing import Any
@@ -1122,6 +1123,149 @@ class PreparedReconciledSourceAuthority:
         if entries[: len(execution.prefix)] != execution.prefix:
             raise ValueError("Reconciled source lost its original native journal")
         return execution.witness["payload"]["run"], entries[: execution.witness["sequence"] - 1]
+
+
+@dataclass(frozen=True)
+class PreparedAcceptedReconciledHandoff:
+    run: Data
+    entries: list[Data]
+    _current: Callable[[], Awaitable[None]]
+    _view_digest: str = dataclass_field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "_view_digest", digest({"run": self.run, "entries": self.entries}))
+
+    async def current(self) -> None:
+        if digest({"run": self.run, "entries": self.entries}) != self._view_digest:
+            raise ValueError("Accepted reconciliation historical view changed")
+        await self._current()
+        if digest({"run": self.run, "entries": self.entries}) != self._view_digest:
+            raise ValueError("Accepted reconciliation historical view changed")
+
+
+async def prepare_accepted_reconciled_handoff(
+    store: Any, journal: Any, run: Data, entries: list[Data], terminal: Data
+) -> PreparedAcceptedReconciledHandoff | None:
+    """Read the completed prefix only through its accepted same-claim native receipts."""
+    if run.get("verification_handoff", {}).get("status") != "held" or not run.get("consumed_terminal_recovery"):
+        return None
+    from firefly_forge.consumed_terminal_reconciliations import validate_record
+    from firefly_forge.native_terminal_completion_models import validate_native_receipt
+    from firefly_forge.unknown_command_proof import continuation_scope
+
+    marker = run["consumed_terminal_recovery"]
+    witness = find_witness(entries, marker.get("request_id", ""))
+    if witness is None or marker.get("state") != "accepted":
+        raise ValueError("Held verification requires its accepted consumed terminal action")
+    validate_projection(witness, entries, marker)
+    accepted = validate_native_receipt(terminal, entries)
+    records = [
+        e
+        for e in entries
+        if e["kind"] == "consumed_terminal_reconciliation"
+        and e["payload"].get("candidate", {}).get("recovery_digest") == witness["digest"]
+    ]
+    if len(records) != 1:
+        raise ValueError("Held verification requires its unique accepted reconciliation")
+    record = records[0]
+    authority = validate_record(record, entries)
+    original = witness["payload"]
+    provider_fields = (
+        "agent",
+        "config_revision",
+        "execution_config",
+        "model_selection",
+        "model_profile_id",
+        "checkpoint_mode_adoption",
+        "original_selection_readmission",
+        "invalid_read_continuity",
+    )
+
+    def binding(value: Data) -> str:
+        return digest(
+            {
+                "scope": continuation_scope(value),
+                **{
+                    key: value.get(key)
+                    for key in (
+                        *provider_fields,
+                        "verification_handoff",
+                        "consumed_terminal_recovery",
+                        "usage",
+                        "attempt",
+                        "implementation_rounds",
+                        "implementation_pending",
+                        "bridge_completion_hold",
+                        "bridge_completion_settlement",
+                        "worker_feedback",
+                        "source_tree",
+                        "base_revision",
+                        "checkpoint_revision",
+                        "git_metadata_digest",
+                    )
+                },
+            }
+        )
+
+    if (
+        run["id"] != witness["run_id"]
+        or terminal not in entries
+        or accepted.run_id != run["id"]
+        or accepted.proof.task_attempt != run.get("attempt")
+        or accepted.proof.task_key != original["task"]["idempotency_key"]
+        or run.get("attempt") != original["task"]["attempt"]
+        or run.get("implementation_rounds") != run.get("attempt")
+        or run.get("implementation_pending") is not False
+        or run.get("bridge_completion_hold") != {}
+        or (run.get("bridge_completion_settlement") or {}).get("record_digest") != terminal["digest"]
+        or not _same(run.get("worker_feedback"), original["usage"]["worker_feedback"])
+        or not _same(run.get("usage"), original["usage"])
+        or not _same(
+            accepted.proof.retained_source.model_dump(mode="json") if accepted.proof.retained_source else None,
+            run["usage"].get("retained_source"),
+        )
+        or not _same(run.get("verification_handoff"), authority["run"].get("verification_handoff"))
+        or continuation_scope(run) != continuation_scope(original["run"])
+        or any(not _same(run.get(key), original["run"].get(key)) for key in provider_fields)
+        or not witness["sequence"] < record["sequence"] < terminal["sequence"]
+    ):
+        raise ValueError("Accepted reconciliation changed its original task, source authority or grants")
+    expected, prefix, run_id = binding(run), copy.deepcopy(entries), run["id"]
+    captured_witness = next(entry for entry in prefix if entry["digest"] == witness["digest"])
+    historical_run = copy.deepcopy(captured_witness["payload"]["run"])
+    historical_entries = copy.deepcopy(prefix[: captured_witness["sequence"] - 1])
+    ownership, generation, reader = (
+        store.execution_ownership_token,
+        store.configuration.write_generation,
+        CURRENT_PRINCIPAL.get(),
+    )
+
+    async def current() -> None:
+        await store.assert_ownership()
+        saved = await store.get_run(run_id)
+        await ProjectAccess(store).authorize_execution(saved)
+        async with store._unit():
+            latest = _entries(await journal.records.find_for_run(identifier(run_id)), run_id)
+            task = _task(await journal._task(run_id, "implement"))
+        if (
+            binding(saved) != expected
+            or latest[: len(prefix)] != prefix
+            or task["status"] != "done"
+            or task["attempt"] != accepted.proof.task_attempt
+            or task["idempotency_key"] != accepted.proof.task_key
+        ):
+            raise ValueError("Accepted reconciliation verification custody changed")
+        await store.assert_ownership()
+        if (
+            store.execution_ownership_token is not ownership
+            or store.configuration.write_generation is not generation
+            or CURRENT_PRINCIPAL.get() != reader
+        ):
+            raise AccessDenied("Accepted reconciliation verification lost its owner or configuration")
+
+    view = PreparedAcceptedReconciledHandoff(historical_run, historical_entries, current)
+    await view.current()
+    return view
 
 
 @dataclass(frozen=True)

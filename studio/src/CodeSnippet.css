@@ -131,3 +131,23 @@
     min-height: 44px;
   }
 }
+
+.code-snippet > pre[data-line-numbers] {
+  display: grid;
+  grid-template-columns: max-content minmax(max-content, 1fr);
+  padding: 0;
+}
+.code-snippet > pre[data-line-numbers] > code {
+  padding: 12px;
+}
+.code-line-numbers {
+  position: sticky;
+  left: 0;
+  padding: 12px 10px;
+  border-right: 1px solid var(--line);
+  background: var(--surface-subtle);
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  text-align: right;
+  user-select: none;
+}
