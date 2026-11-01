@@ -6,7 +6,7 @@ from __future__ import annotations
 import copy
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from firefly_forge.checkpoint_mode_handoff_custody import validate_completed_handoff
 from firefly_forge.final_outcome_models import RetainedVerifiedSourceV1
@@ -34,6 +34,9 @@ from firefly_forge.verification_source_preparation import (
 )
 
 Data = dict[str, Any]
+
+if TYPE_CHECKING:
+    from firefly_forge.consumed_terminal_completions import PreparedAcceptedReconciledHandoff
 
 
 def retained_check(argv: list[str], index: int, attempt: int, record: Data, value: Data) -> Data:
@@ -72,6 +75,7 @@ class PreparedVerificationReuse:
     events: list[Data]
     verify_attempt: int
     record: Data | None = None
+    reconciled_handoff: PreparedAcceptedReconciledHandoff | None = None
 
     async def current(self, *, completed: bool = False) -> None:
         store, journal = self.engine.store, self.engine.journal
@@ -79,6 +83,8 @@ class PreparedVerificationReuse:
         if store.execution_ownership_token is not self.ownership or CURRENT_PRINCIPAL.get() != self.actor:
             raise AccessDenied("Verification reuse lost its native worker ownership")
         current = await store.get_run(self.run["id"])
+        if self.reconciled_handoff is not None:
+            await self.reconciled_handoff.current()
         await ProjectAccess(store).authorize_execution(current)
         await store.assert_campaign_current(current)
         check_verification_authority(store, current, self.intent)
@@ -192,6 +198,9 @@ async def prepare_verification_reuse(
     if len(terminal) != 1:
         raise ValueError("Verification reuse requires its unique retained-source terminal receipt")
     validate_native_receipt(terminal[0], entries)
+    from firefly_forge.consumed_terminal_completions import prepare_accepted_reconciled_handoff
+
+    reconciled = await prepare_accepted_reconciled_handoff(store, journal, run, entries, terminal[0])
     async with store._unit():
         rows = await journal.sandboxes.for_run(identifier(run["id"]))
         task = await journal._task(run["id"], "verify")
@@ -199,7 +208,12 @@ async def prepare_verification_reuse(
         if type(verify_attempt) is not int or task.data.get("idempotency_key") != key:
             raise ValueError("Verification reuse requires the current native task intent")
     values = {r.id.hex: _canonical(r, entries, run["id"]) for r in rows}
-    custody = validate_completed_handoff(run, entries, rows, values)
+    custody = validate_completed_handoff(
+        reconciled.run if reconciled is not None else run,
+        reconciled.entries if reconciled is not None else entries,
+        rows,
+        values,
+    )
     handoff = next(e for e in entries if e["digest"] == custody["handoff_intent_digest"])
     intent = handoff["payload"]
     old_scope = scope_record(run, intent, entries)
@@ -217,6 +231,8 @@ async def prepare_verification_reuse(
 
     async def current() -> None:
         await store.assert_ownership()
+        if reconciled is not None:
+            await reconciled.current()
         if store.execution_ownership_token is not ownership or CURRENT_PRINCIPAL.get() != actor:
             raise AccessDenied("Verification input preparation lost worker ownership")
         saved = await store.get_run(run["id"])
@@ -282,4 +298,5 @@ async def prepare_verification_reuse(
         ticket,
         events,
         verify_attempt,
+        reconciled_handoff=reconciled,
     )
