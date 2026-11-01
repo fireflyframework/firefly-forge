@@ -24,7 +24,7 @@ from firefly_forge.linked_verification_models import (
     LinkedVerificationReceiptV1,
 )
 from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied, ProjectAccess
-from firefly_forge.scm_conversations import SCMConversations
+from firefly_forge.scm_conversations import SCMConversations, observation_cut
 from firefly_forge.scm_linked_verification_models import (
     SCMLinkedVerificationAdmissionV1,
     SCMLinkedVerificationScopeV1,
@@ -38,6 +38,7 @@ from firefly_forge.scm_linked_verification_records import (
     SCMVerificationRecordV1,
     SCMVerificationReviewV1,
 )
+from firefly_forge.scm_natural_effects import intake_digest
 from firefly_forge.scm_natural_questions import confirmed_publication
 from firefly_forge.store import identifier
 
@@ -240,6 +241,7 @@ class SCMLinkedVerifications:
                     or digest((answer.get("natural_turn") or {}).get("decision") or {})
                     != confirmation.interpretation_digest
                     or (answer.get("natural_turn") or {}).get("human_message") != confirmation.human_message
+                    or intake_digest(answer) != confirmation.intake_digest
                 ):
                     raise AccessDenied("The exact same owner's verified confirmation changed")
                 rows.append(answer_row)
@@ -479,6 +481,7 @@ class SCMLinkedVerifications:
                 human_sha256=hashlib.sha256(human.encode()).hexdigest(),
                 affirmative_span=span,
                 interpretation_digest=digest(decision),
+                intake_digest=intake_digest(delivery),
             ),
         )
         request = LinkedVerificationInputV1(
@@ -515,7 +518,30 @@ class SCMLinkedVerifications:
                     ).model_dump(mode="json"),
                 }
             )
-            await self._save(proposal_id, record, current)
+            from firefly_forge.scm_natural_tasks import SCMNaturalTasks
+
+            async with self.conversations._locked(scopes, base.read_scope.repository_id):
+                answer = await self.collaboration.inbox.find_by_id(
+                    identifier(delivery["id"]), lock=LockMode.PESSIMISTIC_WRITE
+                )
+                if (
+                    answer is None
+                    or observation_cut(answer.data) != observation_cut(delivery)
+                    or intake_digest(answer.data) != confirmation.intake_digest
+                    or await self.conversations.scopes(answer.data, remote=False) != scopes
+                ):
+                    raise AccessDenied("The exact owner confirmation changed before native consent")
+                # Serialize publication state with this grant, including other-purpose questions.
+                for peer in sorted(
+                    await self.collaboration.inbox.conversation_context(answer.data), key=lambda row: row.data["id"]
+                ):
+                    await self.collaboration.inbox.find_by_id(
+                        identifier(peer.data["id"]), lock=LockMode.PESSIMISTIC_WRITE
+                    )
+                if await SCMNaturalTasks(self.collaboration)._context(answer.data, scopes) != context:
+                    raise AccessDenied("The pending conversation changed; clarify this verification review again")
+                await self.review(actor, base.run_id)
+                await self._save(proposal_id, record, current)
             record = current
             # Once this durable intent exists, an uncertain POST is read back, never repeated.
             token = CURRENT_PRINCIPAL.set(actor)
@@ -665,18 +691,50 @@ class SCMLinkedVerifications:
         turn = delivery.get("natural_turn") or {}
         if turn.get("verification_hold"):
             return SCMVerificationCommunicationV1(phase="held", hold_reason=turn["verification_hold"])
+        resolution = turn.get("resolution") or {}
         proposal = turn.get("linked_verification_proposal")
+        if proposal is None and resolution.get("state") == "verification_request":
+            proposal = delivery["id"]
+        if proposal is None and resolution.get("state") == "verification_confirm":
+            proposal = (resolution.get("question_id") or "").removeprefix("natural-")
         if proposal is None:
             return None
-        async with self.store._unit():
-            _, record = await self._load(proposal)
+        try:
+            async with self.store._unit():
+                _, record = await self._load(proposal)
+        except AccessDenied:
+            if resolution.get("state") not in {"verification_request", "verification_confirm"}:
+                raise
+            return SCMVerificationCommunicationV1(phase="held", hold_reason="native_review_unconfirmed")
         if record.review is None:
-            raise AccessDenied("The exact native verification review is unavailable")
-        if delivery["natural_turn"]["state"] == "verification_review":
-            await self.review(await self.actor(record), record.base.run_id)
+            return SCMVerificationCommunicationV1(phase="held", hold_reason="native_review_unconfirmed")
+        base = record.base
+        scope = turn["context"]["scope"]
+        if (
+            delivery["actor"] != base.external_actor_id
+            or delivery["repository_id"] != base.read_scope.repository_id
+            or delivery["issue"] != {"kind": base.issue_kind, "number": base.issue_number}
+            or scope["native_user_id"] != base.read_scope.native_user_id
+            or scope["binding_digest"] != base.read_scope.binding_digest
+        ):
+            raise AccessDenied("The verification readback belongs to another owner or conversation")
+        await self.review(await self.actor(record), base.run_id)
+        if turn["state"] == "verification_review" or resolution.get("state") == "verification_request":
             return SCMVerificationCommunicationV1(
-                phase="review", candidate=record.review.candidate, question=record.review.question
+                phase="review",
+                candidate=record.review.candidate,
+                question=record.review.question,
+                request_id=base.proposal_id,
             )
+        if (
+            record.grant is not None
+            and resolution.get("state") == "verification_confirm"
+            and (
+                record.grant.confirmation.receipt_id != delivery["id"]
+                or record.grant.confirmation.source_digest != delivery["digest"]
+            )
+        ):
+            raise AccessDenied("The durable native consent belongs to another exact confirmation")
         receipt = await self.status(record, missing_ok=True)
         command = None
         if receipt and receipt.last_failure:
@@ -699,4 +757,5 @@ class SCMLinkedVerifications:
             candidate=record.review.candidate,
             receipt=receipt,
             failure_command=command,
+            request_id=record.base.proposal_id,
         )

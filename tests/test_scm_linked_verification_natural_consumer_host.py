@@ -144,9 +144,9 @@ async def start(c, monkeypatch):
     return authority, receipt
 
 
-async def answer(c):
+async def answer(c, *, addressed=False):
     c.state["clock"] += 3600
-    c.state["comments"].append(c.comment(102, "sí, ejecuta esas comprobaciones"))
+    c.state["comments"].append(c.comment(102, ("@forge, " if addressed else "") + "sí, ejecuta esas comprobaciones"))
     for _ in range(3):
         await c.service.step(c.repository)
     return next(row.data["id"] for row in c.db["inbox"].values() if row.source_key == "comment:102")
@@ -303,3 +303,111 @@ async def test_revoked_current_mapping_refuses_old_review_and_never_creates_oper
         record = SCMVerificationRecordV1.model_validate(c.db["inbox"][proposal].data["natural_verification"])
         with pytest.raises(AccessDenied):
             await authority.review(await authority.actor(record), c.run_id)
+
+
+async def test_new_pending_question_after_classification_prevents_grant(poll_case, monkeypatch):  # noqa: F811
+    from firefly_forge.scm_natural_tasks import SCMNaturalTasks
+
+    async with poll_case() as c:
+        authority, proposal = await start(c, monkeypatch)
+        receipt = await answer(c, addressed=True)
+        delivery = await SCMNaturalTasks(c.collaboration).process(receipt)
+        original = SCMNaturalTasks._context
+
+        async def changed_context(self, observed, scopes):
+            context = await original(self, observed, scopes)
+            return {
+                **context,
+                "candidates": [
+                    *context["candidates"],
+                    {
+                        **context["scope"],
+                        "origin": "product_assistant_turn",
+                        "run_id": None,
+                        "question_id": "product-" + "f" * 32,
+                        "question_digest": "e" * 64,
+                        "question": "Should existing contacts be retained?",
+                        "question_status": "pending",
+                        "consumed": False,
+                    },
+                ],
+            }
+
+        monkeypatch.setattr(SCMNaturalTasks, "_context", changed_context)
+        with pytest.raises(AccessDenied):
+            await authority.confirm(delivery, proposal)
+        assert not c.state["native_requests"]
+        assert c.db["inbox"][proposal].data["natural_verification"]["grant"] is None
+
+
+async def test_current_grant_rejects_changed_intake_context_without_replaying(poll_case, monkeypatch):  # noqa: F811
+    async with poll_case() as c:
+        authority, proposal = await start(c, monkeypatch)
+        receipt = await answer(c)
+        await c.collaboration.process(receipt)
+        record = SCMVerificationRecordV1.model_validate(c.db["inbox"][proposal].data["natural_verification"])
+        actor = await authority.actor(record)
+        c.db["inbox"][receipt].data["natural_turn"]["context"]["history"].append(
+            {"human": "Changed context", "reply": None}
+        )
+        with pytest.raises(AccessDenied):
+            await authority.admit(actor, c.run_id, record.review.candidate, record.grant.request)
+        assert len(c.state["native_requests"]) == 1
+
+
+async def test_queue_then_interrupted_marker_uses_durable_grant_readback(poll_case, monkeypatch):  # noqa: F811
+    from firefly_forge.scm_natural_tasks import SCMNaturalTasks
+
+    async with poll_case() as c:
+        authority, proposal = await start(c, monkeypatch)
+        receipt = await answer(c)
+        delivery = await SCMNaturalTasks(c.collaboration).process(receipt)
+        queued = await authority.confirm(delivery, proposal)
+        assert queued.status == "queued"
+        interrupted = await c.collaboration.receipt(receipt)
+        assert "linked_verification_proposal" not in interrupted["natural_turn"]
+        packet = await authority.communication(interrupted)
+        assert packet is not None and packet.receipt.status == "queued"
+        assert packet.receipt.request_id == proposal
+        await authority.apply(receipt)
+        assert len(c.state["native_requests"]) == 1
+
+
+async def test_confirmation_before_admission_has_typed_unknown_not_parent_facts(poll_case, monkeypatch):  # noqa: F811
+    from firefly_forge.communication import CommunicationConversationV1, communication_facts
+    from firefly_forge.scm_natural_tasks import SCMNaturalTasks
+
+    async with poll_case() as c:
+        authority, proposal = await start(c, monkeypatch)
+        delivery = await SCMNaturalTasks(c.collaboration).process(await answer(c))
+        packet = await authority.communication(delivery)
+        assert packet is not None and packet.phase == "unknown"
+        facts = communication_facts(
+            c.db["runs"][c.run_id].data,
+            conversation=CommunicationConversationV1(selection="run", language="es", linked_runs=1),
+            linked_verification=packet,
+        )
+        assert facts["linked_verification"]["request_id"] == proposal
+        assert "factory_verification" not in facts and not c.state["native_requests"]
+
+
+async def test_multiple_current_operations_use_explicit_typed_hold(poll_case, monkeypatch):  # noqa: F811
+    from firefly_forge.communication import CommunicationConversationV1, communication_facts
+
+    async with poll_case() as c:
+        authority, proposal = await start(c, monkeypatch)
+        row = c.db["inbox"][proposal]
+        row.data["natural_turn"]["resolution"].update(state="status", run_id=c.run_id)
+        row.data["natural_turn"]["context"]["linked_verifications"] = [
+            {"proposal_id": value * 32, "run_id": c.run_id, "confirmed": True} for value in ("a", "b")
+        ]
+        result = await authority.apply(proposal)
+        packet = await authority.communication(result)
+        assert packet.phase == "held" and packet.hold_reason == "operation_selection_ambiguous"
+        facts = communication_facts(
+            c.db["runs"][c.run_id].data,
+            conversation=CommunicationConversationV1(selection="run", language="en", linked_runs=1),
+            linked_verification=packet,
+        )
+        assert facts["linked_verification"]["next_action"] == "ask_which_linked_verification_operation"
+        assert "factory_verification" not in facts and not c.state["native_requests"]

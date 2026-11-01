@@ -108,6 +108,7 @@ class SCMVerificationConfirmationV1(StrictContract):
     human_sha256: Digest
     affirmative_span: str = Field(min_length=1, max_length=12000)
     interpretation_digest: Digest
+    intake_digest: Digest
     digest: Digest
 
     @model_validator(mode="after")
@@ -202,7 +203,11 @@ class SCMVerificationCommunicationV1(StrictContract):
     version: Literal[1] = 1
     phase: Literal["review", "current", "unknown", "held"]
     candidate: LinkedVerificationCandidateV1 | None = None
-    hold_reason: Literal["current_authority_or_review_changed", "operation_selection_ambiguous"] | None = None
+    hold_reason: (
+        Literal["current_authority_or_review_changed", "operation_selection_ambiguous", "native_review_unconfirmed"]
+        | None
+    ) = None
+    request_id: NativeID | None = None
     question: str | None = None
     receipt: LinkedVerificationReceiptV1 | None = None
     failure_command: Command | NewWorkCommand | None = None
@@ -217,6 +222,10 @@ class SCMVerificationCommunicationV1(StrictContract):
             self.receipt is not None
         ):
             raise ValueError("Verification communication must identify its actual phase")
+        if self.phase == "unknown" and self.request_id is None:
+            raise ValueError("Unknown verification retains the same exact request identity")
+        if self.receipt is not None and self.request_id not in {None, self.receipt.request_id}:
+            raise ValueError("Verification communication request identity changed")
         if self.receipt is not None and self.receipt.candidate != self.candidate:
             raise ValueError("Verification communication belongs to another exact operation")
         if self.failure_command is not None and (

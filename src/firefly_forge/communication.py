@@ -397,6 +397,8 @@ def _linked_verification_facts(
                 "request_not_retried": True,
                 "next_action": "ask_which_linked_verification_operation"
                 if value.hold_reason == "operation_selection_ambiguous"
+                else "wait_for_same_native_review"
+                if value.hold_reason == "native_review_unconfirmed"
                 else "inspect_same_native_request_and_current_authority",
             },
         }
@@ -413,7 +415,7 @@ def _linked_verification_facts(
             "original_history_preserved": True,
             "original_effect_budget": candidate.original_effect_budget,
             "original_effect_count": candidate.original_effect_count,
-            "request_id": receipt.request_id if receipt else None,
+            "request_id": receipt.request_id if receipt else value.request_id,
             "unknown_admission_action": "read_same_request_without_post_retry" if value.phase == "unknown" else None,
         },
     }

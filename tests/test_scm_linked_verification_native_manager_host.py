@@ -172,6 +172,18 @@ async def test_persisted_same_owner_confirmation_reaches_actual_native_worker_on
         ),
     )
     rows[response_id] = SimpleNamespace(data=response)
+    # This fixture supplies the verified observation/read model, not a real SCM database.
+    from firefly_forge.scm_natural_tasks import SCMNaturalTasks
+
+    real_context = SCMNaturalTasks._context
+
+    async def observed_context(self, delivery, scopes):
+        if self.collaboration is collaboration:
+            assert delivery["id"] == response_id
+            return copy.deepcopy(context)
+        return await real_context(self, delivery, scopes)
+
+    monkeypatch.setattr(SCMNaturalTasks, "_context", observed_context)
     queued = await authority.confirm(copy.deepcopy(response), proposal)
     assert queued is not None and queued.status == "queued"
     record = SCMVerificationRecordV1.model_validate(rows[proposal].data["natural_verification"])

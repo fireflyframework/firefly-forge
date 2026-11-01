@@ -46,13 +46,14 @@ def test_current_linked_failure_keeps_exact_result_and_never_imports_old_parent_
 
 
 def test_unknown_result_has_no_invented_failure_command_or_success():
-    value = SCMVerificationCommunicationV1(phase="unknown", candidate=candidate())
+    value = SCMVerificationCommunicationV1(phase="unknown", candidate=candidate(), request_id="a" * 32)
     facts = communication_facts(
         None,
         conversation=CommunicationConversationV1(selection="clarify", language="en", linked_runs=0),
         linked_verification=value,
     )
     assert facts["state"] == {"status": "unknown"}
+    assert facts["linked_verification"]["request_id"] == "a" * 32
     assert not {"linked_failure", "check_diagnostics"} & facts.keys()
     assert facts["linked_verification"]["unknown_admission_action"] == "read_same_request_without_post_retry"
 
@@ -94,3 +95,13 @@ def test_native_templates_preserve_historical_versions_and_declare_no_retry_or_c
     assert "sí, ejecuta esas comprobaciones" in prompt and "multiple pending reviews" in prompt
     wording = catalog().text("scm-natural/verification-communication")
     assert "never send it again" in wording and "Failed work remains held" in wording
+
+
+def test_unknown_readback_requires_request_identity_and_current_receipt_cannot_replace_it():
+    with pytest.raises(ValueError):
+        SCMVerificationCommunicationV1(phase="unknown", candidate=candidate())
+    value = receipt()
+    with pytest.raises(ValueError):
+        SCMVerificationCommunicationV1(
+            phase="current", candidate=value["candidate"], receipt=value, request_id="f" * 32
+        )

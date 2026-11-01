@@ -126,3 +126,34 @@ def test_explicit_natural_check_reference_with_competing_product_question_keeps_
     )
     result = resolve_task(scope(), [review(), other], decision, answer="sí, ejecuta esas comprobaciones")
     assert result.state == "verification_confirm" and other == original
+
+
+@pytest.mark.parametrize("human_length", [5000, 12000])
+def test_accepted_natural_confirmation_preserves_existing_intake_limit(human_length):
+    import hashlib
+
+    from firefly_forge.journal import digest
+    from firefly_forge.scm_conversation_models import addressed_status
+    from firefly_forge.scm_linked_verification_records import SCMVerificationConfirmationV1
+    from firefly_forge.scm_natural_replies import human_message
+
+    prefix = "sí, ejecuta esas comprobaciones. "
+    text = prefix + "x" * (human_length - len(prefix))
+    source = "@forge, " + text
+    addressed = addressed_status(source)
+    assert addressed is not None and human_message(source, addressed) == text
+    decision = approve(text)
+    assert decision.verification_affirmative_span == text
+    value = dict(
+        version=1,
+        review_digest="a" * 64,
+        receipt_id="b" * 32,
+        source_digest="c" * 64,
+        human_message=text,
+        human_sha256=hashlib.sha256(text.encode()).hexdigest(),
+        affirmative_span=text,
+        interpretation_digest=digest(decision.model_dump(mode="json")),
+        intake_digest="d" * 64,
+    )
+    model = SCMVerificationConfirmationV1.model_validate({**value, "digest": digest(value)})
+    assert model.human_message == text and model.affirmative_span == text
