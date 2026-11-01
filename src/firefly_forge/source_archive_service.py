@@ -6,6 +6,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import os
+import re
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -190,11 +191,14 @@ class SourceArchiveManager:
     async def publish(
         self, run: dict[str, Any], workspace: Path, head: str, tree: str, *, assert_current: Authorize
     ) -> SourceArchiveRefV1 | None:
-        if (
-            self.settings.provider == "disabled"
-            or not self.policy.enabled
-            or UUID(run["project_id"]) in self.policy.excluded_projects
-        ):
+        project_id = run.get("project_id")
+        if project_id is None and "project_id" in run:
+            return None
+        if self.settings.provider == "disabled" or not self.policy.enabled:
+            return None
+        if not isinstance(project_id, str) or re.fullmatch(r"[a-f0-9]{32}", project_id) is None:
+            raise ValueError("Source publication requires an exact canonical project identity")
+        if UUID(project_id) in self.policy.excluded_projects:
             return None
         if self.publisher is None:
             raise RuntimeError("Configured immutable source storage is not initialized")

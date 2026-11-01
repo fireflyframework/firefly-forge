@@ -190,6 +190,13 @@ can set `FORGE_SOURCE_ARCHIVE_POLICY` to a JSON object with `enabled`, an
 access or delete retained data. Production GC and a portal storage setup wizard
 remain separate work; the implemented retention policy keeps recorded bytes.
 
+Source archives require a canonical native project ID. Standalone runs whose
+`project_id` is explicitly `null` are not eligible for archiving; no project is
+inferred from their repository. When archival is enabled, a present noncanonical
+project ID is refused before source publication effects. These eligibility checks
+do not change the runner object protocol's separate requirement for a
+project-scoped invocation.
+
 Authenticated GET routes list recorded snapshots and return catalog/file pages.
 Each response rechecks the native reader, current project access, run scope,
 tenant and immutable reference. An optional Git delivery request requires its
