@@ -1,15 +1,8 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
-import {
-  Fragment,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type CSSProperties,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   FileCode2,
@@ -19,8 +12,15 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { request, type Connection } from "./api";
-import { diffBytes } from "./GitDiffBrowser";
-import { tokenizeCode } from "./ExecutionFormat";
+import { CodeSnippet } from "./CodeSnippet";
+import { CopyButton } from "./ExecutionPresentation";
+import {
+  sourceTree,
+  sourceBasename,
+  sourceSize,
+  sourceLanguage,
+  type SourceTreeNode,
+} from "./SourceTree";
 import { RichMarkdown } from "./RichMarkdown";
 import {
   sourceRevisions,
@@ -90,6 +90,7 @@ function SourceSession({ connection, runId, requestId }: Props) {
   );
   const [records, setRecords] = useState<SourceRevisions | null>(null),
     [problem, setProblem] = useState<Problem | null>(null);
+  const [showControls, setShowControls] = useState(false);
   const [after, setAfter] = useState<string | null>(null),
     [reload, setReload] = useState(0);
   const [branch, setBranch] = useState<string | null>(null),
@@ -149,18 +150,39 @@ function SourceSession({ connection, runId, requestId }: Props) {
   return (
     <section className="source-explorer" aria-label="Recorded source snapshot">
       <header className="source-heading">
-        <div>
-          <h3>
-            <Files size={20} aria-hidden="true" />
-            Recorded source snapshot
-          </h3>
-          <p>
-            Read archived files and their provenance. This view is read only.
-          </p>
-        </div>
-        <button className="secondary" onClick={() => refresh()}>
+        <span className="source-readonly">
+          <Files size={17} aria-hidden="true" />
+          {records
+            ? `${number(selected?.reference.catalog.file_count ?? 0)} files`
+            : "Code"}
+          <span>Read only</span>
+        </span>
+        <button
+          className="secondary source-selection-toggle"
+          aria-label="Change branch or snapshot"
+          aria-expanded={showControls}
+          aria-controls="source-snapshot-controls"
+          onClick={() => setShowControls((value) => !value)}
+        >
+          <GitBranch size={16} aria-hidden="true" />
+          <span title={branch || "Snapshot"}>{branch || "Snapshot"}</span>
+          {selected && (
+            <small
+              className="source-summary-commit"
+              aria-label="Baseline commit"
+            >
+              {selected.reference.head.slice(0, 8)}
+            </small>
+          )}
+          <ChevronDown size={15} aria-hidden="true" />
+        </button>
+        <button
+          className="secondary source-refresh"
+          aria-label="Refresh records"
+          title="Refresh records"
+          onClick={() => refresh()}
+        >
           <RefreshCw size={16} aria-hidden="true" />
-          Refresh records
         </button>
       </header>
       {problem ? (
@@ -178,11 +200,14 @@ function SourceSession({ connection, runId, requestId }: Props) {
         />
       ) : (
         <>
-          <div className="source-selectors">
+          <div
+            className={`source-selectors ${showControls ? "expanded" : "collapsed"}`}
+            id="source-snapshot-controls"
+          >
             <label>
               <span>
                 <GitBranch size={16} aria-hidden="true" />
-                Recorded branch
+                Branch
               </span>
               <select
                 value={branch ?? ""}
@@ -196,7 +221,7 @@ function SourceSession({ connection, runId, requestId }: Props) {
               </select>
             </label>
             <label>
-              <span>Snapshot record</span>
+              <span>Snapshot</span>
               <select
                 value={selectedId}
                 onChange={(event) => setSelectedId(event.target.value)}
@@ -206,8 +231,8 @@ function SourceSession({ connection, runId, requestId }: Props) {
                     value={item.reference.snapshot_id}
                     key={item.reference.snapshot_id}
                   >
-                    {item.reference.head.slice(0, 12)} · {item.status} ·{" "}
-                    {item.reference.snapshot_id.slice(0, 6)}
+                    Baseline {item.reference.head.slice(0, 12)} · Attempt{" "}
+                    {item.reference.attempt}
                   </option>
                 ))}
               </select>
@@ -250,6 +275,25 @@ function SourceSession({ connection, runId, requestId }: Props) {
     </section>
   );
 }
+function SnapshotProvenance({ reference }: { reference: SourceReference }) {
+  return (
+    <dl>
+      {[
+        ["Recorded branch", reference.branch ?? "Not recorded"],
+        ["Baseline commit (context)", reference.head],
+        ["Recorded tree (context)", reference.tree],
+        ["Source catalog digest", reference.catalog.source_digest],
+        ["Catalog manifest", reference.catalog.manifest_sha256],
+        ["Snapshot ID", reference.snapshot_id],
+      ].map(([label, value]) => (
+        <div key={label}>
+          <dt>{label}</dt>
+          <dd>{value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
 function Snapshot({
   selected,
   connection,
@@ -264,34 +308,21 @@ function Snapshot({
   const reference = selected.reference;
   return (
     <>
-      <details className="source-provenance">
-        <summary>View snapshot provenance</summary>
-        <RichMarkdown value="Branch and commit metadata describe the recorded baseline. Snapshot and catalog digests identify the archived files displayed here." />
-        <dl>
-          {[
-            ["Recorded branch", reference.branch ?? "Not recorded"],
-            ["Baseline commit (context)", reference.head],
-            ["Recorded tree (context)", reference.tree],
-            ["Source catalog digest", reference.catalog.source_digest],
-            ["Catalog manifest", reference.catalog.manifest_sha256],
-            ["Snapshot ID", reference.snapshot_id],
-          ].map(([label, value]) => (
-            <div key={label}>
-              <dt>{label}</dt>
-              <dd>{value}</dd>
-            </div>
-          ))}
-        </dl>
-      </details>
       {selected.status !== "published" ? (
-        <Notice
-          title={
-            selected.status === "failed"
-              ? "Publication needs review"
-              : "Publication is incomplete"
-          }
-          message="No complete source publication is recorded for this snapshot. Its files stay unavailable until the retained publication is reviewed."
-        />
+        <>
+          <Notice
+            title={
+              selected.status === "failed"
+                ? "Publication needs review"
+                : "Publication is incomplete"
+            }
+            message="No complete source publication is recorded for this snapshot. Its files stay unavailable until the retained publication is reviewed."
+          />
+          <details className="source-technical">
+            <summary>Snapshot details</summary>
+            <SnapshotProvenance reference={reference} />
+          </details>
+        </>
       ) : (
         <CatalogBrowser
           connection={connection}
@@ -343,6 +374,7 @@ function CatalogPage({
   onProblem: (error: unknown) => void;
 }) {
   const contentTarget = useRef<HTMLDivElement>(null);
+  const moveFocus = useRef(false);
   const [catalog, setCatalog] = useState<SourceCatalog | null>(null),
     [selected, setSelected] = useState<number | null>(null),
     [showFiles, setShowFiles] = useState(false);
@@ -370,12 +402,30 @@ function CatalogPage({
     return () => controller.abort();
   }, [connection, path, manifest, page, reference, onProblem]);
   const entry = selected === null ? null : catalog?.catalog.entries[selected];
+  const nodes = useMemo(
+    () => sourceTree(catalog?.catalog.entries ?? []),
+    [catalog],
+  );
+  useEffect(() => {
+    if (moveFocus.current) {
+      moveFocus.current = false;
+      contentTarget.current?.focus();
+    }
+  }, [selected]);
+  function chooseFile(index: number) {
+    setShowFiles(false);
+    if (selected === index) contentTarget.current?.focus();
+    else {
+      moveFocus.current = true;
+      setSelected(index);
+    }
+  }
   const listId = `source-files-${reference.snapshot_id}-${page}`;
   return (
     <div className="source-browser">
       <aside aria-label="Recorded file tree">
         <div className="source-index-heading">
-          <h4>Files and folders</h4>
+          <h4>Files</h4>
           <button
             className="secondary source-picker-toggle"
             aria-expanded={showFiles}
@@ -385,9 +435,6 @@ function CatalogPage({
             {showFiles ? "Hide files" : "Browse files"}
           </button>
         </div>
-        <p className="source-file-count">
-          {number(reference.catalog.file_count)} recorded files
-        </p>
         <div
           className={`source-tree-list ${showFiles ? "expanded" : "collapsed"}`}
           id={listId}
@@ -397,73 +444,42 @@ function CatalogPage({
           ) : !catalog.catalog.entries.length ? (
             <p>No public files in this snapshot.</p>
           ) : (
-            <ul className="source-tree">
-              {catalog.catalog.entries.map((item, index) => (
-                <li
-                  key={item.path}
-                  style={
-                    {
-                      "--source-depth": Math.min(
-                        4,
-                        item.path.replace(/\/$/, "").split("/").length - 1,
-                      ),
-                    } as CSSProperties
-                  }
-                >
-                  <button
-                    aria-current={selected === index ? "true" : undefined}
-                    onClick={() => {
-                      setSelected(index);
-                      setShowFiles(false);
-                      contentTarget.current?.focus();
-                    }}
-                  >
-                    {item.kind === "directory" ? (
-                      <Folder size={17} aria-hidden="true" />
-                    ) : (
-                      <FileCode2 size={17} aria-hidden="true" />
-                    )}
-                    <span>
-                      {item.path}
-                      <small>
-                        {item.kind === "directory"
-                          ? "Directory"
-                          : diffBytes(item.byte_count)}
-                      </small>
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <SourceTree
+              nodes={nodes}
+              selected={selected}
+              onSelect={chooseFile}
+            />
           )}
-          <nav
-            className="source-pagination source-file-pages"
-            aria-label="Source catalog pages"
-          >
-            <button
-              className="secondary"
-              disabled={page === 0 || !catalog}
-              onClick={() => setPage(page - 1)}
+          {reference.catalog.page_count > 1 && (
+            <nav
+              className="source-pagination source-file-pages"
+              aria-label="Source catalog pages"
             >
-              <ChevronLeft size={16} aria-hidden="true" />
-              Previous files
-            </button>
-            <span>
-              Page {number(page + 1)} of{" "}
-              {number(Math.max(1, reference.catalog.page_count))}
-            </span>
-            <button
-              className="secondary"
-              disabled={!catalog || catalog.catalog.next_page === null}
-              onClick={() => {
-                if (catalog?.catalog.next_page !== null && catalog)
-                  setPage(catalog.catalog.next_page);
-              }}
-            >
-              Next files
-              <ChevronRight size={16} aria-hidden="true" />
-            </button>
-          </nav>
+              <button
+                className="secondary"
+                disabled={page === 0 || !catalog}
+                onClick={() => setPage(page - 1)}
+              >
+                <ChevronLeft size={16} aria-hidden="true" />
+                Previous files
+              </button>
+              <span>
+                Page {number(page + 1)} of{" "}
+                {number(Math.max(1, reference.catalog.page_count))}
+              </span>
+              <button
+                className="secondary"
+                disabled={!catalog || catalog.catalog.next_page === null}
+                onClick={() => {
+                  if (catalog?.catalog.next_page !== null && catalog)
+                    setPage(catalog.catalog.next_page);
+                }}
+              >
+                Next files
+                <ChevronRight size={16} aria-hidden="true" />
+              </button>
+            </nav>
+          )}
         </div>
       </aside>
       <div
@@ -502,6 +518,64 @@ function CatalogPage({
     </div>
   );
 }
+function SourceTree({
+  nodes,
+  selected,
+  onSelect,
+}: {
+  nodes: SourceTreeNode[];
+  selected: number | null;
+  onSelect: (index: number) => void;
+}) {
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+  function render(nodes: SourceTreeNode[]) {
+    return (
+      <ul className="source-tree">
+        {nodes.map((node) => (
+          <li key={node.path}>
+            {node.entryIndex === null ? (
+              <>
+                <button
+                  aria-label={node.path}
+                  title={node.path}
+                  aria-expanded={!collapsed.has(node.path)}
+                  onClick={() =>
+                    setCollapsed((before) => {
+                      const next = new Set(before);
+                      if (next.has(node.path)) next.delete(node.path);
+                      else next.add(node.path);
+                      return next;
+                    })
+                  }
+                >
+                  <ChevronRight
+                    className="source-folder-chevron"
+                    size={14}
+                    aria-hidden="true"
+                  />
+                  <Folder size={16} aria-hidden="true" />
+                  <span>{node.name}</span>
+                </button>
+                {!collapsed.has(node.path) && render(node.children)}
+              </>
+            ) : (
+              <button
+                aria-label={node.path}
+                title={node.path}
+                aria-current={selected === node.entryIndex ? "true" : undefined}
+                onClick={() => onSelect(node.entryIndex!)}
+              >
+                <FileCode2 size={16} aria-hidden="true" />
+                <span>{node.name}</span>
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+    );
+  }
+  return render(nodes);
+}
 function SourceFileBrowser(props: {
   connection: Connection;
   reference: SourceReference;
@@ -516,14 +590,19 @@ function SourceFileBrowser(props: {
   return (
     <>
       <header className="source-file-heading">
-        <h4>
-          <FileCode2 size={18} aria-hidden="true" />
-          {props.entry.path}
-        </h4>
-        <p>
-          {diffBytes(props.entry.byte_count)} · Mode{" "}
-          {(props.entry.mode & 0o777).toString(8).padStart(4, "0")}
-        </p>
+        <div>
+          <h3 title={props.entry.path}>
+            <FileCode2 size={17} aria-hidden="true" />
+            <span>{sourceBasename(props.entry.path)}</span>
+          </h3>
+          <p className="source-breadcrumb" title={props.entry.path}>
+            {props.entry.path}
+          </p>
+        </div>
+        <div className="source-file-tools">
+          <span>{sourceSize(props.entry.byte_count)}</span>
+          <CopyButton value={props.entry.path} label="Copy path" />
+        </div>
       </header>
       <FileWindow
         key={offset}
@@ -616,25 +695,6 @@ function FileWindow({
   const bytes = expanded ? content.bytes : content.bytes.subarray(0, 256);
   return (
     <>
-      <div className="source-window-meta">
-        <p>
-          {entry.byte_count
-            ? `Bytes ${number(offset + 1)}–${number(offset + content.page.byte_count)} of ${number(entry.byte_count)}`
-            : "Empty file"}
-        </p>
-        <span>
-          <Check size={15} aria-hidden="true" />
-          Window checksum verified
-        </span>
-      </div>
-      {(content.textStart !== offset ||
-        content.textEnd !== offset + content.page.byte_count) && (
-        <p className="source-byte-note">
-          Text preview aligned to UTF-8: bytes {number(content.textStart + 1)}–
-          {number(content.textEnd)}. Adjacent windows can overlap at a character
-          boundary.
-        </p>
-      )}
       {content.text === null ? (
         <>
           <p className="source-byte-note">
@@ -660,46 +720,89 @@ function FileWindow({
           )}
         </>
       ) : (
-        <pre
-          className="source-code"
-          tabIndex={0}
-          aria-label="Recorded source code"
-        >
-          <code>
-            {content.text.split("\n").map((line, index, lines) => (
-              <Fragment key={index}>
-                {tokenizeCode(line, entry.path).map((token, i) => (
-                  <span key={i} className={`code-token-${token.kind}`}>
-                    {token.text}
-                  </span>
-                ))}
-                {index < lines.length - 1 ? "\n" : ""}
-              </Fragment>
-            ))}
-          </code>
-        </pre>
+        <>
+          {offset > 0 && (
+            <p className="source-line-scope">
+              Preview lines · numbering restarts in this window
+            </p>
+          )}
+          <CodeSnippet
+            value={content.text}
+            language={sourceLanguage(entry.path)}
+            label="Recorded source code"
+            lineNumbers
+            copyLabel={
+              offset === 0 && content.page.next_offset === null
+                ? "Copy file"
+                : "Copy code window"
+            }
+          />
+        </>
       )}
-      <nav className="source-pagination" aria-label="Source byte windows">
-        <button
-          className="secondary"
-          disabled={offset === 0}
-          onClick={() => setOffset(Math.max(0, offset - 32768))}
-        >
-          <ChevronLeft size={16} aria-hidden="true" />
-          Previous window
-        </button>
-        <button
-          className="secondary"
-          disabled={content.page.next_offset === null}
-          onClick={() => {
-            if (content.page.next_offset !== null)
-              setOffset(content.page.next_offset);
-          }}
-        >
-          Next window
-          <ChevronRight size={16} aria-hidden="true" />
-        </button>
-      </nav>
+      <details className="source-technical">
+        <summary>Technical details</summary>
+        <div className="source-window-meta">
+          <p>
+            {entry.byte_count
+              ? `Bytes ${number(offset + 1)}–${number(offset + content.page.byte_count)} of ${number(entry.byte_count)}`
+              : "Empty file"}
+          </p>
+          <span>
+            <Check size={15} aria-hidden="true" />
+            Window checksum verified
+          </span>
+        </div>
+        {(content.textStart !== offset ||
+          content.textEnd !== offset + content.page.byte_count) && (
+          <p className="source-byte-note">
+            Text preview aligned to UTF-8: bytes {number(content.textStart + 1)}
+            –{number(content.textEnd)}. Adjacent windows can overlap at a
+            character boundary.
+          </p>
+        )}
+        <dl>
+          <div>
+            <dt>File size</dt>
+            <dd>{number(entry.byte_count)} bytes</dd>
+          </div>
+          <div>
+            <dt>File mode</dt>
+            <dd>{(entry.mode & 0o777).toString(8).padStart(4, "0")}</dd>
+          </div>
+          <div>
+            <dt>File SHA-256</dt>
+            <dd>{entry.sha256}</dd>
+          </div>
+          <div>
+            <dt>Window SHA-256</dt>
+            <dd>{content.page.sha256}</dd>
+          </div>
+        </dl>
+        <SnapshotProvenance reference={reference} />
+      </details>
+      {(offset > 0 || content.page.next_offset !== null) && (
+        <nav className="source-pagination" aria-label="Source byte windows">
+          <button
+            className="secondary"
+            disabled={offset === 0}
+            onClick={() => setOffset(Math.max(0, offset - 32768))}
+          >
+            <ChevronLeft size={16} aria-hidden="true" />
+            Previous window
+          </button>
+          <button
+            className="secondary"
+            disabled={content.page.next_offset === null}
+            onClick={() => {
+              if (content.page.next_offset !== null)
+                setOffset(content.page.next_offset);
+            }}
+          >
+            Next window
+            <ChevronRight size={16} aria-hidden="true" />
+          </button>
+        </nav>
+      )}
     </>
   );
 }

@@ -1,6 +1,12 @@
 /* Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0 */
 import { createHash } from "node:crypto";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Locator } from "@playwright/test";
+import { mockIdentity } from "./auth-fixture";
+import {
+  mockFactoryDashboard,
+  openFactoryRun,
+} from "./factory-dashboard-fixture";
+import { navigate } from "./navigation";
 
 const hash = (data: Buffer) => createHash("sha256").update(data).digest("hex");
 const longPath =
@@ -68,24 +74,81 @@ type Control = {
   writes: number;
   external: number;
   delay: boolean;
+  release: () => void;
 };
+const runs = ["a", "f"].map((id) => ({
+  id: id.repeat(32),
+  repository_id: "3".repeat(32),
+  project_id: "2".repeat(32),
+  brief: `Recorded source ${id}`,
+  status: "paused",
+  verification: [],
+  events: [],
+}));
+async function openSource(page: Page, id = "a") {
+  await navigate(page, "Factory");
+  await openFactoryRun(page, `Recorded source ${id}`);
+  await page.getByRole("tab", { name: "Code", exact: true }).click();
+}
+async function enter(page: Page) {
+  await page.goto("/");
+  await navigate(page, "Connections");
+  await page
+    .getByLabel("API token", { exact: true })
+    .fill("source-fixture-at-least-24-characters");
+  await page
+    .getByRole("button", { name: "Save connection", exact: true })
+    .click();
+  await openSource(page);
+}
 async function intercept(page: Page): Promise<Control> {
+  let release = () => {};
+  const delayed = new Promise<void>((resolve) => {
+    release = resolve;
+  });
   const control: Control = {
     mode: "published",
     calls: [],
     writes: 0,
     external: 0,
     delay: false,
+    release,
   };
   await page.route("**/*", async (route) => {
     const req = route.request(),
       url = new URL(req.url());
+    if (url.hostname === "127.0.0.1" && (await mockIdentity(route))) return;
     if (url.hostname !== "127.0.0.1" || req.method() !== "GET") {
       if (req.method() !== "GET") control.writes++;
       else control.external++;
       return route.abort();
     }
     if (!url.pathname.startsWith("/api/v1/")) return route.continue();
+    if (!url.pathname.includes("/source/revisions")) {
+      if (await mockFactoryDashboard(route, { projects: [], runs })) return;
+      const run = runs.find((item) =>
+        url.pathname.endsWith("/runs/" + item.id),
+      );
+      return route.fulfill({
+        json:
+          run ??
+          (url.pathname.endsWith("/repositories")
+            ? [
+                {
+                  id: "3".repeat(32),
+                  name: "Recorded inventory",
+                  provider: "git",
+                  url: "https://example.test/inventory.git",
+                  default_branch: "main",
+                },
+              ]
+            : url.pathname.endsWith("/runs")
+              ? runs
+              : url.pathname.endsWith("/health")
+                ? { status: "ok", execution_ready: false }
+                : []),
+      });
+    }
     control.calls.push(url.pathname + url.search);
     if (control.mode === "revoked")
       return route.fulfill({
@@ -163,8 +226,7 @@ async function intercept(page: Page): Promise<Control> {
       offset = Number(url.searchParams.get("offset")),
       limit = Number(url.searchParams.get("limit"));
     expect(limit === 32768 || (limit >= 1 && limit <= 3)).toBe(true);
-    if (control.delay && runId === "a".repeat(32))
-      await new Promise((resolve) => setTimeout(resolve, 500));
+    if (control.delay && runId === "a".repeat(32)) await delayed;
     const data = n === 1 ? frontend : index === 2 ? binary : source;
     const content = data.subarray(offset, offset + limit);
     let text: string | null;
@@ -198,6 +260,18 @@ async function intercept(page: Page): Promise<Control> {
   });
   return control;
 }
+async function verified(panel: Locator) {
+  const details = panel.getByText("Technical details", { exact: true });
+  if (
+    !(await details.evaluate((element) =>
+      element.parentElement!.hasAttribute("open"),
+    ))
+  )
+    await details.click();
+  await expect(
+    panel.getByText("Window checksum verified", { exact: true }),
+  ).toBeVisible();
+}
 for (const [width, theme] of [
   [1440, "light"],
   [1440, "dark"],
@@ -212,14 +286,12 @@ for (const [width, theme] of [
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     const control = await intercept(page);
-    await page.goto(`/__source_explorer__?theme=${theme}`);
+    await enter(page);
     const panel = page.getByRole("region", {
       name: "Recorded source snapshot",
       exact: true,
     });
-    await expect(
-      panel.getByText("Window checksum verified", { exact: true }),
-    ).toBeVisible();
+    await verified(panel);
     await expect(
       panel.getByText(/Text preview aligned to UTF-8/),
     ).toBeVisible();
@@ -227,7 +299,7 @@ for (const [width, theme] of [
       "retainStock",
     );
     await expect(panel.getByLabel("Recorded source code")).toContainText("€");
-    expect(await page.locator("img").count()).toBe(0);
+    expect(await panel.locator("img").count()).toBe(0);
     expect(
       await page.evaluate(() => Reflect.get(window, "__SOURCE_EXECUTED__")),
     ).toBeUndefined();
@@ -237,25 +309,36 @@ for (const [width, theme] of [
       font: getComputedStyle(element).fontFamily,
       targets: [...element.querySelectorAll("button,select,summary")]
         .filter((x) => x.getClientRects().length > 0)
-        .map((x) => x.getBoundingClientRect().height),
-      footer:
+        .map((x) => ({
+          name:
+            x.getAttribute("aria-label") || x.textContent?.trim().slice(0, 100),
+          height: x.getBoundingClientRect().height,
+        })),
+      footerGap:
         document
-          .querySelector(".source-fixture-footer")!
-          .getBoundingClientRect().top >=
-        element.getBoundingClientRect().bottom,
+          .querySelector(".workspace-main > footer")!
+          .getBoundingClientRect().top -
+        document
+          .querySelector(".workspace-main > main")!
+          .getBoundingClientRect().bottom,
     }));
     expect(geometry.overflow).toBe(false);
     expect(geometry.font).toContain("Manrope");
-    expect(geometry.targets.every((n) => n >= 44)).toBe(true);
-    expect(geometry.footer).toBe(true);
-    await page.screenshot({
-      path: info.outputPath(`source-${width}-${theme}.png`),
-      fullPage: false,
+    await info.attach("source-shell-geometry", {
+      body: JSON.stringify(geometry),
+      contentType: "application/json",
     });
+    expect(geometry.targets.every((target) => target.height >= 44)).toBe(true);
+    expect(geometry.footerGap).toBeGreaterThanOrEqual(0);
     await panel
       .getByRole("button", { name: "Next window", exact: true })
       .click();
     await expect(panel).toContainText("Bytes 32,769");
+    await expect(
+      panel.getByText("Preview lines · numbering restarts in this window", {
+        exact: true,
+      }),
+    ).toBeVisible();
     await expect(panel.getByLabel("Recorded source code")).not.toContainText(
       "�",
     );
@@ -284,11 +367,12 @@ for (const [width, theme] of [
       "columns",
     );
     await panel
-      .getByRole("combobox", { name: "Recorded branch", exact: true })
+      .getByRole("button", { name: "Change branch or snapshot", exact: true })
+      .click();
+    await panel
+      .getByRole("combobox", { name: "Branch", exact: true })
       .selectOption("release/retained-ui");
-    await expect(
-      panel.getByText("Window checksum verified", { exact: true }),
-    ).toBeVisible();
+    await verified(panel);
     control.mode = "corrupt";
     await panel
       .getByRole("button", { name: "Next window", exact: true })
@@ -315,9 +399,7 @@ for (const [width, theme] of [
     await panel
       .getByRole("button", { name: "Refresh records", exact: true })
       .click();
-    await expect(
-      panel.getByText("Window checksum verified", { exact: true }),
-    ).toBeVisible();
+    await verified(panel);
     control.mode = "revoked";
     await panel
       .getByRole("button", { name: "Next window", exact: true })
@@ -336,21 +418,15 @@ test("a late response from the previous run cannot cross a scoped view switch", 
 }) => {
   const control = await intercept(page);
   control.delay = true;
-  await page.goto("/__source_explorer__?theme=light");
+  await enter(page);
   await expect(
     page.getByText("Verifying source window…", { exact: true }),
   ).toBeVisible();
-  await page.evaluate(() =>
-    window.dispatchEvent(
-      new CustomEvent("source-fixture", {
-        detail: { runId: "f".repeat(32), token: "other-scoped-fixture-token" },
-      }),
-    ),
+  await openSource(page, "f");
+  control.release();
+  await verified(
+    page.getByRole("region", { name: "Recorded source snapshot", exact: true }),
   );
-  await expect(
-    page.getByText("Window checksum verified", { exact: true }),
-  ).toBeVisible();
-  await page.getByText("View snapshot provenance", { exact: true }).click();
   await expect(
     page.getByRole("region", { name: "Recorded source snapshot" }),
   ).not.toContainText("a".repeat(32));

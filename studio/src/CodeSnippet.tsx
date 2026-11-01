@@ -75,25 +75,26 @@ function renderNodes(nodes: RootContent[]): ReactNode[] {
     );
   });
 }
-export function CodeSnippet({
-  value,
-  language,
-}: {
+type SnippetProps = {
   value: string;
   language?: string;
-}) {
-  return <SnippetContent key={value} value={value} language={language} />;
+  lineNumbers?: boolean;
+  label?: string;
+  copyLabel?: string;
+};
+export function CodeSnippet(props: SnippetProps) {
+  return <SnippetContent key={props.value} {...props} />;
 }
 function SnippetContent({
   value,
   language,
-}: {
-  value: string;
-  language?: string;
-}) {
+  lineNumbers = false,
+  label,
+  copyLabel = "Copy code",
+}: SnippetProps) {
   const normalized = language?.trim().toLowerCase() || "text";
   const syntax = aliases[normalized] ?? normalized;
-  const label = labels[syntax] ?? language ?? "Text";
+  const languageLabel = labels[syntax] ?? language ?? "Text";
   const [result, setResult] = useState<{
     value: string;
     syntax: string;
@@ -146,11 +147,11 @@ function SnippetContent({
       data-highlight={current ? "grammar" : "plain"}
     >
       <figcaption>
-        <span title={label}>{label}</span>
+        <span title={languageLabel}>{languageLabel}</span>
         <button
           type="button"
           className="code-snippet-copy"
-          aria-label="Copy code"
+          aria-label={copyLabel}
           onClick={() => void copy()}
         >
           {copied === "copied" ? (
@@ -161,7 +162,19 @@ function SnippetContent({
           {copied === "copied" ? "Copied" : "Copy"}
         </button>
       </figcaption>
-      <pre tabIndex={0} aria-label={`${label} code`}>
+      <pre
+        tabIndex={0}
+        aria-label={label ?? `${languageLabel} code`}
+        data-line-numbers={lineNumbers || undefined}
+      >
+        {lineNumbers && (
+          <span className="code-line-numbers" aria-hidden="true">
+            {value
+              .split("\n")
+              .map((_, index) => index + 1)
+              .join("\n")}
+          </span>
+        )}
         <code>{current ? renderNodes(current.nodes) : value}</code>
       </pre>
       <span

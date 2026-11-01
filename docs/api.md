@@ -17,6 +17,12 @@ running application's OpenAPI document is the authoritative schema.
 
 ## Read recorded source
 
+In Studio, open a run from **Factory** and choose **Code**. Select a
+recorded branch and snapshot to browse its archived files. File windows are
+verified against the selected manifest and checksum before display. This view
+reads existing archives; it does not publish source, rescan credentials or run
+work. Current sign-in and project read permission remain required.
+
 These read-only endpoints require the current native identity and project read
 permission. Responses use `Cache-Control: private, no-store`. Snapshot IDs,
 catalog manifests and file indexes identify evidence; they do not grant access.

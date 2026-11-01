@@ -78,6 +78,7 @@ import {
   TimelineEventView,
 } from "./ExecutionPresentation";
 import { GitDiffBrowser } from "./GitDiffBrowser";
+import { SourceExplorer } from "./SourceExplorer";
 import { RunVerification } from "./RunVerification";
 import { ProviderActivityView } from "./ProviderActivityView";
 import { DeliverySetup, RunDelivery } from "./Delivery";
@@ -2839,6 +2840,7 @@ function RunDetail({
   const [tab, setTab] = useState<
     | "timeline"
     | "diff"
+    | "source"
     | "verification"
     | "artifacts"
     | "plan"
@@ -2854,6 +2856,9 @@ function RunDetail({
     { id: "plan" as const, icon: BookOpen, label: "Plan" },
     { id: "questions" as const, icon: MessageSquare, label: "Agent questions" },
     { id: "diff" as const, icon: FileDiff, label: "Changes" },
+    ...(session
+      ? [{ id: "source" as const, icon: FolderGit2, label: "Code" }]
+      : []),
     { id: "verification" as const, icon: ShieldCheck, label: "Verification" },
     { id: "review" as const, icon: ShieldCheck, label: "Independent review" },
     { id: "artifacts" as const, icon: Box, label: "Artifacts" },
@@ -3061,6 +3066,20 @@ function RunDetail({
               )}
             </>
           ))}
+        {tab === "source" && session && (
+          <SourceExplorer
+            key={JSON.stringify([
+              run.id,
+              connection.base,
+              connection.token,
+              session.user.id,
+              session.global_admin,
+              session.memberships,
+            ])}
+            connection={connection}
+            runId={run.id}
+          />
+        )}
         {tab === "verification" && (
           <RunVerification
             key={JSON.stringify([

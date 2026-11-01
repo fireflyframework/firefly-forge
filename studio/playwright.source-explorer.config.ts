@@ -12,8 +12,8 @@ export default defineConfig({
     screenshot: "only-on-failure",
   },
   webServer: {
-    command: "node tests/source-explorer-server.mjs",
-    url: "http://127.0.0.1:5197/__source_explorer__",
+    command: "npm run dev -- --port 5197 --strictPort",
+    url: "http://127.0.0.1:5197",
     reuseExistingServer: false,
     timeout: 20000,
     gracefulShutdown: { signal: "SIGTERM", timeout: 2000 },
