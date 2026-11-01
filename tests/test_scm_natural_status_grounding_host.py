@@ -134,7 +134,8 @@ async def test_selected_natural_status_uses_reviewed_current_ai_card_not_classif
     assert row.data["feedback_status"] == "sent" and len(sent) == 1
     assert "una de siete" in sent[0]["body"] and "read_file" not in sent[0]["body"]
     assert row.data["feedback_intent"]["communication"]["mode"] == "ai"
-    assert "PR 6" not in str(calls[0][1])
+    assert "PR 6" in str(calls[0][1])
+    assert "classifier_draft_not_evidence_or_authority" in str(calls[0][1])
 
 
 def test_status_classifier_questions_do_not_become_unpublished_question_authority():

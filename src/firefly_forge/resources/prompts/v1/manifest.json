@@ -3145,6 +3145,46 @@
       "sha256": "f35d8578f12763f9343e085dc7b5925be8cb996af687f51f090ea86f508145e5",
       "field": "user",
       "variables": {}
+    },
+    {
+      "id": "collaboration/communication-system",
+      "version": "1.0.10",
+      "path": "collaboration/communication-system-1.0.10.yaml",
+      "sha256": "ebb1f05aea31ddf6a5a8a5a4c9e9939358b143cc95ef3ee45bd3135f757a9678",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "collaboration/communication-review-system",
+      "version": "1.0.7",
+      "path": "collaboration/communication-review-system-1.0.7.yaml",
+      "sha256": "5481e02038a7017ff4c2f11a93e456dd92426b1cc537d794630e19e7068f6a51",
+      "field": "user",
+      "variables": {}
+    },
+    {
+      "id": "collaboration/communication-repair-request",
+      "version": "1.0.2",
+      "path": "collaboration/communication-repair-request-1.0.2.yaml",
+      "sha256": "2bfaf97be959a124888683eecf58ed30de24160e2a471f1df55865311ce95a74",
+      "field": "user",
+      "variables": {
+        "facts": "string",
+        "candidate": "string",
+        "review": "string",
+        "fact_ids": "string",
+        "context": "string"
+      }
+    },
+    {
+      "id": "collaboration/communication-delivery-references",
+      "version": "1.0.0",
+      "path": "collaboration/communication-delivery-references.yaml",
+      "sha256": "dad8925e766981ebc1e740a504f81784363879265a05283e1a65bfa0aeb30b37",
+      "field": "user",
+      "variables": {
+        "references": "string"
+      }
     }
   ]
 }
