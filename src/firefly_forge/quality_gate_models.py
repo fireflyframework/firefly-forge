@@ -12,6 +12,16 @@ from firefly_forge.models import NewWorkCommand
 from firefly_forge.product_provenance import content_digest as digest
 
 Level = Literal["none", "note", "warning", "error"]
+QualityReason = Literal[
+    "locked_tool_observed",
+    "tool_failed",
+    "findings_exceed_policy",
+    "checks_passed",
+    "incomplete_or_unsupported_report",
+    "locked_tool_not_established",
+    "prerequisite_unavailable",
+    "unsafe_quality_evidence",
+]
 
 
 def quality_version(value: Any) -> Any:
@@ -108,6 +118,18 @@ class QualityBindingV1(BaseModel):
     framework_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
 
 
+class QualityStepDescriptorV1(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+    version: Literal[1] = 1
+    ordinal: int = Field(ge=1)
+    gate_id: str = Field(pattern=r"^[a-z][a-z0-9-]*:[0-9]+$")
+    phase: Literal["prerequisite", "check"]
+    contract: QualityGateContractV1
+    command: NewWorkCommand
+
+    _version = field_validator("version", mode="before")(quality_version)
+
+
 class QualityLocationV1(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
     path: str | None = None
@@ -151,7 +173,9 @@ class QualityObservationV1(BaseModel):
     report_bytes: int = Field(ge=0)
     output_truncated: bool
     findings: list[QualityFindingV1]
-    reason: str = Field(min_length=1)
+    finding_count: int = Field(ge=0)
+    findings_quarantined: bool
+    reason: QualityReason
     prerequisite_digest: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     digest: str = Field(pattern=r"^[a-f0-9]{64}$")
 
@@ -166,6 +190,7 @@ class QualityObservationV1(BaseModel):
         if self.status == "passed" and (
             self.exit_code != 0
             or self.output_truncated
+            or self.findings_quarantined
             or not self.tool_version
             or self.tool_version != self.contract.tool.approved_version
             or self.tool_identity_digest is None
@@ -175,9 +200,20 @@ class QualityObservationV1(BaseModel):
             or sum(item.level in self.contract.fail_levels for item in self.findings) > self.contract.max_findings
         ):
             raise ValueError("Passing quality evidence contradicts its actual observation")
+        if self.findings_quarantined:
+            if self.findings or self.status != "indeterminate" or self.reason != "unsafe_quality_evidence":
+                raise ValueError("Quarantined quality evidence cannot declare accepted findings")
+        elif self.finding_count != len(self.findings):
+            raise ValueError("Quality finding count differs from the complete retained report")
         return self
 
 
 def quality_observation(**values: Any) -> QualityObservationV1:
-    value = {"version": 1, "prerequisite_digest": None, **values}
+    value = {
+        "version": 1,
+        "prerequisite_digest": None,
+        "finding_count": len(values.get("findings", [])),
+        "findings_quarantined": False,
+        **values,
+    }
     return QualityObservationV1.model_validate({**value, "digest": digest(value)})

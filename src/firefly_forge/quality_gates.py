@@ -18,6 +18,7 @@ from firefly_forge.quality_gate_models import (
     QualityGateContractV1,
     QualityLocationV1,
     QualityObservationV1,
+    QualityReason,
     quality_observation,
     quality_path,
 )
@@ -142,7 +143,8 @@ def observe_quality(
     attested_tool_identity: str | None = None,
     logical_argv: list[str] | None = None,
 ) -> QualityObservationV1:
-    status, reason, version = "indeterminate", "prerequisite_unavailable", None
+    status, version = "indeterminate", None
+    reason: QualityReason = "prerequisite_unavailable"
     identity = None
     findings: list[QualityFindingV1] = []
     contract_digest = digest(contract.model_dump(mode="json"))
@@ -227,3 +229,27 @@ def observe_quality(
         reason=reason,
         prerequisite_digest=prerequisite.digest if prerequisite is not None else None,
     )
+
+
+def sanitize_quality_observation(
+    observation: QualityObservationV1, credentials: dict[str, str]
+) -> QualityObservationV1:
+    from firefly_forge.configuration import redact_secrets
+    from firefly_forge.secrets import redact_environment
+
+    observation = QualityObservationV1.model_validate(observation.model_dump(mode="json"))
+
+    def safe(value: str) -> str:
+        return redact_environment(redact_secrets(value, credentials))
+
+    values = observation.model_dump(mode="json", exclude={"digest"})
+    for finding in values["findings"]:
+        references = [finding["rule_id"], finding["path"], *(item["path"] for item in finding["locations"])]
+        if any(value is not None and safe(value) != value for value in references):
+            # Retain the known process outcome while withholding unsafe source references.
+            values.update(
+                status="indeterminate", reason="unsafe_quality_evidence", findings=[], findings_quarantined=True
+            )
+            return quality_observation(**values)
+        finding["message"] = safe(finding["message"])
+    return quality_observation(**values)

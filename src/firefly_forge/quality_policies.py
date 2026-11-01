@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from firefly_forge.models import Command, NewWorkCommand
 from firefly_forge.product_provenance import content_digest as digest
 from firefly_forge.prompts import prompt_text
-from firefly_forge.quality_gate_models import QualityGateContractV1, quality_version
+from firefly_forge.quality_gate_models import QualityGateContractV1, QualityStepDescriptorV1, quality_version
 
 Data = dict[str, Any]
 
@@ -53,6 +53,28 @@ class QualityCommand(NewWorkCommand):
     gate_id: str = Field(exclude=True)
     phase: Literal["prerequisite", "check"] = Field(exclude=True)
     quality_contract: QualityGateContractV1 = Field(exclude=True)
+
+
+def quality_descriptors(commands: list[Command | NewWorkCommand]) -> list[QualityStepDescriptorV1]:
+    result = []
+    seen = set()
+    for ordinal, command in enumerate(commands, 1):
+        if not isinstance(command, QualityCommand):
+            continue
+        key = command.gate_id, command.phase
+        if key in seen:
+            raise ValueError("Quality gate phases must have one unambiguous command")
+        seen.add(key)
+        result.append(
+            QualityStepDescriptorV1(
+                ordinal=ordinal,
+                gate_id=command.gate_id,
+                phase=command.phase,
+                contract=command.quality_contract,
+                command=NewWorkCommand.model_validate(command.model_dump(mode="json")),
+            )
+        )
+    return result
 
 
 _MYPY = "[mypy]\nstrict = True\nfollow_imports = normal\nwarn_unused_ignores = True\n"
