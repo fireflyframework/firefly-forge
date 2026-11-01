@@ -325,7 +325,10 @@ class GitDeliveries:
 
     @asynccontextmanager
     async def _custody_owned(self, run_id: str, actor: Data | None) -> AsyncIterator[Any]:
+        from firefly_forge.git_linked_verification import bind_linked_git_writer, linked_git_actor_ids
+
         async with self.store.source_budget_admission_unit() as session:
+            locked = None
             if self.authorization is None:
                 from pyfly.data.relational.sqlalchemy import LockMode
                 from sqlalchemy import text
@@ -341,7 +344,9 @@ class GitDeliveries:
                     text("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))"),
                     {"key": self.store.schema + ":members:" + run["project_id"]},
                 )
-                for user_id in sorted({actor["user_id"], run["execution_actor"]["user_id"]}):
+                for user_id in sorted(
+                    {actor["user_id"], run["execution_actor"]["user_id"]} | linked_git_actor_ids(run_id)
+                ):
                     user = await ForgeIdentityUserRepository().find_by_id(
                         identifier(user_id), lock=LockMode.PESSIMISTIC_WRITE
                     )
@@ -350,8 +355,11 @@ class GitDeliveries:
                 await ForgeProjectRepository().find_by_id(
                     identifier(run["project_id"]), lock=LockMode.PESSIMISTIC_WRITE
                 )
-                await self.journal._run(run_id)
+                locked = await self.journal._run(run_id)
+            cut = await bind_linked_git_writer(self, run_id, locked) if locked is not None else None
             yield session
+            if cut is not None:
+                cut.seal_phase()
 
     async def checkpoint(
         self,

@@ -3,22 +3,42 @@
 
 from __future__ import annotations
 
+import asyncio
 import copy
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from pathlib import Path
 from typing import Any
 
 from pyfly.data.transaction import current_unit_of_work
+from pyfly.data.transaction.synchronization import TransactionSynchronizationAdapter, register_synchronization
+from pyfly.data.transaction.unit_of_work import UnitOfWork
 
+from firefly_forge.checkpoint_source_identity import SelectedSourceFence
 from firefly_forge.journal import digest
 from firefly_forge.known_worker_completions import _entries, _task
-from firefly_forge.linked_verification_models import KIND, LinkedVerificationReceiptV1, verification_progress
+from firefly_forge.linked_verification_models import (
+    KIND,
+    LinkedVerificationCandidateV1,
+    LinkedVerificationInputV1,
+    LinkedVerificationReceiptV1,
+    verification_progress,
+)
 from firefly_forge.linked_verifications import _completed_checks
+from firefly_forge.project_access import AccessDenied
+from firefly_forge.scm_linked_verification_models import PreparedSCMLinkedVerificationAdmission
+from firefly_forge.source_snapshot import GitIndexIdentityV1, git_index_identity
 from firefly_forge.store import identifier
 from firefly_forge.unknown_command_proof import continuation_scope
 from firefly_forge.verification_scope_attestation import PreparedBuildScope
+
+
+def _git_phase_binding(run: dict[str, Any]) -> str:
+    # Git writes only these progress fields; source, grants, usage and task phase remain frozen.
+    mutable = {"checkpoint_revision", "git_delivery_head", "git_delivery_summary", "git_delivery_draft", "updated_at"}
+    return digest({key: value for key, value in run.items() if key not in mutable and key != "events"})
 
 
 @dataclass(frozen=True)
@@ -31,19 +51,105 @@ class _PreparedSettlement:
     reader: Any
     inputs: PreparedBuildScope
     current: Callable[[], Awaitable[None]]
+    fence: Callable[[], None]
+    actor_id: str
+    phase_digest: str
+    scm: PreparedSCMLinkedVerificationAdmission | None
+    workspace: Path
+    payload: SelectedSourceFence | None = None
 
 
 _SETTLEMENT: ContextVar[_PreparedSettlement | None] = ContextVar("forge_git_linked_settlement", default=None)
 
 
+def linked_git_actor_ids(run_id: str) -> frozenset[str]:
+    prepared = _SETTLEMENT.get()
+    if prepared is None or prepared.run_id != run_id:
+        return frozenset()
+    return frozenset({prepared.actor_id})
+
+
+@dataclass
+class _GitCommitFence(TransactionSynchronizationAdapter):
+    deliveries: Any
+    prepared: _PreparedSettlement
+    unit: UnitOfWork
+    owner_task: asyncio.Task[Any]
+    row: Any
+    expected: str | None = None
+    index: GitIndexIdentityV1 | None = None
+
+    def _row_digest(self) -> str:
+        return digest({"id": self.row.id.hex, "status": self.row.status, "data": self.row.data})
+
+    def seal_phase(self) -> None:
+        run = {**self.row.data, "id": self.row.id.hex, "status": self.row.status}
+        if _git_phase_binding(run) != self.prepared.phase_digest:
+            raise ValueError("Git writer changed source, grants or implementation phase")
+        self.expected = self._row_digest()
+        self.index = git_index_identity(self.prepared.workspace)
+
+    def fence(self) -> None:
+        if (
+            current_unit_of_work() is not self.unit
+            or self.unit.owner_task is not self.owner_task
+            or self.expected is None
+            or self._row_digest() != self.expected
+            or self.index is None
+            or git_index_identity(self.prepared.workspace) != self.index
+            or self.prepared.payload is None
+        ):
+            raise AccessDenied("Git commit lost its exact native unit, owner task or sealed phase")
+        self.prepared.fence()
+        self.prepared.payload.revalidate(payload_only=True)
+
+    async def before_commit(self, read_only: bool) -> None:
+        if read_only:
+            raise AccessDenied("Git effects require their writable native unit")
+        self.fence()
+        await assert_linked_git_closed(self.deliveries, self.prepared.run_id, prepared=self.prepared)
+        await self.prepared.inputs.fence()
+        self.fence()
+
+
+async def bind_linked_git_writer(deliveries: Any, run_id: str, row: Any) -> _GitCommitFence | None:
+    prepared = _SETTLEMENT.get()
+    if prepared is None:
+        return None
+    unit, task = current_unit_of_work(), asyncio.current_task()
+    if prepared.run_id != run_id or unit is None or task is None or unit.owner_task is not task:
+        raise AccessDenied("Linked Git settlement requires its exact native writer")
+    await assert_linked_git_closed(deliveries, run_id, prepared=prepared)
+    if current_unit_of_work() is not unit or unit.owner_task is not task:
+        raise AccessDenied("Linked Git settlement changed its native writer during preparation")
+    cut = _GitCommitFence(deliveries, prepared, unit, task, row)
+    register_synchronization(cut)
+    return cut
+
+
 @asynccontextmanager
 async def linked_git_scope(deliveries: Any, run_id: str) -> AsyncIterator[None]:
     prepared = await assert_linked_git_closed(deliveries, run_id)
-    token = _SETTLEMENT.set(prepared)
+    payload = None
+    token = None
     try:
+        if prepared is not None:
+            from firefly_forge.agentic_checkpoint_invocation import workspace_source_capture
+
+            source = await workspace_source_capture(
+                deliveries.store, prepared.workspace, assert_current=prepared.current
+            )
+            payload = source.fence
+            if payload is None:
+                raise ValueError("Git settlement requires its retained selected source fence")
+            prepared = replace(prepared, payload=payload)
+        token = _SETTLEMENT.set(prepared)
         yield
     finally:
-        _SETTLEMENT.reset(token)
+        if token is not None:
+            _SETTLEMENT.reset(token)
+        if payload is not None:
+            payload.close()
 
 
 async def assert_linked_git_closed(
@@ -146,30 +252,65 @@ async def assert_linked_git_closed(
 
     if current_unit_of_work() is None:
         from firefly_forge.checkpoint_mode_runtime import mode_execution_scope
+        from firefly_forge.linked_verifications import _scm_binding
 
         owner, generation, reader = (
             store.execution_ownership_token,
             store.configuration.write_generation,
             CURRENT_PRINCIPAL.get(),
         )
+        phase_digest = _git_phase_binding(run)
+        grant: PreparedSCMLinkedVerificationAdmission | None = None
+        scm_seal: dict[str, Any] | None = None
+        inputs: PreparedBuildScope | None = None
 
-        async def current() -> None:
-            await store.assert_ownership()
-            await service._authority(run, actor)
+        def scm_view() -> None:
+            if grant is not None and grant.seal.model_dump(mode="json") != scm_seal:
+                raise ValueError("Git settlement changed its exact prepared SCM consent")
+
+        def fence() -> None:
             if (
-                await store.get_run(run_id) != run
-                or store.execution_ownership_token is not owner
+                store.execution_ownership_token is not owner
                 or store.configuration.write_generation is not generation
                 or CURRENT_PRINCIPAL.get() != reader
                 or _runtime_material_digest() != receipt.candidate.runtime_contract
                 or _policy_material_digest() != receipt.candidate.policy_digest
                 or profile_digest() != receipt.candidate.profile_digest
+                or inputs is not None
+                and digest(inputs.witness.model_dump(mode="json")) != receipt.candidate.input_scope_digest
             ):
                 raise ValueError("Git settlement preparation lost its captured authority")
+            scm_view()
+            if grant is not None:
+                grant.fence()
+
+        async def current() -> None:
+            scm_view()
+            if grant is not None:
+                await grant.current()
+                scm_view()
+                grant.fence()
+            await store.assert_ownership()
+            await service._authority(run, actor)
+            if _git_phase_binding(await store.get_run(run_id)) != phase_digest:
+                raise ValueError("Git settlement preparation lost its captured authority")
+            fence()
 
         async with mode_execution_scope(deliveries.journal, run_id):
             await service.validate_settlement(run_id, receipt.candidate.source_tree, task)
             actor = await service._actor(data["actor"], data["identity"])
+            if actor.authentication_method == "scm_mapping":
+                grant = await service._scm_authority().worker(data["actor"], data["identity"], data)
+                seal = _scm_binding(
+                    grant.seal.model_dump(mode="json"),
+                    data["actor"],
+                    LinkedVerificationCandidateV1.model_validate(data["candidate"]),
+                    LinkedVerificationInputV1.model_validate(data["request"]),
+                    data["parent_run"],
+                )
+                scm_seal = seal.model_dump(mode="json")
+                if scm_seal != data.get("scm_authority"):
+                    raise ValueError("Git settlement changed its recorded SCM consent")
             inputs = await service._inputs(
                 data["parent_run"],
                 entries,
@@ -190,6 +331,11 @@ async def assert_linked_git_closed(
             reader,
             inputs,
             current,
+            fence,
+            actor.id.hex,
+            phase_digest,
+            grant,
+            deliveries.workspace(run),
         )
     captured = prepared or _SETTLEMENT.get()
     if (
@@ -210,6 +356,7 @@ async def assert_linked_git_closed(
     await captured.current()
     if digest(captured.inputs.witness.model_dump(mode="json")) != receipt.candidate.input_scope_digest:
         raise ValueError("Git settlement prepared build inputs changed")
+    captured.fence()
     return captured
 
 
