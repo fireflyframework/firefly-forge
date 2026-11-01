@@ -16,6 +16,7 @@ from test_consumed_terminal_completion_host import (  # noqa: F401
     frozen_original_write_grant,
 )
 
+import firefly_forge.consumed_terminal_reconciliations as reconciliation_module
 from firefly_forge.known_worker_completions import KnownWorkerCompletions
 from firefly_forge.project_access import CURRENT_PRINCIPAL
 from firefly_forge.store import Store
@@ -27,6 +28,13 @@ pytest_plugins = ["test_invalid_read_retained_epoch_engine_host"]
 def memory_owner_identity(monkeypatch):
     from test_bridge_inflight_cancel import MemoryStore
 
+    from firefly_forge import invalid_read_continuities
+
+    monkeypatch.setattr(
+        reconciliation_module, "current_profile_seal", lambda: invalid_read_continuities.current_profile_seal()
+    )
+    # Mock transport headers must not probe the host with uname.
+    monkeypatch.setattr("openai._base_client.get_platform", lambda: "fixture-platform")
     monkeypatch.setattr(
         MemoryStore,
         "execution_ownership_identity",
