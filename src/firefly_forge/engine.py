@@ -1526,8 +1526,6 @@ class Engine:
                 )
                 commands += policy_commands(run.get("policy_snapshot", {}), run["backend"])
                 commands += framework_commands(run)
-                if len(commands) > 20:
-                    raise ValueError("Selected policies exceed the 20 verification-command limit")
                 verification = await self._begin_task(identifier, "verify", workspace, settings, repair_failures)
                 active_key = verification.get("idempotency_key")
                 retained = await self.store.get_run(identifier)
@@ -2494,8 +2492,6 @@ class Engine:
             else None,
         )
         commands += policy_commands(run.get("policy_snapshot", {}), run["backend"])
-        if len(commands) > 20:
-            raise ValueError("Selected policies exceed the 20 verification-command limit")
         verification = await self._begin_task(identifier, "verify", workspace, settings)
         evidence = []
         if verification["disposition"] == "completed":

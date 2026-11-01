@@ -81,6 +81,36 @@ it("shows all seven factory check receipts separately from absent final acceptan
   expect(html).toContain("No final run verification results recorded");
   expect(html).not.toContain("Add verification commands");
 });
+it("shows every large-suite handoff check without accepting an out-of-scope ordinal", () => {
+  const large = structuredClone(run);
+  Object.assign(large.verification_handoff!, {
+    commands_count: 51,
+    completed_commands: 51,
+    failed_commands: 0,
+  });
+  const entries = Array.from({ length: 52 }, (_, index) => {
+    const commandIndex = index + 1,
+      executionId = commandIndex.toString(16).padStart(32, "0");
+    const records = structuredClone(journal.entries.slice(0, 3));
+    records[0].payload.command_index = commandIndex;
+    for (const record of records) {
+      record.payload.execution_id = executionId;
+      if ("ordinal" in record.payload) record.payload.ordinal = commandIndex;
+      if ("exit_code" in record.payload) record.payload.exit_code = 0;
+    }
+    records[1].payload.request!.ordinal = commandIndex;
+    records[1].payload.request!.request.argv = ["check", String(commandIndex)];
+    records[2].payload.evidence!.exit_code = 0;
+    records[2].payload.evidence!.output_excerpt = `Observed check ${commandIndex}`;
+    return records;
+  }).flat();
+  const html = renderToStaticMarkup(
+    <VerificationResults run={large} journal={{ valid: true, entries }} />,
+  );
+  expect(html).toContain("Observed check 51");
+  expect(html).not.toContain("Observed check 52");
+  expect(html.match(/class="record-outcome passed"/g)).toHaveLength(51);
+});
 it("does not borrow foreign or unverified journal command output", () => {
   const foreign = structuredClone(journal);
   foreign.entries[2].payload.execution_id = "f".repeat(32);
