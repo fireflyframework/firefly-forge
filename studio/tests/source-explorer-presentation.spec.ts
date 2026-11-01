@@ -203,6 +203,20 @@ for (const width of [1440, 390])
       await expect(
         panel.getByText("Window checksum verified", { exact: true }),
       ).not.toBeVisible();
+      const openingHeight = await code.evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        const main = document
+          .querySelector(".workspace-main > main")!
+          .getBoundingClientRect();
+        return Math.min(box.bottom, main.bottom) - Math.max(box.top, main.top);
+      });
+      expect(openingHeight).toBeGreaterThan(200);
+      await expect(
+        page.getByRole("tab", { name: "Code", exact: true }),
+      ).toBeFocused();
+      await page.screenshot({
+        path: info.outputPath(`run-detail-code-opening-${width}-${theme}.png`),
+      });
       if (width === 1440 && theme === "light") {
         await page.locator(".workspace-main > main").evaluate((element) => {
           element.scrollTop = 0;
@@ -217,9 +231,6 @@ for (const width of [1440, 390])
         await expect(
           page.getByRole("tab", { name: "Code", exact: true }),
         ).toBeInViewport();
-        await page.screenshot({
-          path: info.outputPath("run-detail-code-entry-1440-light.png"),
-        });
       }
       await panel.evaluate((element) =>
         element.scrollIntoView({ block: "start" }),
