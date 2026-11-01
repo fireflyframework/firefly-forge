@@ -762,12 +762,26 @@ def communication_facts(
             "recorded": current,
             "provenance": "unknown" if current is None else "current" if current else "not_recorded",
         }
-    from firefly_forge.communication_diagnostics import check_diagnostics, claimed_recovery, recorded_error
+    from firefly_forge.communication_diagnostics import check_diagnostics, recorded_error, recorded_recovery
 
-    if claim := claimed_recovery(run):
+    if claim := recorded_recovery(run):
         facts["consumed_terminal_recovery"] = claim
-        if facts.get("factory_verification", {}).get("handoff_status") == "held":
-            facts["factory_verification"]["next_native_action"] = claim["next_native_action"]
+        if verification := facts.get("factory_verification"):
+            request_attempt = (run.get("worker_request") or {}).get("attempt")
+            if (
+                claim["state"] == "accepted"
+                and type(request_attempt) is int
+                and type(run.get("attempt")) is int
+                and 1 <= request_attempt < run["attempt"]
+            ):
+                verification["provenance"] = "retained_before_accepted_implementation"
+                verification.pop("hold", None)
+                counts = verification["checks"]
+                if counts["total"] is not None and counts["recorded"] == counts["total"]:
+                    counts["result"] = "completed"
+                verification["next_native_action"] = claim["next_native_action"]
+            elif claim["state"] == "claimed" and verification.get("handoff_status") == "held":
+                verification["next_native_action"] = claim["next_native_action"]
     if diagnostics := check_diagnostics(run):
         facts["check_diagnostics"] = diagnostics
     if detail := recorded_error(run):
