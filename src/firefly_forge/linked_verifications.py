@@ -9,6 +9,7 @@ import hashlib
 import os
 import time
 import uuid
+from collections.abc import Callable
 from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
@@ -40,8 +41,10 @@ from firefly_forge.known_worker_completions import _entries, _task
 from firefly_forge.linked_verification_models import (
     KIND,
     LinkedVerificationCandidateV1,
+    LinkedVerificationHoldDiagnosticV1,
     LinkedVerificationInputV1,
     LinkedVerificationReceiptV1,
+    VerificationHoldPhase,
     verification_progress,
 )
 from firefly_forge.native_terminal_completion_models import validate_native_receipt
@@ -63,6 +66,47 @@ from firefly_forge.work_duration_models import effective_work_timeout
 from firefly_forge.workspace_tools import _descriptor_path
 
 Data = dict[str, Any]
+
+
+def _hold_diagnostic(phase: VerificationHoldPhase, error: Exception) -> LinkedVerificationHoldDiagnosticV1:
+    causes = {
+        "prepare": "preparation_refused",
+        "admission": "admission_refused",
+        "command_inputs": "input_scope_changed",
+        "dispatch": "transport_error",
+        "result_retention": "result_retention_refused",
+        "post_result_inputs": "input_scope_changed",
+        "post_result_source": "selected_source_changed",
+        "post_result_recapture": "source_capture_refused",
+        "post_result_authority": "authority_refused",
+        "settlement": "settlement_refused",
+    }
+    allowed = {
+        "ValueError",
+        "RuntimeError",
+        "TimeoutError",
+        "OSError",
+        "PermissionError",
+        "FileNotFoundError",
+        "TypeError",
+        "AssertionError",
+        "AccessDenied",
+        "Exception",
+    }
+    exception_type = next((c.__name__ for c in type(error).__mro__ if c.__name__ in allowed), "Exception")
+    return LinkedVerificationHoldDiagnosticV1.model_validate(
+        {
+            "phase": phase,
+            "cause_code": "authority_refused" if isinstance(error, AccessDenied) else causes[phase],
+            "exception_type": exception_type,
+        }
+    )
+
+
+class _PostResultGuardFailure(ValueError):
+    def __init__(self, phase: VerificationHoldPhase, error: Exception) -> None:
+        self.diagnostic = _hold_diagnostic(phase, error)
+        super().__init__("Verification post-result source or input guard changed")
 
 
 def actor_identity(actor: Principal) -> Data:
@@ -298,13 +342,28 @@ class PreparedLinkedVerification:
 
     async def after_result(self) -> None:
         """Rebind ignored output namespaces only after a known successful native result."""
+        phase: VerificationHoldPhase = "post_result_inputs"
+
+        def record_phase(value: VerificationHoldPhase) -> None:
+            nonlocal phase
+            phase = value
+
+        try:
+            await self._after_result(record_phase)
+        except Exception as error:
+            raise _PostResultGuardFailure(phase, error) from None
+
+    async def _after_result(self, phase_changed: Callable[[VerificationHoldPhase], None]) -> None:
         before = self.source
         await self.inputs.fence()
+        phase_changed("post_result_source")
         self._result_payload_current()
+        phase_changed("post_result_recapture")
         after = await workspace_source_capture(
             self.service.store, self.workspace, assert_current=self._authority_current
         )
         try:
+            phase_changed("post_result_source")
             self._result_payload_current()
             if (
                 after.cut != before.cut
@@ -314,6 +373,7 @@ class PreparedLinkedVerification:
                 or after.fence is None
             ):
                 raise ValueError("Known QA outputs changed selected source, identity or index")
+            phase_changed("post_result_authority")
             await self._authority_current()
             after.fence.revalidate()
             self.source = after
@@ -322,7 +382,10 @@ class PreparedLinkedVerification:
                 after.fence.close()
             raise
         before.fence.close()
-        await self.revalidate()
+        phase_changed("post_result_inputs")
+        await self.inputs.fence()
+        phase_changed("post_result_authority")
+        await self.current()
 
     def close(self) -> None:
         self.source.fence.close()
@@ -694,6 +757,8 @@ class LinkedVerifications:
             )
         if data.get("settlement") is not None:
             value["settlement"] = data["settlement"]
+        if events[-1]["kind"] == "linked_verification_held" and "diagnostic" in events[-1]["evidence"]:
+            value["hold_diagnostic"] = events[-1]["evidence"]["diagnostic"]
         result = LinkedVerificationReceiptV1.model_validate(value).model_dump(mode="json")
         await self.store.admit_credentials(result)
         return result
@@ -801,14 +866,17 @@ class LinkedVerifications:
                 await self.requests.records.save(row)
             return event
 
-    async def _hold(self, operation_id: str, reason: str) -> None:
+    async def _hold(
+        self, operation_id: str, reason: str, diagnostic: LinkedVerificationHoldDiagnosticV1 | None = None
+    ) -> None:
         # Outcome retention grants no new effect and must survive changed source inputs.
         await self.store.assert_ownership()
         async with self.store.source_budget_admission_unit():
             row = await self._locked(operation_id)
             if row.status not in {"queued", "executing"}:
                 return
-            await self._event(row, "linked_verification_held", {"reason": reason})
+            evidence = {"reason": reason, **({"diagnostic": diagnostic.model_dump(mode="json")} if diagnostic else {})}
+            await self._event(row, "linked_verification_held", evidence)
             row.status = "failed" if reason == "check_failed" else "needs_reconciliation"
             row.data = {**row.data, "status": row.status, "detail": reason, "updated_at": now()}
             await self.requests.records.save(row)
@@ -847,6 +915,7 @@ class LinkedVerifications:
         if observed["kind"] != KIND or observed["status"] != "queued":
             return
         run_id, prepared, reserved = observed["run_id"], None, False
+        phase: VerificationHoldPhase = "prepare"
         try:
             actor = await self._actor(observed["actor"], observed["identity"])
             async with mode_execution_scope(self.journal, run_id):
@@ -866,6 +935,7 @@ class LinkedVerifications:
                         raise ValueError("SCM verification worker changed its stored grant")
                     await prepared.current()
                 async with self.engine.publication_lock:
+                    phase = "admission"
                     await self._write(
                         prepared,
                         operation_id,
@@ -875,6 +945,7 @@ class LinkedVerifications:
                 backend = self._transport(prepared.run)
                 config = validate_sandbox_snapshot(prepared.run["sandbox_snapshot"])
                 for ordinal, command in enumerate(observed["commands"], 1):
+                    phase = "command_inputs"
                     await prepared.revalidate()
                     intent = await self._write(
                         prepared,
@@ -905,6 +976,7 @@ class LinkedVerifications:
                         if scratch is not None
                         else nullcontext()
                     ):
+                        phase = "dispatch"
                         result = await backend.run(
                             config,
                             physical,
@@ -923,6 +995,7 @@ class LinkedVerifications:
                         .encode()[-32000:]
                         .decode("utf-8", errors="ignore")
                     )
+                    phase = "result_retention"
                     await self._result(
                         operation_id,
                         {
@@ -937,12 +1010,18 @@ class LinkedVerifications:
                         return
                     await prepared.after_result()
                 async with self.engine.publication_lock:
+                    phase = "settlement"
                     await self._settle(prepared, operation_id)
         except asyncio.CancelledError:
             await asyncio.shield(self._hold(operation_id, "shutdown"))
             raise
-        except Exception:
-            await self._hold(operation_id, "unknown")
+        except Exception as error:
+            diagnostic = (
+                error.diagnostic if isinstance(error, _PostResultGuardFailure) else _hold_diagnostic(phase, error)
+            )
+            await self._hold(
+                operation_id, "inputs_changed" if isinstance(error, _PostResultGuardFailure) else "unknown", diagnostic
+            )
         finally:
             if prepared is not None:
                 prepared.close()
