@@ -285,6 +285,25 @@ async def test_accepted_reconciled_handoff_refuses_foreign_custody_and_revoked_o
     authority = await prepare_accepted_reconciled_handoff(env.store, env.journal, run, entries, terminal)
     assert authority is not None and authority.run["verification_handoff"]["status"] == "completed"
     assert run["verification_handoff"]["status"] == "held"
+    from test_known_worker_completion_proof_host import rechain
+
+    from firefly_forge.journal import Journal
+
+    for change in ("run", "entries"):
+        view_run, view_entries = copy.deepcopy(authority.run), copy.deepcopy(authority.entries)
+        try:
+            if change == "run":
+                authority.run["verification_handoff"]["failed_commands"] += 1
+            else:
+                authority.entries[0]["payload"]["changed_view"] = True
+                rechain(authority.entries)
+                assert Journal.verify_chain(authority.entries)
+            with pytest.raises(ValueError, match="historical view"):
+                await authority.current()
+        finally:
+            authority.run.clear()
+            authority.run.update(view_run)
+            authority.entries[:] = view_entries
     for change in (
         "run",
         "attempt",
@@ -388,6 +407,43 @@ async def test_accepted_reconciled_handoff_refuses_foreign_custody_and_revoked_o
         await authority.current()
     assert checks == 2 and len(env.posts) == posts
     env.store.execution_ownership_token = owner
+
+
+async def test_reconciled_historical_view_captures_validated_inputs_before_final_await(
+    consumed_terminal,  # noqa: F811
+    monkeypatch,
+):
+    from test_known_worker_completion_proof_host import rechain
+
+    from firefly_forge.consumed_terminal_completions import prepare_accepted_reconciled_handoff
+    from firefly_forge.journal import Journal
+
+    env = consumed_terminal
+    await test_reconcile_same_claim_without_replay_or_second_charge(env, monkeypatch, held=True)
+    run = await env.store.get_run(env.run_id)
+    entries = await env.journal.entries(env.run_id)
+    original = copy.deepcopy(entries)
+    terminal = next(e for e in reversed(entries) if e["kind"] == "terminal_completion_receipt")
+    witness = next(e for e in entries if e["kind"] == "consumed_terminal_recovery")
+    owned, calls = env.store.assert_ownership, 0
+
+    async def mutate_callers_after_final_query():
+        nonlocal calls
+        await owned()
+        calls += 1
+        if calls == 2:
+            witness["payload"]["run"]["verification_handoff"]["failed_commands"] = 1
+            entries[0]["payload"]["changed_view"] = True
+            rechain(entries)
+            assert Journal.verify_chain(entries)
+
+    monkeypatch.setattr(env.store, "assert_ownership", mutate_callers_after_final_query)
+    view = await prepare_accepted_reconciled_handoff(env.store, env.journal, run, entries, terminal)
+    assert calls == 2
+    assert view.run["verification_handoff"]["failed_commands"] == 0
+    assert view.entries == original[: witness["sequence"] - 1]
+    await view.current()
+    assert await env.journal.entries(env.run_id) == original
 
 
 async def test_reviewed_reconciliation_refuses_runtime_profile_policy_and_index_drift(consumed_terminal, monkeypatch):  # noqa: F811
