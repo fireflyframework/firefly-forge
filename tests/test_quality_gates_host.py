@@ -71,6 +71,7 @@ def observe(report=None, *, format="sarif-2.1.0", exit_code=0, truncated=False, 
             ProcessResult(spec.tool.probe.argv, 0, json.dumps(tool_observation(spec))),
             expected_version="1.2.3",
             phase="prerequisite",
+            attested_tool_identity="9" * 64,
         )
     output = json.dumps(sarif() if report is None else report) if format != "exit-status" else "Checks passed"
     return observe_quality(
@@ -123,6 +124,7 @@ def test_real_tool_absolute_file_uri_must_be_inside_the_captured_project_root(tm
         ProcessResult(spec.tool.probe.argv, 0, json.dumps(tool_observation(spec))),
         expected_version="1.2.3",
         phase="prerequisite",
+        attested_tool_identity="9" * 64,
     )
     report = sarif(
         [
@@ -214,6 +216,7 @@ def test_an_old_prerequisite_cannot_approve_a_new_cut(change):
         ProcessResult(spec.tool.probe.argv, 0, json.dumps(tool_observation(spec))),
         expected_version="1.2.3",
         phase="prerequisite",
+        attested_tool_identity="9" * 64,
     )
     value = scope.model_dump()
     value[change] = "a" * len(value[change])
@@ -238,6 +241,7 @@ def test_missing_or_wrong_tool_is_not_an_accepted_prerequisite():
             ProcessResult(spec.tool.probe.argv, code, output),
             expected_version="1.2.3",
             phase="prerequisite",
+            attested_tool_identity="9" * 64,
         )
         assert result.status != "passed"
 
@@ -251,6 +255,7 @@ def test_duplicate_json_keys_cannot_replace_a_failing_report():
         ProcessResult(spec.tool.probe.argv, 0, '{"package":"example-analyzer","version":"0.1","version":"1.2.3"}'),
         expected_version="1.2.3",
         phase="prerequisite",
+        attested_tool_identity="9" * 64,
     )
     assert result.status == "indeterminate"
 
@@ -276,6 +281,7 @@ def test_multiple_locations_are_one_finding_and_all_locations_are_retained():
         ProcessResult(spec.tool.probe.argv, 0, json.dumps(tool_observation(spec))),
         expected_version="1.2.3",
         phase="prerequisite",
+        attested_tool_identity="9" * 64,
     )
     report = sarif(
         [
@@ -310,6 +316,7 @@ def test_mutated_prerequisite_is_not_authority_even_with_matching_visible_fields
         ProcessResult(spec.tool.probe.argv, 0, json.dumps(tool_observation(spec))),
         expected_version="1.2.3",
         phase="prerequisite",
+        attested_tool_identity="9" * 64,
     )
     object.__setattr__(prerequisite, "report_digest", "e" * 64)
     assert observe(prerequisite=prerequisite).status == "indeterminate"
@@ -325,6 +332,7 @@ def test_recapturing_an_agent_weakened_configuration_cannot_approve_it():
         ProcessResult(spec.tool.probe.argv, 0, json.dumps(tool_observation(spec))),
         expected_version="1.2.3",
         phase="prerequisite",
+        attested_tool_identity="9" * 64,
     )
     assert result.status == "indeterminate"
 
@@ -415,3 +423,26 @@ def test_boolean_observation_version_cannot_be_normalized_before_digest_validati
     value["version"] = True
     with pytest.raises(ValueError):
         QualityObservationV1.model_validate(value)
+
+
+@pytest.mark.parametrize(
+    "category", ["maintainability", "coverage", "dependencies", "secrets", "licenses", "architecture", "accessibility"]
+)
+def test_quality_categories_do_not_imply_an_installed_scanner(category):
+    value = contract().model_dump(mode="json")
+    value["category"] = category
+    assert QualityGateContractV1.model_validate(value).category == category
+
+
+def test_a_json_scanner_cannot_print_its_own_payload_authority():
+    spec = contract()
+    result = observe_quality(
+        "quality:0",
+        spec,
+        binding(),
+        ProcessResult(spec.tool.probe.argv, 0, json.dumps(tool_observation(spec))),
+        expected_version="1.2.3",
+        phase="prerequisite",
+        attested_tool_identity="b" * 64,
+    )
+    assert result.status == "indeterminate"

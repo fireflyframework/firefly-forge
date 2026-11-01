@@ -8,8 +8,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from firefly_forge.journal import digest
-from firefly_forge.models import Command
+from firefly_forge.models import NewWorkCommand
+from firefly_forge.product_provenance import content_digest as digest
 
 Level = Literal["none", "note", "warning", "error"]
 
@@ -42,7 +42,7 @@ class QualityToolV1(BaseModel):
     name: str = Field(min_length=1)
     ecosystem: Literal["python", "composer", "node"]
     lock_file: str
-    probe: Command
+    probe: NewWorkCommand
     version_prefix: str | None = Field(default=None, min_length=1)
     approved_version: str | None = Field(default=None, min_length=1)
 
@@ -53,7 +53,21 @@ class QualityGateContractV1(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
     version: Literal[1] = 1
     tool: QualityToolV1
-    category: Literal["lint", "format", "types", "tests", "build", "security"] = "lint"
+    category: Literal[
+        "lint",
+        "format",
+        "types",
+        "tests",
+        "build",
+        "security",
+        "maintainability",
+        "coverage",
+        "dependencies",
+        "secrets",
+        "licenses",
+        "architecture",
+        "accessibility",
+    ] = "lint"
     format: Literal["exit-status", "sarif-2.1.0"] = "exit-status"
     configuration_paths: list[str] = Field(default_factory=list)
     approved_configuration: dict[str, str] = Field(default_factory=dict)

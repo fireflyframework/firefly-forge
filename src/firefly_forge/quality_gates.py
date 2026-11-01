@@ -10,8 +10,8 @@ from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import unquote, urlsplit
 
-from firefly_forge.journal import digest
 from firefly_forge.process import ProcessResult
+from firefly_forge.product_provenance import content_digest as digest
 from firefly_forge.quality_gate_models import (
     QualityBindingV1,
     QualityFindingV1,
@@ -177,6 +177,7 @@ def observe_quality(
                 or observed["version"] != expected_version
                 or not isinstance(observed["identity_digest"], str)
                 or re.fullmatch(r"[a-f0-9]{64}", observed["identity_digest"]) is None
+                or observed["identity_digest"] != attested_tool_identity
             ):
                 raise ValueError("The installed tool differs from the selected project lock")
             version = expected_version

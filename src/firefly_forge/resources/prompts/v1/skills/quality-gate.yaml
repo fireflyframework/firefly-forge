@@ -1,0 +1,18 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+name: skills/quality-gate
+version: 1.0.0
+description: Required deterministic quality checks and approved rule configuration.
+system_template: ''
+user_template: |-
+  This component requires the project-approved {{ tool }} {{ category }} gate. Its tool version, lock, arguments, rules and thresholds come from the frozen project policy. Configure missing prerequisites before requesting verification; do not install or substitute tools without the existing execution authority.
+
+  Required configuration files, with their exact approved content:
+  {{ configuration_files }}
+
+  Read the actual structured findings and native execution evidence. Correct the reported cause, preserve the required rules and assertions, and rerun the affected checks and complete effective final check list. Do not disable rules, add ignore directives, weaken type checking, change approved configuration or thresholds, or replace a check with a successful echo. Use the existing repair progress and escalation flow when the source cannot satisfy its gates. An AI review cannot waive a failed, unknown, unsupported or unexecuted gate. Intermediate checkpoints remain unverified; verified delivery requires the matching native quality acceptance receipt.
+required_variables:
+- tool
+- category
+- configuration_files
+metadata:
+  defaults: {}

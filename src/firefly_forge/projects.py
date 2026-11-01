@@ -38,11 +38,37 @@ class Projects:
         self.revisions = revisions or ForgeProjectRevisionRepository()
 
     async def configure(self, definition: ProjectDefinition, project_id: str | None = None) -> Data:
+        definition = definition.model_copy(deep=True)
+        quality_requested = definition.quality_policy is not None
+        from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied, ProjectAccess
+
+        quality_user = CURRENT_PRINCIPAL.get()
+        if quality_requested and quality_user is None:
+            raise AccessDenied("Sign in with policy administration authority to change quality requirements")
         self.store.roles.snapshot(definition.roles, self.store.policies.selection())
         await self.store.admit_credentials(definition.model_dump())
         for repository_id in {component.repository_id for component in definition.components}:
             await self.store.repository(repository_id)
-        async with self.store._unit():
+        async with self.store._unit() as session:
+            if quality_requested and quality_user is not None:
+                from sqlalchemy import text
+
+                from firefly_forge.identity_persistence import ForgeIdentityUserRepository
+
+                if project_id:
+                    await session.execute(
+                        text("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))"),
+                        {"key": self.store.schema + ":members:" + project_id},
+                    )
+                identity = await ForgeIdentityUserRepository().find_by_id(
+                    quality_user.id, lock=LockMode.PESSIMISTIC_WRITE
+                )
+                if (
+                    identity is None
+                    or not identity.enabled
+                    or (identity.issuer, identity.subject) != (quality_user.issuer, quality_user.subject)
+                ):
+                    raise AccessDenied("The quality-policy configuration identity is unavailable")
             row = (
                 await self.records.find_by_id(identifier(project_id), lock=LockMode.PESSIMISTIC_WRITE)
                 if project_id
@@ -50,6 +76,27 @@ class Projects:
             )
             if project_id and row is None:
                 raise KeyError("Product project not found")
+            from firefly_forge.quality_policies import ProjectQualityPolicyV1
+
+            previous_quality = row.data["definition"].get("quality_policy") if row else None
+            if definition.quality_policy is None:
+                definition = definition.model_copy(
+                    update={
+                        "quality_policy": ProjectQualityPolicyV1.model_validate(previous_quality)
+                        if previous_quality is not None
+                        else None
+                        if row
+                        else ProjectQualityPolicyV1()
+                    }
+                )
+            elif definition.quality_policy.model_dump(mode="json") != previous_quality:
+                user, access = CURRENT_PRINCIPAL.get(), ProjectAccess(self.store)
+                if user is None or user != quality_user:
+                    raise AccessDenied("Sign in with policy administration authority to change quality requirements")
+                if not await access.current_administrator(user):
+                    if project_id is None:
+                        raise AccessDenied("A current factory administrator must configure new-project quality policy")
+                    await access.require_project(user, project_id, "members")
             data: Data = {
                 "id": row.id.hex if row else uuid.uuid4().hex,
                 "revision": row.data["revision"] + 1 if row else 1,

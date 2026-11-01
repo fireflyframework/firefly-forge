@@ -719,6 +719,18 @@ class Store:
             if prepared_project is not None
             else await Projects(self).component_snapshot(request)
         )
+        from firefly_forge.project_snapshot import snapshot_quality
+        from firefly_forge.quality_policies import ProjectQualityPolicyV1, apply_project_quality
+
+        quality = snapshot_quality(component)
+        if quality is not None:
+            snapshot = apply_project_quality(
+                snapshot,
+                ProjectQualityPolicyV1.model_validate(quality),
+                component["backend"] if component else request.backend,
+                component["frontend"] if component else request.frontend,
+                self.policies,
+            )
         source_checkpoint = None
         if request.source_checkpoint is not None:
             sources = getattr(self, "checkpoint_sources", None)

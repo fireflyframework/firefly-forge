@@ -54,6 +54,8 @@ class PreparedProjectRevision:
             "project_revision_ref": reference,
             "project_role_selection": model.roles.model_dump() if model.roles else None,
         }
+        if model.quality_policy is not None:
+            metadata["project_quality_policy"] = model.quality_policy.model_dump(mode="json")
         return cls(
             json.dumps(metadata, separators=(",", ":"), ensure_ascii=False).encode(),
             MappingProxyType({component.id: component.model_dump_json().encode() for component in model.components}),
@@ -151,3 +153,18 @@ def snapshot_roles(component: Data | None) -> Data | None:
     if value is not None and not isinstance(value, dict):
         raise ValueError("Project role selection requires its frozen object")
     return copy.deepcopy(value)
+
+
+def snapshot_quality(component: Data | None) -> Data | None:
+    if component is None:
+        return None
+    value = (
+        component.get("project_quality_policy")
+        if "project_revision_ref" in component
+        else (component.get("project_definition") or {}).get("quality_policy")
+    )
+    if value is not None:
+        from firefly_forge.quality_policies import ProjectQualityPolicyV1
+
+        return ProjectQualityPolicyV1.model_validate(value).model_dump(mode="json")
+    return None
