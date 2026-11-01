@@ -10,7 +10,7 @@ import uuid
 from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from pyfly.container import service
 from pyfly.data.relational.sqlalchemy import LockMode
@@ -45,6 +45,12 @@ from firefly_forge.native_terminal_completion_models import validate_native_rece
 from firefly_forge.process import ProcessResult, checked
 from firefly_forge.project_access import CURRENT_PRINCIPAL, AccessDenied, ProjectAccess
 from firefly_forge.sandbox_models import SandboxInput, validate_sandbox_snapshot
+from firefly_forge.scm_linked_verification_models import (
+    PreparedSCMLinkedVerificationAdmission,
+    SCMLinkedVerificationAdmissionV1,
+    SCMLinkedVerificationAuthority,
+    SCMLinkedVerificationScopeV1,
+)
 from firefly_forge.source_snapshot import git_index_identity
 from firefly_forge.store import Store, identifier, now
 from firefly_forge.verification_scope_attestation import PreparedBuildScope, prepare_build_scope
@@ -66,6 +72,37 @@ def final_commands(run: Data, workspace: Path) -> list[Data]:
     from firefly_forge.engine import final_verification_commands
 
     return [command.model_dump(mode="json") for command in final_verification_commands(run, workspace)]
+
+
+def _scm_scope(actor: Data, run: Data | None = None) -> SCMLinkedVerificationScopeV1:
+    scope = SCMLinkedVerificationScopeV1.model_validate(actor.get("scm_delegation"))
+    if (
+        set(actor) != {"user_id", "authentication_method", "global_admin", "api_audience", "scm_delegation"}
+        or actor["authentication_method"] != "scm_mapping"
+        or actor["global_admin"] is not False
+        or actor["api_audience"] is not None
+        or scope.native_user_id != actor["user_id"]
+        or run is not None
+        and any(getattr(scope, key) != run.get(key) for key in ("project_id", "repository_id", "component_id"))
+        or run is not None
+        and scope.run_id != run["id"]
+    ):
+        raise AccessDenied("SCM verification requires its exact nonprivileged proposal identity")
+    return scope
+
+
+def _scm_binding(
+    value: Data, actor: Data, candidate: LinkedVerificationCandidateV1, request: LinkedVerificationInputV1, run: Data
+) -> SCMLinkedVerificationAdmissionV1:
+    seal = SCMLinkedVerificationAdmissionV1.model_validate(value)
+    if (
+        seal.scope != _scm_scope(actor, run)
+        or seal.candidate_digest != candidate.digest
+        or seal.request_id != request.request_id
+        or seal.request_digest != request_digest(request.model_dump(mode="json"))
+    ):
+        raise ValueError("SCM verification grant changed its exact reviewed candidate or request")
+    return seal
 
 
 def effective_command_timeout(command: Data, config: SandboxInput) -> int | None:
@@ -108,6 +145,7 @@ def _policy_material_digest() -> str:
                 "linked_verifications.py",
                 "linked_verification_models.py",
                 "linked_verification_controllers.py",
+                "scm_linked_verification_models.py",
                 "execution_requests.py",
                 "execution_request_persistence.py",
                 "runner_backends.py",
@@ -141,13 +179,38 @@ class PreparedLinkedVerification:
     generation: object
     service: LinkedVerifications
     slot: Any
+    scm: PreparedSCMLinkedVerificationAdmission | None = None
+    scm_seal: SCMLinkedVerificationAdmissionV1 | None = None
+    scm_digest: str | None = None
+
+    def bind_scm(self, prepared: PreparedSCMLinkedVerificationAdmission, request: LinkedVerificationInputV1) -> None:
+        # Capture the validated seal before the authority's first awaited revalidation.
+        seal = _scm_binding(
+            prepared.seal.model_dump(mode="json"),
+            ProjectAccess.actor_snapshot(self.actor),
+            self.candidate,
+            request,
+            self.run,
+        )
+        self.scm, self.scm_seal, self.scm_digest = prepared, seal, seal.digest
+        self.fence()
+
+    def _scm_view(self) -> None:
+        if self.scm is not None:
+            seal = SCMLinkedVerificationAdmissionV1.model_validate(self.scm.seal.model_dump(mode="json"))
+            if seal != self.scm_seal or seal.digest != self.scm_digest:
+                raise ValueError("SCM verification grant view changed after preparation")
 
     def fence(self) -> None:
         store = self.service.store
+        self._scm_view()
+        if self.scm is not None:
+            self.scm.fence()
         if (
             store.execution_ownership_token is not self.ownership
             or store.configuration.write_generation is not self.generation
             or CURRENT_PRINCIPAL.get() != self.reader
+            or actor_digest(self.actor) != self.candidate.actor_digest
             or self.service.engine.active.get(self.run["id"]) is not self.slot
             or (self.slot is not None and self.slot.done())
             or (
@@ -179,6 +242,10 @@ class PreparedLinkedVerification:
         return digest(self.source.index.model_dump(mode="json"))
 
     async def current(self) -> None:
+        if self.scm is not None:
+            self._scm_view()
+            await self.scm.current()
+            self.fence()
         await self.service.store.assert_ownership()
         await self.service._authority(self.run, self.actor)
         async with self.service.store._unit():
@@ -205,23 +272,39 @@ class LinkedVerifications:
         self.store, self.journal, self.requests, self.engine = store, journal, requests, engine
         self.completions = BridgeCompletions(store, journal)
 
+    def _scm_authority(self) -> SCMLinkedVerificationAuthority:
+        authority = getattr(self.store, "scm_linked_verification_authority", None)
+        if authority is None:
+            raise AccessDenied("The native SCM verification consent authority is unavailable")
+        return cast(SCMLinkedVerificationAuthority, authority)
+
     async def _authority(self, run: Data, actor: Principal) -> None:
         await self.completions._execution_authority(run, CURRENT_PRINCIPAL.get())
+        mapped = actor.authentication_method == "scm_mapping"
+        if mapped:
+            _scm_scope(ProjectAccess.actor_snapshot(actor), run)
+            await self._scm_authority().review(actor, run["id"])
         await ProjectAccess(self.store).authorize_actor(
             ProjectAccess.actor_snapshot(actor), run.get("project_id"), "execute"
         )
         user = await self.completions._identity(actor.id.hex)
         if (user.issuer, user.subject) != (actor.issuer, actor.subject):
             raise AccessDenied("Linked verification consent identity changed")
-        if validate_sandbox_snapshot(run["sandbox_snapshot"]).mode == "host" and not await ProjectAccess(
-            self.store
-        ).current_administrator(actor):
+        if (
+            not mapped
+            and validate_sandbox_snapshot(run["sandbox_snapshot"]).mode == "host"
+            and not await ProjectAccess(self.store).current_administrator(actor)
+        ):
             raise AccessDenied("Fresh host verification requires a current factory administrator")
         await self.store.assert_campaign_current(run)
 
     async def _actor(self, saved: Data | None = None, identity: Data | None = None) -> Principal:
         actor = CURRENT_PRINCIPAL.get()
         if saved is None:
+            if actor is not None and actor.authentication_method == "scm_mapping":
+                _scm_scope(ProjectAccess.actor_snapshot(actor))
+                self._scm_authority()
+                return actor
             if actor is None or actor.authentication_method not in {"oidc_session", "oidc_bearer", "local_bootstrap"}:
                 raise AccessDenied("A current native operator must consent to fresh verification")
             return actor
@@ -239,6 +322,9 @@ class LinkedVerifications:
         )
         if ProjectAccess.actor_snapshot(principal) != saved:
             raise AccessDenied("Linked verification consent metadata changed")
+        if principal.authentication_method == "scm_mapping":
+            _scm_scope(saved)
+            self._scm_authority()
         if saved.get("global_admin") and not await ProjectAccess(self.store).current_administrator(principal):
             raise AccessDenied("Linked verification administrator consent was revoked")
         return principal
@@ -458,6 +544,10 @@ class LinkedVerifications:
         data = row.data
         candidate = LinkedVerificationCandidateV1.model_validate(data["candidate"])
         body = LinkedVerificationInputV1.model_validate(data["request"])
+        if data["actor"].get("authentication_method") == "scm_mapping":
+            _scm_binding(data.get("scm_authority"), data["actor"], candidate, body, data["parent_run"])
+        elif data.get("scm_authority") is not None:
+            raise ValueError("Native verification cannot borrow an SCM grant")
         if (
             row.kind != KIND
             or row.status != data["status"]
@@ -502,6 +592,11 @@ class LinkedVerifications:
             if row is None or row.kind != KIND or row.run_id != identifier(run_id):
                 raise KeyError("Linked verification operation not found")
             data, events = copy.deepcopy(row.data), await self._events(row)
+        if actor.authentication_method == "scm_mapping" and (
+            actor_digest(actor) != data["candidate"]["actor_digest"]
+            or _scm_scope(ProjectAccess.actor_snapshot(actor), run).proposal_id != request_id
+        ):
+            raise AccessDenied("SCM verification status belongs to another proposal")
         value = dict(
             version=1,
             kind=KIND,
@@ -560,6 +655,10 @@ class LinkedVerifications:
             try:
                 if body.candidate_digest != prepared.candidate.digest:
                     raise ValueError("Reviewed fresh verification inputs changed")
+                if actor.authentication_method == "scm_mapping":
+                    grant = await self._scm_authority().admit(actor, run_id, prepared.candidate, body)
+                    prepared.bind_scm(grant, body)
+                    await prepared.current()
                 data = dict(
                     id=body.request_id,
                     run_id=run_id,
@@ -580,6 +679,8 @@ class LinkedVerifications:
                     created_at=now(),
                     updated_at=now(),
                 )
+                if prepared.scm_seal is not None:
+                    data["scm_authority"] = prepared.scm_seal.model_dump(mode="json")
                 await self.store.admit_credentials(data)
                 async with self.store.source_budget_admission_unit():
                     unit, task = current_unit_of_work(), asyncio.current_task()
@@ -694,6 +795,14 @@ class LinkedVerifications:
                 prepared = await self._prepare(run_id, actor)
                 if prepared.candidate.model_dump(mode="json") != observed["candidate"]:
                     raise ValueError("Fresh verification inputs changed after explicit consent")
+                if actor.authentication_method == "scm_mapping":
+                    grant = await self._scm_authority().worker(observed["actor"], observed["identity"], observed)
+                    prepared.bind_scm(grant, LinkedVerificationInputV1.model_validate(observed["request"]))
+                    if prepared.scm_seal is None or prepared.scm_seal.model_dump(mode="json") != observed.get(
+                        "scm_authority"
+                    ):
+                        raise ValueError("SCM verification worker changed its stored grant")
+                    await prepared.current()
                 async with self.engine.publication_lock:
                     await self._write(
                         prepared,
@@ -914,6 +1023,20 @@ class LinkedVerifications:
         ):
             raise ValueError("Linked verification omitted or changed required final checks")
         actor = await self._actor(data["actor"], data["identity"])
+        grant = None
+        grant_digest = None
+        if actor.authentication_method == "scm_mapping":
+            grant = await self._scm_authority().worker(data["actor"], data["identity"], data)
+            seal = _scm_binding(
+                grant.seal.model_dump(mode="json"),
+                data["actor"],
+                candidate,
+                LinkedVerificationInputV1.model_validate(data["request"]),
+                data["parent_run"],
+            )
+            if seal.model_dump(mode="json") != data.get("scm_authority"):
+                raise ValueError("SCM verification settlement changed its stored grant")
+            grant_digest = seal.digest
         owner, generation, reader = (
             self.store.execution_ownership_token,
             self.store.configuration.write_generation,
@@ -921,6 +1044,12 @@ class LinkedVerifications:
         )
 
         async def current() -> None:
+            if grant is not None:
+                await grant.current()
+                seal = SCMLinkedVerificationAdmissionV1.model_validate(grant.seal.model_dump(mode="json"))
+                if seal.digest != grant_digest:
+                    raise ValueError("SCM verification settlement grant view changed")
+                grant.fence()
             await self.store.assert_ownership()
             await self._authority(run, actor)
             if (
@@ -930,6 +1059,13 @@ class LinkedVerifications:
                 or CURRENT_PRINCIPAL.get() != reader
             ):
                 raise AccessDenied("Linked verification settlement lost its current source owner")
+            if grant is not None:
+                if (
+                    SCMLinkedVerificationAdmissionV1.model_validate(grant.seal.model_dump(mode="json")).digest
+                    != grant_digest
+                ):
+                    raise ValueError("SCM verification settlement grant view changed")
+                grant.fence()
 
         if (
             runtime_contract() != candidate.runtime_contract
