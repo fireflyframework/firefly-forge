@@ -678,6 +678,12 @@ class SCMActorAuthority:
                 raise AccessDenied("The separately consented native resume authority is unavailable")
             await resume.authorize_snapshot(actor, project_id, permission)
             return
+        if isinstance(context, dict) and context.get("transport") == "github_rest_poll_linked_verification_v1":
+            verification = getattr(self.store, "scm_linked_verification_authority", None)
+            if verification is None:
+                raise AccessDenied("The separately consented linked verification authority is unavailable")
+            await verification.authorize_snapshot(actor, project_id, permission)
+            return
         if isinstance(context, dict) and context.get("transport") == "github_rest_poll_functional_v1":
             functional = getattr(self.store, "scm_poll_functional", None)
             if functional is None:

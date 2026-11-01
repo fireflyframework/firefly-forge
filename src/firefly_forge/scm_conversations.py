@@ -375,6 +375,8 @@ class SCMConversations:
                     if state in {"product_answer", "product_request"}
                     else "checkpoint_pending_permission"
                     if state == "checkpoint"
+                    else "verification_pending_permission"
+                    if state in {"verification_request", "verification_confirm"}
                     else None
                 )
                 if result["status"] == "processed" and pending is not None:
@@ -400,6 +402,16 @@ class SCMConversations:
                 from firefly_forge.scm_natural_checkpoints import SCMNaturalCheckpoints
 
                 result = await SCMNaturalCheckpoints(natural).apply(receipt_id)
+            verification = getattr(self.collaboration, "linked_verification_authority", None)
+            if result["status"] == "processed" and (result["natural_turn"].get("resolution") or {}).get("state") in {
+                "verification_request",
+                "verification_confirm",
+                "status",
+            }:
+                if verification is None and (result["natural_turn"].get("resolution") or {}).get("state") != "status":
+                    raise AccessDenied("The separate native verification authority is unavailable")
+                if verification is not None:
+                    result = await verification.apply(receipt_id)
             await self.collaboration.feedback(receipt_id)
             return await self.collaboration.receipt(receipt_id)
         try:

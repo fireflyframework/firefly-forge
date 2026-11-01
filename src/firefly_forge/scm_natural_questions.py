@@ -131,16 +131,28 @@ def natural_producer(receipt: Data) -> Data:
         or not re.fullmatch(r"[a-f0-9]{64}", turn.get("policy_digest", ""))
     ):
         raise ValueError("The typed natural question does not match its completed native producer")
-    return {
+    producer = {
         "receipt_id": receipt["id"],
         "scope": scope,
         "source_digest": turn["source_digest"],
         "policy_digest": turn["policy_digest"],
-        "decision": decision.model_dump(mode="json"),
+        "decision": decision.model_dump(
+            mode="json",
+            exclude={
+                key for key in ("verification_consent", "verification_affirmative_span") if key not in turn["decision"]
+            },
+        ),
         "human_message": turn["human_message"],
         "resolution": turn.get("resolution"),
         "model_selection": turn.get("model_selection"),
     }
+    if receipt.get("natural_verification"):
+        from firefly_forge.scm_linked_verification_records import SCMVerificationRecordV1
+
+        record = SCMVerificationRecordV1.model_validate(receipt["natural_verification"])
+        if record.review is not None:
+            producer["verification_review"] = record.review.model_dump(mode="json")
+    return producer
 
 
 def natural_questions(receipt: Data) -> Data | None:
@@ -148,6 +160,32 @@ def natural_questions(receipt: Data) -> Data | None:
     producer = natural_producer(receipt)
     if receipt["feedback_intent"].get("natural_turn_digest") != digest(producer):
         raise ValueError("The typed natural questions changed after their confirmed publication")
+    if producer.get("verification_review"):
+        from firefly_forge.scm_linked_verification_records import SCMVerificationRecordV1
+
+        record = SCMVerificationRecordV1.model_validate(receipt["natural_verification"])
+        question = producer["verification_review"]["question"]
+        if question not in receipt["feedback_intent"]["body"]:
+            raise ValueError("The exact three verification declarations were not published")
+        reference = {
+            "origin": "natural_turn",
+            "question_id": "natural-" + receipt["id"],
+            "producer_digest": digest(producer),
+            "questions": [question],
+            "publication": publication,
+        }
+        return {
+            **producer["scope"],
+            **reference,
+            "question_digest": digest(reference),
+            "question": question,
+            "question_status": "answered" if record.grant else "pending",
+            "run_status": None,
+            "run_id": None,
+            "consumed": record.grant is not None,
+            "verification_proposal_id": record.base.proposal_id,
+            "verification_run_id": record.base.run_id,
+        }
     decision = producer["decision"]
     resolution = receipt["natural_turn"].get("resolution") or {}
     if (

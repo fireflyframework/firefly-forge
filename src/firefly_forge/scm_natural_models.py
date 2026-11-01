@@ -23,18 +23,26 @@ class GroundedSelection(BaseModel):
 
 class NaturalDecision(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
-    intent: Literal["status", "answer", "resume", "clarify", "dialogue", "product", "checkpoint"]
+    intent: Literal["status", "answer", "resume", "clarify", "dialogue", "product", "checkpoint", "verify"]
     message: str = Field(min_length=1, max_length=12000)
     choice: StrictInt | None = Field(default=None, ge=1, le=200)
     language: Literal["en", "es"] | None = None
     selection_evidence: GroundedSelection | None = None
     questions: list[Annotated[str, Field(min_length=1, max_length=4000)]] = Field(default_factory=list, max_length=10)
     proposal: Data | None = None
+    verification_consent: Literal["request", "approve", "decline", "unclear"] | None = None
+    verification_affirmative_span: str | None = Field(default=None, min_length=1, max_length=12000)
 
     @model_validator(mode="after")
     def unreviewed_dialogue(self) -> NaturalDecision:
         from firefly_forge.scm_natural_render import validate_reply_quote
 
+        if self.intent != "verify" and (
+            self.verification_consent is not None or self.verification_affirmative_span is not None
+        ):
+            raise ValueError("Verification interpretation belongs only to its separate typed intent")
+        if self.verification_affirmative_span is not None and self.verification_consent != "approve":
+            raise ValueError("An affirmative span requires an affirmative interpretation")
         if self.intent == "product" and self.questions:
             raise ValueError("A product handoff leaves architectural follow-up questions to the native product service")
         if any(not question.strip() for question in self.questions):
@@ -72,6 +80,8 @@ class NaturalResolution(BaseModel):
         "conversation_answer",
         "product_request",
         "checkpoint",
+        "verification_request",
+        "verification_confirm",
     ]
     reason: str
     candidates: list[Data] = Field(max_length=200)
@@ -163,6 +173,58 @@ def resolve_task(
     previous: Data | None = None,
 ) -> NaturalResolution:
     """A model selects an offered number; only server evidence supplies task identities."""
+    if decision.intent == "verify":
+        verified = [
+            row
+            for row in candidates
+            if all(row.get(key) == scope.get(key) for key in SCOPE_FIELDS)
+            and row.get("verification_proposal_id")
+            and row.get("question_status") == "pending"
+            and row.get("consumed") is False
+        ]
+        pending = NaturalResolution(
+            scope=scope, state="waiting", reason="verification_review_required", candidates=verified
+        )
+        if decision.verification_consent != "approve":
+            return pending
+        if len(verified) != 1:
+            return pending.model_copy(
+                update={
+                    "reason": "verification_review_ambiguous" if len(verified) > 1 else "verification_review_required"
+                }
+            )
+        span = decision.verification_affirmative_span
+        if not span or not span.strip() or span not in answer:
+            return pending.model_copy(update={"reason": "exact_human_affirmative_required"})
+        row = verified[0]
+        offered = _offered_rows(scope, candidates, question_only=True)
+        competing = [
+            item
+            for item in offered
+            if item.get("question_status") == "pending"
+            and item.get("consumed") is False
+            and item["question_id"] != row["question_id"]
+        ]
+        if competing:
+            choice = decision.choice
+            if (
+                choice is None
+                or choice > len(offered)
+                or decision.selection_evidence is None
+                or offered[choice - 1]["question_id"] != row["question_id"]
+                or not _human_selection(answer, offered, choice, decision.selection_evidence)
+            ):
+                return pending.model_copy(update={"reason": "explicit_verification_reference_required"})
+        return pending.model_copy(
+            update={
+                "state": "verification_confirm",
+                "reason": "same_owner_published_review",
+                "run_id": row["verification_run_id"],
+                "question_id": row["question_id"],
+                "question_digest": row["question_digest"],
+                "answer": answer,
+            }
+        )
     rows = _offered_rows(scope, candidates, question_only=decision.intent in {"answer", "resume"})
     result = NaturalResolution(scope=scope, state="waiting", reason="clarification_required", candidates=rows)
     if previous is not None:
@@ -199,6 +261,8 @@ def resolve_task(
     ):
         return result.model_copy(update={"reason": "explicit_human_choice_required"})
     row = rows[choice - 1]
+    if row.get("verification_proposal_id"):
+        return result.model_copy(update={"reason": "separate_verification_interpretation_required"})
     if row.get("read_only") is True and decision.intent != "status":
         return result.model_copy(update={"reason": "read_only_reference"})
     if row.get("answer_only") is True and decision.intent == "resume":

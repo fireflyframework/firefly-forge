@@ -72,7 +72,7 @@ async def classify(
         name="forge-natural-task-intent",
         model=model,
         output_type=output_spec,
-        instructions=inject_skills(catalog().text("scm-natural/system", version="1.0.3"), ["humanizer"]),
+        instructions=inject_skills(catalog().text("scm-natural/system", version="1.0.4"), ["humanizer"]),
         tools=[],
         retries=0,
         auto_register=False,
