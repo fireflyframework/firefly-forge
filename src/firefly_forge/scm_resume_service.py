@@ -95,6 +95,7 @@ class SCMResumeAuthority:
         self._resuming: ContextVar[tuple[SCMResumeActorContextV1, Principal] | None] = ContextVar(
             "scm_human_resume", default=None
         )
+        self._consumed: ContextVar[Any] = ContextVar("scm_consumed_local_continuation", default=None)
 
     def _actor_context(self, delivery: Data, context: Data) -> SCMResumeActorContextV1:
         run = context["run"]
@@ -117,6 +118,14 @@ class SCMResumeAuthority:
         )
 
     async def authorize_snapshot(self, actor: Data, project_id: str | None, permission: Permission) -> None:
+        consumed = self._consumed.get()
+        if consumed is not None:
+            from firefly_forge.scm_consumed_continuations import PreparedConsumedContinuation
+
+            if not isinstance(consumed, PreparedConsumedContinuation) or consumed.resume is not self:
+                raise AccessDenied("Consumed continuation requires its exact separately prepared resume authority")
+            await consumed.authorize_snapshot(actor, project_id, permission)
+            return
         active = self._resuming.get()
         if active is None or current_unit_of_work() is None:
             raise AccessDenied("SCM clarification authority exists only inside its verified native resume")

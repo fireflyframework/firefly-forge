@@ -347,6 +347,7 @@ class Collaboration:
         self.poll_resume_authority: Any = None
         self.poll_functional_authority: Any = None
         self.linked_verification_authority: SCMLinkedVerifications | None = None
+        self.consumed_continuation_authority: Any = None
         self.source_edit_authority: Any = None
         self.product_change_authority: SCMProductChangeAuthority | None = product_change_authority
         self.product_intake_authority: SCMProductIntake | None = product_intake_authority
@@ -2015,6 +2016,7 @@ class Collaboration:
                 and (data.get("natural_turn") or {}).get("resolution", {}).get("state") == "status"
                 and (data.get("natural_turn") or {}).get("decision", {}).get("intent") == "status"
             )
+            consumed_reply = (data.get("natural_turn") or {}).get("resolution", {}).get("state") == "consumed_continue"
 
             def native_card(current_run: Data) -> str:
                 if data.get("natural_turn") is not None and not natural_status:
@@ -2118,7 +2120,7 @@ class Collaboration:
                     status_draft=data["natural_turn"].get("reply") or None,
                     linked_verification=linked_input,
                 )
-            elif natural_status:
+            elif natural_status or consumed_reply:
                 drafted = await self.communication_writer.write(
                     run,
                     message,
@@ -2169,6 +2171,11 @@ class Collaboration:
             if linked_input is not None and drafted["communication"]["mode"] != "ai":
                 drafted["body"] = ""
                 drafted["communication"].update(mode="held", reason="linked_verification_requires_configured_authoring")
+            if consumed_reply and drafted["communication"]["mode"] != "ai":
+                drafted["body"] = ""
+                drafted["communication"].update(
+                    mode="held", reason="consumed_continuation_requires_configured_authoring"
+                )
             current_run = await self.store.get_run(data["run_id"]) if data.get("run_id") else run
             current_context = await self._feedback_context(data, current_run)
             current_assistant = (
@@ -2212,7 +2219,7 @@ class Collaboration:
                         "discarded_generation": drafted["communication"],
                     },
                 }
-            if natural_status and retained is None and linked_input is None:
+            if (natural_status or consumed_reply) and retained is None and linked_input is None:
                 drafted["communication"]["natural_reply_source"] = "current_execution_facts"
             message = "" if drafted["communication"]["mode"] == "held" else drafted["body"]
             if retained is None and (
@@ -2547,6 +2554,15 @@ class Collaboration:
 
         turn = delivery.get("natural_turn") or {}
         effects = delivery.get("natural_effects") or {}
+        if (
+            delivery.get("status") == "processed"
+            and turn.get("state") in {"consumed_continue", "consumed_held"}
+            and (turn.get("resolution") or {}).get("state") == "consumed_continue"
+            and isinstance(effects, dict)
+            and self.consumed_continuation_authority is not None
+        ):
+            await self.consumed_continuation_authority.apply(delivery["id"], retained_only=True)
+            return
         if (
             delivery.get("status") != "processed"
             or turn.get("state") != "answer_pending_permission"

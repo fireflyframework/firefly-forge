@@ -676,7 +676,7 @@ commands; their natural observation adapters are not implemented by this change.
 
 Authenticated polling lets an execution-owning worker read GitHub issue comments through the configured App installation when GitHub cannot reach the factory. It uses the server-derived transport `github_rest_poll_v1`, without a webhook signature or personal OAuth sign-in. GitLab and Bitbucket continue to use their existing webhook paths.
 
-The polling workflow supports an existing run with an explicit project and component. `status` reads its current state; `respond` answers its exact pending worker question and leaves the run paused. A [separate polling continuation consent](#continue-an-answered-clarification-through-polling) can authorize an explicit same-run clarification continuation. Run creation, cancellation, model/source changes, publication and merge remain outside this transport. Signed-ingress [resume grants](#opt-in-same-run-resume-v2) and [product-change capabilities](#change-an-existing-functional-product) cannot authorize polling actions.
+The polling workflow supports an existing run with an explicit project and component. `status` reads its current state; `respond` answers its exact pending worker question and leaves the run paused. A [separate polling continuation consent](#continue-an-answered-clarification-through-polling) can authorize an explicit same-run clarification continuation or [local settlement of an already consumed result](#continue-an-already-consumed-result-through-github). Run creation, cancellation, model/source changes, publication and merge remain outside this transport. Signed-ingress [resume grants](#opt-in-same-run-resume-v2) and [product-change capabilities](#change-an-existing-functional-product) cannot authorize polling actions.
 
 <div class="forge-flow forge-flow--dependencies" role="region" aria-label="Local GitHub polling and clarification flow" aria-describedby="scm-polling-guide" tabindex="0" markdown="1">
 
@@ -884,6 +884,18 @@ The version 2 command keeps the existing typed continuation semantics; the disti
 A successful action records the native resume and its bound `scm_resume_receipt` once, retains the same execution contract and queues the original run. Queueing is not model execution or product acceptance. Reprocessing the same delivery verifies and returns its original completion without resuming again. Unknown intent or feedback outcomes remain held for explicit reconciliation; a lost response or missing receipt never permits a replacement request. To revoke consent, submit a new reviewed `active: false` grant with the exact previous digest. Historical receipts remain readable subject to current authority.
 
 The new grant history is separate from status/answer and signed-ingress consent. It permits 100 heads, 50 revisions per head, 5,000 requests, 64 KiB per receipt and 16 MiB of retained events. Native PostgreSQL/API tests use recorded GitHub HTTP and no coding model; they do not establish an actual account roundtrip, an executed continuation or a completed product.
+
+### Continue an already consumed result through GitHub
+
+An addressed message such as `@forge continue` can settle an existing consumed-terminal claim when the issue already has an authenticated native reference to that run. The current version 3 polling-resume consent must cover the same registered person, project, repository and component. That person must also be the native operator recorded by the original consumed-result request. Read or answer consent alone is insufficient. A consent does not associate an arbitrary API run with a ticket or let a comment choose an unverified run ID.
+
+This operation finishes only the local postprocessing of the exact claimed worker result. It preserves the original execution actor, task attempt, claimed request, source and spent usage. It records the limited SCM authority separately in the reconciliation record; it does not impersonate the original API session or give the mapped person an administrator role. Ordinary API reconciliation keeps its exact original-actor requirement.
+
+The original worker output, tools and QA are never dispatched again by this continuation. Known acceptance leaves the run paused so that remaining checks, Git delivery and product review retain their independent authority gates. The public reply is drafted and reviewed against the current native facts. A classifier's reply draft is context for that writer, not evidence that settlement or verification succeeded.
+
+The native intent is saved before local settlement. If the response is lost, the polling catch-up path reads that same intent and original request ID. A missing receipt or unknown outcome remains held; it cannot issue a replacement reconciliation or claim. Changed source, account, native permissions, consent, actor or owner refuses continuation.
+
+Mutation uses the authenticated `github_rest_poll_v1` observation. A verified signed GitHub webhook may wake the independent REST scan; its payload alone does not grant this continuation. This path does not extend GitLab or Bitbucket mutation authority. Controlled host tests and recorded transports are separate from live GitHub acceptance and installed-runtime qualification.
 
 ### Polling limits and acceptance boundaries
 

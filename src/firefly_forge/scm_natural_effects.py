@@ -88,7 +88,12 @@ def validate_answer(parent: Data, current: Data) -> None:
 
 
 def projected_delivery(
-    parent: Data, command: Data, *, stage: Literal["answer", "resume"], admission: str, scope_digest: str | None = None
+    parent: Data,
+    command: Data,
+    *,
+    stage: Literal["answer", "resume", "consumed"],
+    admission: str,
+    scope_digest: str | None = None,
 ) -> Data:
     if parent["issue"]["kind"] != "issue":
         raise ValueError("Natural pull-request conversations currently confer read authority only")
@@ -159,12 +164,19 @@ def validate_projection(child: Data, parent: Data) -> None:
         raise ValueError("The natural command projection receipt is malformed")
     if (
         parent.get("status") != "processed"
-        or parent["natural_turn"].get("state") not in {"answer_pending_permission", "answer_saved_pending_resume"}
+        or parent["natural_turn"].get("state")
+        not in {
+            "answer_pending_permission",
+            "answer_saved_pending_resume",
+            "consumed_continue",
+            "consumed_accepted",
+            "consumed_held",
+        }
         or marker["receipt_id"] != parent["id"]
         or marker["intake_digest"] != intake_digest(parent)
         or (parent.get("natural_effects") or {}).get(child["id"]) != marker
         or marker["command_digest"] != digest(child["command"])
-        or marker["stage"] not in {"answer", "resume"}
+        or marker["stage"] not in {"answer", "resume", "consumed"}
     ):
         raise ValueError("The exact natural command projection changed")
     expected = projected_delivery(
@@ -233,6 +245,19 @@ async def authorize_projection(polling: Any, child: Data) -> None:
         or run.get("component_id") not in scope["component_ids"]
     ):
         raise AccessDenied("The natural task no longer belongs to its current authorized project")
+    if marker["stage"] == "consumed":
+        from firefly_forge.scm_consumed_continuations import reference
+
+        current = reference(run, known_settlement=True)
+        if current is None:
+            raise AccessDenied("The original consumed claim is no longer eligible")
+        if (
+            resolution.get("state") != "consumed_continue"
+            or any(current.get(key) != resolution.get(key) for key in ("question_id", "question_digest"))
+            or child["command"].get("expected_response_digest") != current["consumed_continuation"]["claim_digest"]
+        ):
+            raise AccessDenied("The original consumed claim or its selected reference changed")
+        return
     journal = polling.collaboration.deployments.engine.journal
     async with polling.store._unit():
         entries = await journal.records.find_for_run(identifier(run["id"]))
@@ -348,7 +373,7 @@ class NaturalEffects:
         return {**cut, "digest": digest(cut)}
 
     async def _child(
-        self, parent: Data, cut: Data, command: Data, stage: Literal["answer", "resume"], admission: str
+        self, parent: Data, cut: Data, command: Data, stage: Literal["answer", "resume", "consumed"], admission: str
     ) -> Data:
         child = projected_delivery(
             parent, command, stage=stage, admission=admission, scope_digest=digest({"scopes": cut["scopes"]})

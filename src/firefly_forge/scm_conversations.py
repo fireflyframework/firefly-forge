@@ -370,7 +370,7 @@ class SCMConversations:
                 state = resolution.get("state")
                 pending = (
                     "answer_pending_permission"
-                    if state in {"answer", "resume"}
+                    if state in {"answer", "resume", "consumed_continue"}
                     else "product_pending_permission"
                     if state in {"product_answer", "product_request"}
                     else "checkpoint_pending_permission"
@@ -402,6 +402,14 @@ class SCMConversations:
                 from firefly_forge.scm_natural_checkpoints import SCMNaturalCheckpoints
 
                 result = await SCMNaturalCheckpoints(natural).apply(receipt_id)
+            if (
+                result["status"] == "processed"
+                and (result["natural_turn"].get("resolution") or {}).get("state") == "consumed_continue"
+            ):
+                consumed = getattr(self.collaboration, "consumed_continuation_authority", None)
+                if consumed is None:
+                    raise AccessDenied("The separate consumed local-continuation authority is unavailable")
+                result = await consumed.apply(receipt_id)
             verification = getattr(self.collaboration, "linked_verification_authority", None)
             if result["status"] == "processed" and (result["natural_turn"].get("resolution") or {}).get("state") in {
                 "verification_request",

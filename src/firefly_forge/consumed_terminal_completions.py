@@ -17,6 +17,8 @@ from importlib.metadata import version
 from pathlib import Path
 from typing import Any
 
+from pyfly.data.transaction import current_unit_of_work
+
 from firefly_forge.agentic_checkpoint_boundary import BoundaryCheckpoint
 from firefly_forge.agentic_checkpoint_invocation import runtime_contract, workspace_cut, workspace_source_capture
 from firefly_forge.bridge_completions import _outside_unit
@@ -452,9 +454,18 @@ def consumed_closures(witness: Data, entries: list[Data]) -> list[Data]:
 
 
 async def readback(
-    service: Any, run_id: str, request_id: str, *, request: ConsumedTerminalInputV2 | None = None
+    service: Any,
+    run_id: str,
+    request_id: str,
+    *,
+    request: ConsumedTerminalInputV2 | None = None,
+    _delegation: Any = None,
 ) -> Data:
-    actor = _actor()
+    from firefly_forge.consumed_terminal_reconciliations import _acting
+
+    actor = _acting(_delegation)
+    if _delegation is not None:
+        await _delegation.current()
     await service.completions._reader(run_id, actor, execute=request is not None)
     async with service.store._unit():
         run = await service.store.get_run(run_id)
@@ -463,9 +474,12 @@ async def readback(
     if witness is None:
         raise KeyError("Consumed terminal action not found")
     p = witness["payload"]
+    if _delegation is not None:
+        _delegation.validate_witness(witness)
     if request is not None and (
         request.model_dump(mode="json") != p["request"]
-        or digest(ProjectAccess.actor_snapshot(actor)) != p["candidate"]["actor_digest"]
+        or _delegation is None
+        and digest(ProjectAccess.actor_snapshot(actor)) != p["candidate"]["actor_digest"]
     ):
         raise AccessDenied("Consumed terminal action belongs to another input or operator")
     marker = run.get("consumed_terminal_recovery") or {}
@@ -490,6 +504,8 @@ async def readback(
     await service.completions._reader(run_id, actor, execute=request is not None)
     if CURRENT_PRINCIPAL.get() != actor:
         raise AccessDenied("Consumed terminal reader changed during disclosure")
+    if _delegation is not None:
+        _delegation.fence()
     service.store.reject_credentials(result)
     return result
 
@@ -607,6 +623,7 @@ class PreparedConsumedReconciliationAuthority:
     generation: object
     reader: Any
     slot: Task[Any]
+    delegation: Any = None
 
     @property
     def candidate(self) -> ConsumedTerminalReconciliationCandidateV1:
@@ -663,6 +680,7 @@ class ConsumedTerminalExecution(FinalOutcomeExecution):
                 reconciliation.generation,
                 reconciliation.reader,
                 reconciliation.slot,
+                reconciliation.delegation,
             )
             if reconciliation
             else None
@@ -690,6 +708,20 @@ class ConsumedTerminalExecution(FinalOutcomeExecution):
 
     async def guard(self) -> None:
         store, journal = self.service.store, self.service.journal
+        delegated = self.reconciliation.delegation if self.reconciliation is not None else None
+        if delegated is not None:
+            await delegated.current()
+            delegated.validate_witness(self.witness, self.claim)
+            unit = current_unit_of_work()
+            if unit is not None:
+                from pyfly.data.transaction.synchronization import register_synchronization
+
+                from firefly_forge.consumed_terminal_reconciliations import ReconciliationCommitFence
+
+                if unit.owner_task is None:
+                    raise AccessDenied("Consumed continuation lost its exact native owner task")
+
+                register_synchronization(ReconciliationCommitFence(unit, unit.owner_task, delegated.fence))
         await store.assert_ownership()
         if (
             store.execution_ownership_token is not self.ownership
@@ -957,6 +989,8 @@ class ConsumedTerminalExecution(FinalOutcomeExecution):
             self._snapshot.source_fence.close()
 
     def snapshot_fence(self) -> None:
+        if self.reconciliation is not None and self.reconciliation.delegation is not None:
+            self.reconciliation.delegation.fence()
         from firefly_forge.sandbox import _directory_fd
 
         snapshot = self._snapshot

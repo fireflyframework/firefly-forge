@@ -54,6 +54,8 @@ def natural_policy_digest() -> str:
         "git_deliveries.py",
         "git_delivery_models.py",
         "scm_natural_effects.py",
+        "scm_consumed_continuations.py",
+        "scm_consumed_continuation_models.py",
         "scm_natural_checkpoints.py",
         "scm_poll_models.py",
         "scm_natural_feedback.py",
@@ -241,6 +243,12 @@ class SCMNaturalTasks:
                     "consumed": projection.get("consumed", False),
                 }
             )
+            if question is None:
+                from firefly_forge.scm_consumed_continuations import reference as consumed_reference
+
+                consumed = consumed_reference(run)
+                if consumed is not None:
+                    candidates[-1].update(consumed)
             if question is not None:
                 candidates[-1].update(origin="worker_journal", publication=projection["publication"])
                 if original.get("maintain_ticket") is not None:

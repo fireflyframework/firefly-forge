@@ -245,6 +245,7 @@ from firefly_forge.sandbox_persistence import ForgeSandboxRepository
 from firefly_forge.scm_actor_authority import SCMActorAuthority
 from firefly_forge.scm_actor_authority_controllers import SCMActorAuthorityController
 from firefly_forge.scm_connections import SCMConnections
+from firefly_forge.scm_consumed_continuations import SCMConsumedContinuations
 from firefly_forge.scm_linked_verification import SCMLinkedVerifications
 from firefly_forge.scm_maintain_ticket_controllers import MaintainTicketController
 from firefly_forge.scm_natural_controllers import SCMNaturalController
@@ -872,6 +873,14 @@ class FactoryConfiguration:
         authority = SCMLinkedVerifications(collaboration, verifications)
         store.scm_linked_verification_authority = authority
         collaboration.linked_verification_authority = authority
+        return authority
+
+    @bean
+    def scm_consumed_continuations(
+        self, collaboration: Collaboration, completions: KnownWorkerCompletions
+    ) -> SCMConsumedContinuations:
+        authority = SCMConsumedContinuations(collaboration, completions)
+        collaboration.consumed_continuation_authority = authority
         return authority
 
     @bean

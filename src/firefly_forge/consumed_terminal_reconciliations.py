@@ -59,6 +59,17 @@ class ReconciliationCommitFence(TransactionSynchronizationAdapter):
         self._current()
 
 
+def _acting(delegation: Any = None) -> Any:
+    if delegation is None:
+        return _actor()
+    from firefly_forge.scm_consumed_continuations import PreparedConsumedContinuation
+
+    if not isinstance(delegation, PreparedConsumedContinuation):
+        raise AccessDenied("Delegated reconciliation requires its concrete verified same-claim authority")
+    delegation._view()
+    return delegation.actor
+
+
 def _owner_digest(store: Any, generation: object) -> str:
     return digest({"owner": store.execution_ownership_identity, "configuration": id(generation)})
 
@@ -161,12 +172,15 @@ class PreparedReconciliation:
     ownership: object
     generation: object
     actor: Any
+    delegation: Any = None
 
 
-async def _prepare(service: Any, run_id: str, request_id: str) -> PreparedReconciliation:
+async def _prepare(service: Any, run_id: str, request_id: str, *, _delegation: Any = None) -> PreparedReconciliation:
     _outside_unit()
     _ids(run_id, request_id)
-    actor = _actor()
+    actor = _acting(_delegation)
+    if _delegation is not None:
+        await _delegation.current()
     run = await service.completions._reader(run_id, actor, execute=True)
     await service.completions._execution(run, actor)
     await service.store.assert_ownership()
@@ -183,9 +197,11 @@ async def _prepare(service: Any, run_id: str, request_id: str) -> PreparedReconc
     if witness is None:
         raise KeyError("Consumed terminal action not found")
     p = witness["payload"]
-    if digest(ProjectAccess.actor_snapshot(actor)) != p["candidate"]["actor_digest"]:
+    if _delegation is None and digest(ProjectAccess.actor_snapshot(actor)) != p["candidate"]["actor_digest"]:
         raise AccessDenied("Reconciliation belongs to the original authenticated operator")
     claim = _stopped(run, task, entries, witness)
+    if _delegation is not None:
+        _delegation.validate_witness(witness, claim)
     final = (await prepare_final_outcome(p["run"], p["task"], entries[: witness["sequence"] - 1])).data
     proof = p["candidate"]["proof"]
     if digest(final["report"]) != proof["terminal_report_sha256"]:
@@ -198,6 +214,9 @@ async def _prepare(service: Any, run_id: str, request_id: str) -> PreparedReconc
     )
 
     async def current() -> None:
+        if _delegation is not None:
+            await _delegation.current()
+            _delegation.validate_witness(witness, claim)
         await service.store.assert_ownership()
         await service.completions._execution(run, actor)
         if any(
@@ -218,6 +237,8 @@ async def _prepare(service: Any, run_id: str, request_id: str) -> PreparedReconc
                 or _entries(await service.journal.records.find_for_run(identifier(run_id)), run_id) != entries
             ):
                 raise ValueError("Reconciliation current native cut changed")
+        if _delegation is not None:
+            _delegation.fence()
 
     source = await workspace_source_capture(service.store, service.engine.workspaces / run_id, assert_current=current)
     try:
@@ -255,7 +276,7 @@ async def _prepare(service: Any, run_id: str, request_id: str) -> PreparedReconc
         if git_index_identity(service.engine.workspaces / run_id) != source.index:
             raise ValueError("Reconciliation staged index changed")
         return PreparedReconciliation(
-            candidate, run, task, entries, witness, claim, final, source, ownership, generation, actor
+            candidate, run, task, entries, witness, claim, final, source, ownership, generation, actor, _delegation
         )
     except BaseException:
         if source.fence is not None:
@@ -263,10 +284,10 @@ async def _prepare(service: Any, run_id: str, request_id: str) -> PreparedReconc
         raise
 
 
-async def candidate(service: Any, run_id: str, request_id: str) -> Data:
+async def candidate(service: Any, run_id: str, request_id: str, *, _delegation: Any = None) -> Data:
     with prepared_credential_rejection(service.store):
         async with mode_execution_scope(service.journal, run_id):
-            prepared = await _prepare(service, run_id, request_id)
+            prepared = await _prepare(service, run_id, request_id, _delegation=_delegation)
             try:
                 return prepared.candidate
             finally:
@@ -281,7 +302,11 @@ def validate_record(record: Data, entries: list[Data]) -> Data:
     if (
         record["kind"] != KIND
         or [e for e in entries if e["digest"] == record["digest"]] != [record]
-        or set(p) != {"version", "candidate", "request", "run", "task"}
+        or set(p)
+        not in (
+            {"version", "candidate", "request", "run", "task"},
+            {"version", "candidate", "request", "run", "task", "scm_authority"},
+        )
         or type(p["version"]) is not int
         or p["version"] != 1
         or c["run_id"] != record["run_id"]
@@ -302,15 +327,39 @@ def validate_record(record: Data, entries: list[Data]) -> Data:
         or c["source_digest"] != witness["payload"]["candidate"]["proof"]["source_digest"]
     ):
         raise ValueError("Reconciliation authority changed its original actor, attempt or source")
+    if "scm_authority" in p:
+        from firefly_forge.scm_consumed_continuation_models import SCMConsumedContinuationAuthorityV1
+
+        delegated = SCMConsumedContinuationAuthorityV1.model_validate(p["scm_authority"])
+        if (
+            delegated.scope.run_id != c["run_id"]
+            or delegated.request_id != c["request_id"]
+            or delegated.recovery_digest != c["recovery_digest"]
+            or delegated.claim_digest != c["claim_digest"]
+            or delegated.original_actor_digest != c["actor_digest"]
+            or delegated.scope.native_user_id != witness["payload"]["actor"]["user_id"]
+            or any(
+                getattr(delegated.scope, key) != p["run"].get(key)
+                for key in ("project_id", "repository_id", "component_id")
+            )
+        ):
+            raise ValueError("Delegated reconciliation changed its original claim or scoped native person")
     return p
 
 
 async def readback(
-    service: Any, run_id: str, request_id: str, body: ConsumedTerminalReconciliationInputV1 | None = None
+    service: Any,
+    run_id: str,
+    request_id: str,
+    body: ConsumedTerminalReconciliationInputV1 | None = None,
+    *,
+    _delegation: Any = None,
 ) -> Data:
     _outside_unit()
     _ids(run_id, request_id)
-    actor = _actor()
+    actor = _acting(_delegation)
+    if _delegation is not None:
+        await _delegation.current()
     run = await service.completions._reader(run_id, actor, execute=True)
     await service.completions._execution_authority(run, actor)
     async with service.store._unit():
@@ -321,34 +370,50 @@ async def readback(
     p = validate_record(record, entries)
     c = p["candidate"]
     request = ConsumedTerminalReconciliationInputV1.model_validate(p["request"])
-    if digest(ProjectAccess.actor_snapshot(actor)) != c["actor_digest"] or body is not None and body != request:
+    if (
+        (_delegation is None and digest(ProjectAccess.actor_snapshot(actor)) != c["actor_digest"])
+        or body is not None
+        and body != request
+    ):
         raise AccessDenied("Consumed terminal reconciliation belongs to another operator or request")
+    if _delegation is not None:
+        _delegation.validate_witness(find_witness(entries, request_id))
+    from firefly_forge.consumed_terminal_completions import readback as settlement_readback
+
     value = dict(
         version=1,
         candidate=c,
         request=request.model_dump(mode="json"),
         record_digest=record["digest"],
-        settlement=await service.get(run_id, request_id),
+        settlement=await service.get(run_id, request_id)
+        if _delegation is None
+        else await settlement_readback(service, run_id, request_id, _delegation=_delegation),
     )
     result = ConsumedTerminalReconciliationReceiptV1.model_validate(value).model_dump(mode="json")
     await service.store.admit_credentials(result)
     await service.completions._reader(run_id, actor, execute=True)
     if CURRENT_PRINCIPAL.get() != actor:
         raise AccessDenied("Reconciliation reader changed during disclosure")
+    if _delegation is not None:
+        _delegation.fence()
     service.store.reject_credentials(result)
     return result
 
 
-async def reconcile(service: Any, run_id: str, request_id: str, body: ConsumedTerminalReconciliationInputV1) -> Data:
+async def reconcile(
+    service: Any, run_id: str, request_id: str, body: ConsumedTerminalReconciliationInputV1, *, _delegation: Any = None
+) -> Data:
     _outside_unit()
     _ids(run_id, request_id)
     body = ConsumedTerminalReconciliationInputV1.model_validate(body.model_dump(mode="json"))
-    actor = _actor()
+    actor = _acting(_delegation)
+    if _delegation is not None:
+        await _delegation.current()
     await service.completions._reader(run_id, actor, execute=True)
     async with service.store._unit():
         entries = _entries(await service.journal.records.find_for_run(identifier(run_id)), run_id)
     if _record(entries, request_id) is not None:
-        return await readback(service, run_id, request_id, body)
+        return await readback(service, run_id, request_id, body, _delegation=_delegation)
     if service.engine is None:
         raise ValueError("Reconciliation requires its native execution worker")
     if service.store.runtime_roles is not None:
@@ -356,7 +421,7 @@ async def reconcile(service: Any, run_id: str, request_id: str, body: ConsumedTe
     async with service.engine.publication_lock:
         with prepared_credential_rejection(service.store):
             async with mode_execution_scope(service.journal, run_id):
-                prepared = await _prepare(service, run_id, request_id)
+                prepared = await _prepare(service, run_id, request_id, _delegation=_delegation)
                 reserved = False
                 try:
                     if body.candidate_digest != prepared.candidate["digest"]:
@@ -371,6 +436,8 @@ async def reconcile(service: Any, run_id: str, request_id: str, body: ConsumedTe
                         run=prepared.run,
                         task=prepared.task,
                     )
+                    if _delegation is not None:
+                        p["scm_authority"] = _delegation.seal.model_dump(mode="json")
                     await service.store.admit_credentials(p)
                     if (
                         runtime_contract() != prepared.candidate["runtime_contract"]
@@ -383,6 +450,8 @@ async def reconcile(service: Any, run_id: str, request_id: str, body: ConsumedTe
                         raise AccessDenied("Reconciliation lost its reserved native owner task")
 
                     def final_fence() -> None:
+                        if _delegation is not None:
+                            _delegation.fence()
                         if (
                             service.store.execution_ownership_token is not prepared.ownership
                             or service.store.configuration.write_generation is not prepared.generation
@@ -414,6 +483,9 @@ async def reconcile(service: Any, run_id: str, request_id: str, body: ConsumedTe
                         await service.journal._run(run_id)
                         await service.store.assert_ownership()
                         await service.completions._execution(prepared.run, actor)
+                        if _delegation is not None:
+                            await _delegation.current()
+                            _delegation.validate_witness(prepared.witness, prepared.claim)
                         task = await service.journal._task(run_id, "implement")
                         if (
                             await service.store.get_run(run_id) != prepared.run
@@ -451,7 +523,7 @@ async def reconcile(service: Any, run_id: str, request_id: str, body: ConsumedTe
                         prepared.claim,
                         prepared.final,
                         reconciliation=PreparedConsumedReconciliationAuthority(
-                            record, prepared.ownership, prepared.generation, prepared.actor, slot
+                            record, prepared.ownership, prepared.generation, prepared.actor, slot, _delegation
                         ),
                     )
                     await service.engine.continue_agent_checkpoint(execution)
@@ -459,4 +531,4 @@ async def reconcile(service: Any, run_id: str, request_id: str, body: ConsumedTe
                     prepared.source.fence.close()
                     if reserved:
                         service.engine.release_agent_restore(run_id)
-    return await readback(service, run_id, request_id, body)
+    return await readback(service, run_id, request_id, body, _delegation=_delegation)

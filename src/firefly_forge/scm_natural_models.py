@@ -82,6 +82,7 @@ class NaturalResolution(BaseModel):
         "checkpoint",
         "verification_request",
         "verification_confirm",
+        "consumed_continue",
     ]
     reason: str
     candidates: list[Data] = Field(max_length=200)
@@ -285,6 +286,29 @@ def resolve_task(
                 }
             )
         return result.model_copy(update={"reason": "question_not_pending"})
+    if row.get("origin") == "consumed_terminal_claim" and decision.intent in {"answer", "resume"}:
+        marker = row.get("consumed_continuation") or {}
+        if (
+            decision.intent != "resume"
+            or row.get("run_status") != "paused"
+            or row.get("consumed") is not False
+            or re.fullmatch(r"[a-f0-9]{32}", str(marker.get("request_id", ""))) is None
+            or row.get("question_id") != "consumed-" + str(marker.get("request_id"))
+            or any(
+                re.fullmatch(r"[a-f0-9]{64}", str(marker.get(key, ""))) is None
+                for key in ("record_digest", "claim_digest")
+            )
+        ):
+            return result.model_copy(update={"reason": "consumed_local_continuation_only"})
+        return result.model_copy(
+            update={
+                "state": "consumed_continue",
+                "reason": "same_claim_local_postprocessing",
+                "run_id": row["run_id"],
+                "question_id": row["question_id"],
+                "question_digest": row["question_digest"],
+            }
+        )
     if decision.intent in {"status", "checkpoint"}:
         return result.model_copy(
             update={"state": decision.intent, "reason": "current_verified_task", "run_id": row["run_id"]}
