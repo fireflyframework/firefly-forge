@@ -33,7 +33,7 @@ class ProjectComponent(BaseModel):
     kind: Literal["api", "web", "worker", "library", "fullstack"] = "api"
     backend: Backend = "pyfly"
     frontend: Frontend = "none"
-    verification: list[Command] = Field(default_factory=list, max_length=20)
+    verification: list[Command] = Field(default_factory=list)
     depends_on: list[str] = Field(default_factory=list)
     responsibility: str = Field(min_length=1, max_length=2000)
 

@@ -58,7 +58,7 @@ def test_configured_check_request_cannot_choose_argv_or_runtime_authority():
         {"run_id": "b" * 32},
         {"provider": "agentic"},
         {"command_index": -1},
-        {"command_index": 20},
+        {"command_index": "20"},
         {"command_index": True},
     ):
         with pytest.raises(ValidationError):
@@ -97,10 +97,10 @@ def test_coding_check_grant_requires_distinct_configured_indices_and_explicit_fu
     for change in (
         {"command_indices": []},
         {"command_indices": [0, 0]},
-        {"command_indices": [20]},
+        {"command_indices": [-1]},
         {"command_indices": [True]},
         {"recovery_request_id": None},
-        {"call_limit": 21},
+        {"call_limit": 0},
         {"reason": " "},
         {"argv": ["other"]},
     ):

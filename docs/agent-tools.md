@@ -33,6 +33,10 @@ Firefly Agentic registers the tools allowed by the run's frozen role configurati
 
 Use the [tool prerequisites guide](tooling-prerequisites.md) to check every phase and provider before enabling a capability. Commands, browsers, internet search and external MCP are optional configured capabilities; the initial implementation role grants the six confined source tools.
 
+Run, component and maintenance definitions retain the full declared verification list without a fixed command-count ceiling. Configured-check requests select an index from that list; the executor checks both its existence and the operator's granted scope. For example, a product with 51 checks can select check 50 using its zero-based index, when its configured execution allowance leaves enough capacity for that call and final verification.
+
+The selected runner's execution allowance still governs actual calls. Grant admission reserves capacity for independent final verification, and a restart preserves calls already spent. Increasing a definition's size does not change a retained run's commands, grants or counters. Command validation and any explicitly selected work deadlines continue to apply.
+
 Native tool arguments reject known configured credentials before file writes or external requests. Text returned by every native tool is redacted against the shared server credential registry before the model receives it. This checks known values and their configured representations; it does not discover every possible secret in a repository.
 
 Paths cannot traverse outside the component. Source read and write operations reject symlinks, hardlinks, Git metadata and credential filenames. Git diff reads only the component's admitted source paths and does not update the index. It includes tracked changes and nonignored untracked source files, representing new files as added-file patches without staging them. The response covers at most 100 paths and 128,000 characters, with explicit truncation; it is not a complete project diff when truncated. A rejected line edit requires reading the new file before retrying.
