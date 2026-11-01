@@ -188,14 +188,14 @@
   background: var(--surface);
 }
 .source-file-heading {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 12px;
+  gap: 4px 12px;
   min-width: 0;
   padding: 12px 16px;
 }
 .source-file-heading > div:first-child {
-  flex: 1 1 auto;
   min-width: 0;
 }
 .source-file-heading h3 {
@@ -211,17 +211,18 @@
   flex: 0 0 auto;
   color: var(--muted);
 }
-.source-file-heading h3 > span,
-.source-breadcrumb {
+.source-file-heading h3 > span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .source-breadcrumb {
-  margin: 3px 0 0;
-  font-size: 11px;
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 12px;
   line-height: 1.6;
   color: var(--muted);
+  overflow-wrap: anywhere;
 }
 .source-file-tools {
   display: flex;

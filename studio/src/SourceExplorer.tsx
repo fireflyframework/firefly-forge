@@ -38,7 +38,12 @@ import {
 } from "./SourceExplorerData";
 import "./SourceExplorer.css";
 
-type Props = { connection: Connection; runId: string; requestId?: string };
+type Props = {
+  connection: Connection;
+  runId: string;
+  requestId?: string;
+  onContentReady?: () => void;
+};
 type Problem = ReturnType<typeof sourceProblem>;
 const number = (value: number) => value.toLocaleString("en-US");
 function Notice({
@@ -82,7 +87,12 @@ export function SourceExplorer(props: Props) {
     />
   );
 }
-function SourceSession({ connection, runId, requestId }: Props) {
+function SourceSession({
+  connection,
+  runId,
+  requestId,
+  onContentReady,
+}: Props) {
   const { base, token, authenticated } = connection;
   const scoped = useMemo(
     () => ({ base, token, authenticated }),
@@ -248,6 +258,7 @@ function SourceSession({ connection, runId, requestId }: Props) {
               connection={scoped}
               requestId={requestId}
               onProblem={hold}
+              onContentReady={onContentReady}
             />
           )}
         </>
@@ -299,11 +310,13 @@ function Snapshot({
   connection,
   requestId,
   onProblem,
+  onContentReady,
 }: {
   selected: SourceRevision;
   connection: Connection;
   requestId?: string;
   onProblem: (error: unknown) => void;
+  onContentReady?: () => void;
 }) {
   const reference = selected.reference;
   return (
@@ -329,6 +342,7 @@ function Snapshot({
           reference={reference}
           requestId={requestId}
           onProblem={onProblem}
+          onContentReady={onContentReady}
         />
       )}
     </>
@@ -339,13 +353,21 @@ function CatalogBrowser({
   reference,
   requestId,
   onProblem,
+  onContentReady,
 }: {
   connection: Connection;
   reference: SourceReference;
   requestId?: string;
   onProblem: (error: unknown) => void;
+  onContentReady?: () => void;
 }) {
   const [page, setPage] = useState(0);
+  const pageFocus = useRef(false);
+  const takePageFocus = useCallback(() => {
+    const requested = pageFocus.current;
+    pageFocus.current = false;
+    return requested;
+  }, []);
   return (
     <CatalogPage
       key={page}
@@ -353,8 +375,13 @@ function CatalogBrowser({
       reference={reference}
       requestId={requestId}
       page={page}
-      setPage={setPage}
+      setPage={(next) => {
+        pageFocus.current = true;
+        setPage(next);
+      }}
+      takePageFocus={takePageFocus}
       onProblem={onProblem}
+      onContentReady={onContentReady}
     />
   );
 }
@@ -364,14 +391,18 @@ function CatalogPage({
   requestId,
   page,
   setPage,
+  takePageFocus,
   onProblem,
+  onContentReady,
 }: {
   connection: Connection;
   reference: SourceReference;
   requestId?: string;
   page: number;
   setPage: (page: number) => void;
+  takePageFocus: () => boolean;
   onProblem: (error: unknown) => void;
+  onContentReady?: () => void;
 }) {
   const contentTarget = useRef<HTMLDivElement>(null);
   const moveFocus = useRef(false);
@@ -412,6 +443,9 @@ function CatalogPage({
       contentTarget.current?.focus();
     }
   }, [selected]);
+  useEffect(() => {
+    if (catalog && takePageFocus()) contentTarget.current?.focus();
+  }, [catalog, takePageFocus]);
   function chooseFile(index: number) {
     setShowFiles(false);
     if (selected === index) contentTarget.current?.focus();
@@ -512,6 +546,7 @@ function CatalogPage({
             path={path}
             manifest={manifest}
             onProblem={onProblem}
+            onContentReady={onContentReady}
           />
         )}
       </div>
@@ -585,6 +620,7 @@ function SourceFileBrowser(props: {
   path: string;
   manifest: string;
   onProblem: (error: unknown) => void;
+  onContentReady?: () => void;
 }) {
   const [offset, setOffset] = useState(0);
   return (
@@ -595,14 +631,14 @@ function SourceFileBrowser(props: {
             <FileCode2 size={17} aria-hidden="true" />
             <span>{sourceBasename(props.entry.path)}</span>
           </h3>
-          <p className="source-breadcrumb" title={props.entry.path}>
-            {props.entry.path}
-          </p>
         </div>
         <div className="source-file-tools">
           <span>{sourceSize(props.entry.byte_count)}</span>
           <CopyButton value={props.entry.path} label="Copy path" />
         </div>
+        <p className="source-breadcrumb" title={props.entry.path}>
+          {props.entry.path}
+        </p>
       </header>
       <FileWindow
         key={offset}
@@ -622,6 +658,7 @@ function FileWindow({
   path,
   manifest,
   onProblem,
+  onContentReady,
   offset,
   setOffset,
 }: {
@@ -633,6 +670,7 @@ function FileWindow({
   path: string;
   manifest: string;
   onProblem: (error: unknown) => void;
+  onContentReady?: () => void;
   offset: number;
   setOffset: (offset: number) => void;
 }) {
@@ -691,6 +729,9 @@ function FileWindow({
     offset,
     onProblem,
   ]);
+  useEffect(() => {
+    if (content) onContentReady?.();
+  }, [content, onContentReady]);
   if (!content) return <p role="status">Verifying source window…</p>;
   const bytes = expanded ? content.bytes : content.bytes.subarray(0, 256);
   return (

@@ -433,3 +433,68 @@ test("a late response from the previous run cannot cross a scoped view switch", 
   expect(control.calls.some((url) => url.includes("f".repeat(32)))).toBe(true);
   expect(control.writes).toBe(0);
 });
+
+test("catalog paging keeps keyboard focus with the newly loaded file", async ({
+  page,
+}) => {
+  const control = await intercept(page);
+  await enter(page);
+  const panel = page.getByRole("region", {
+    name: "Recorded source snapshot",
+    exact: true,
+  });
+  const content = panel.getByRole("region", {
+    name: "Recorded file content",
+    exact: true,
+  });
+  await expect(panel.getByLabel("Recorded source code")).toContainText(
+    "retainStock",
+  );
+  await panel.getByRole("button", { name: "Next files", exact: true }).focus();
+  await page.keyboard.press("Enter");
+  await expect(panel.getByLabel("Recorded source code")).toContainText(
+    "columns",
+  );
+  await expect(content).toBeFocused();
+  await panel
+    .getByRole("button", { name: "Previous files", exact: true })
+    .focus();
+  await page.keyboard.press("Enter");
+  await expect(panel.getByLabel("Recorded source code")).toContainText(
+    "retainStock",
+  );
+  await expect(content).toBeFocused();
+  expect(control.writes).toBe(0);
+  expect(control.external).toBe(0);
+});
+
+test("the full file path remains readable on a narrow screen", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 900 });
+  const control = await intercept(page);
+  await enter(page);
+  const panel = page.getByRole("region", {
+    name: "Recorded source snapshot",
+    exact: true,
+  });
+  await expect(panel.getByLabel("Recorded source code")).toContainText(
+    "retainStock",
+  );
+  const path = panel.locator(".source-breadcrumb");
+  await expect(path).toHaveText(longPath);
+  const geometry = await path.evaluate((element) => ({
+    contentWidth: element.scrollWidth,
+    availableWidth: element.clientWidth,
+    height: element.getBoundingClientRect().height,
+  }));
+  expect(geometry.contentWidth).toBeLessThanOrEqual(geometry.availableWidth);
+  expect(geometry.height).toBeGreaterThan(24);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth > innerWidth + 1,
+    ),
+  ).toBe(false);
+  expect(control.writes).toBe(0);
+  expect(control.external).toBe(0);
+});

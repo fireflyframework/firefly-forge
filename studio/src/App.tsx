@@ -2851,6 +2851,21 @@ function RunDetail({
     const link = linkedRun(window.location.search);
     return link?.id === run.id && link.questions ? "questions" : "timeline";
   });
+  const evidencePanel = useRef<HTMLElement>(null);
+  const codeSelection = useRef(false);
+  function selectTab(next: typeof tab) {
+    if (next !== tab) codeSelection.current = next === "source";
+    setTab(next);
+  }
+  const sourceContentReady = useCallback(() => {
+    if (codeSelection.current) {
+      codeSelection.current = false;
+      evidencePanel.current?.scrollIntoView({
+        block: "start",
+        behavior: "instant",
+      });
+    }
+  }, []);
   const tabs = [
     { id: "timeline" as const, icon: Activity, label: "Timeline" },
     { id: "plan" as const, icon: BookOpen, label: "Plan" },
@@ -2892,7 +2907,7 @@ function RunDetail({
     }
   }
   return (
-    <section className="panel run-detail">
+    <section className="panel run-detail" ref={evidencePanel}>
       <div className="detail-tabs" role="tablist" aria-label="Run evidence">
         {tabs.map((item) => (
           <button
@@ -2903,7 +2918,7 @@ function RunDetail({
             aria-controls="run-evidence"
             tabIndex={tab === item.id ? 0 : -1}
             className={tab === item.id ? "active" : ""}
-            onClick={() => setTab(item.id)}
+            onClick={() => selectTab(item.id)}
             onKeyDown={(event) => {
               if (
                 ["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)
@@ -2919,7 +2934,7 @@ function RunDetail({
                           (event.key === "ArrowRight" ? 1 : -1) +
                           tabs.length) %
                         tabs.length;
-                setTab(tabs[next].id);
+                selectTab(tabs[next].id);
                 document.getElementById("tab-" + tabs[next].id)?.focus();
               }
             }}
@@ -3078,6 +3093,7 @@ function RunDetail({
             ])}
             connection={connection}
             runId={run.id}
+            onContentReady={sourceContentReady}
           />
         )}
         {tab === "verification" && (
