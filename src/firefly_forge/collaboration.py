@@ -2107,7 +2107,11 @@ class Collaboration:
                 drafted = {"body": retained["body"], "communication": retained["communication"]}
             elif natural_status:
                 drafted = await self.communication_writer.write(
-                    run, message, public_text, conversation=conversation_input
+                    run,
+                    message,
+                    public_text,
+                    conversation=conversation_input,
+                    status_draft=(data["natural_turn"].get("reply") or None),
                 )
             elif data.get("natural_turn") is not None:
                 drafted = {

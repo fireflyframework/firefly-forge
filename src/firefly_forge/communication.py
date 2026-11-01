@@ -320,6 +320,7 @@ def _factory_verification(run: Data, handoff: Data) -> Data:
         "request_id": requested.id,
         "reason": requested.question,
         "context": requested.context,
+        "request_basis": "recorded_request_not_current_results_or_authority",
         "handoff_status": state,
         "checks": {
             "source": "recorded_handoff" if handoff else "not_recorded",
@@ -677,8 +678,12 @@ def communication_facts(
             "recorded": current,
             "provenance": "unknown" if current is None else "current" if current else "not_recorded",
         }
-    from firefly_forge.communication_diagnostics import check_diagnostics, recorded_error
+    from firefly_forge.communication_diagnostics import check_diagnostics, claimed_recovery, recorded_error
 
+    if claim := claimed_recovery(run):
+        facts["consumed_terminal_recovery"] = claim
+        if facts.get("factory_verification", {}).get("handoff_status") == "held":
+            facts["factory_verification"]["next_native_action"] = claim["next_native_action"]
     if diagnostics := check_diagnostics(run):
         facts["check_diagnostics"] = diagnostics
     if detail := recorded_error(run):
@@ -727,6 +732,7 @@ def _validate_draft(draft: CommunicationDraft, facts: Data) -> str:
         "product",
         "audience",
         "check_status",
+        "consumed_terminal_recovery",
     } & facts.keys()
     if facts.get("conversation", {}).get("question_sha256"):
         required -= {"work", "requested_work", "product", "audience"}
@@ -888,6 +894,7 @@ class CommunicationWriter:
         assistant: CommunicationAssistantV1 | None = None,
         git_delivery: CommunicationGitDeliveryV1 | None = None,
         audience: CommunicationAudienceV1 | None = None,
+        status_draft: str | None = None,
     ) -> Data:
         facts = communication_facts(
             run,
@@ -897,7 +904,15 @@ class CommunicationWriter:
             git_delivery=git_delivery,
             audience=audience,
         )
-        context: Data = {}
+        context: Data = {"fact_packet_sha256": content_digest(facts)}
+        if status_draft is not None:
+            if not isinstance(status_draft, str) or not 1 <= len(status_draft) <= 4000 or conversation is None:
+                raise ValueError("A classifier draft requires bounded conversation context")
+            context["classifier_draft"] = {
+                "quotation": status_draft,
+                "source_sha256": hashlib.sha256(status_draft.encode()).hexdigest(),
+                "basis": "classifier_draft_not_evidence_or_authority",
+            }
         if conversation and conversation.question is not None:
             context["conversation_question"] = {
                 "quotation": conversation.question,
@@ -922,6 +937,8 @@ class CommunicationWriter:
             "facts_sha256": content_digest(facts),
             "context_sha256": content_digest(context),
         }
+        canonical_facts = json.dumps(facts, sort_keys=True)
+        canonical_context = json.dumps(context, sort_keys=True, ensure_ascii=False)
         if assistant is not None:
             copy = json.loads(prompt_text("collaboration/copy", version="1.0.1"))
             assistant_references = [
@@ -980,14 +997,14 @@ class CommunicationWriter:
             prompt = prompt_text(
                 "collaboration/publication-request" if publication else "collaboration/communication-request",
                 version="1.0.0" if publication else "1.0.3",
-                facts=json.dumps(facts, sort_keys=True),
+                facts=canonical_facts,
                 fact_ids=json.dumps(sorted(facts)),
-                **({"context": json.dumps(context, sort_keys=True, ensure_ascii=False)} if not publication else {}),
+                **({"context": canonical_context} if not publication else {}),
             )
             instructions = inject_skills(
                 prompt_text("collaboration/publication-system", version="1.0.1")
                 if publication
-                else prompt_text("collaboration/communication-system", version="1.0.9"),
+                else prompt_text("collaboration/communication-system", version="1.0.10"),
                 ["humanizer"],
             )
             language_instructions = (
@@ -1053,17 +1070,17 @@ class CommunicationWriter:
                     "collaboration/publication-review-system"
                     if publication
                     else "collaboration/communication-review-system",
-                    version="1.0.1" if publication else "1.0.6",
+                    version="1.0.1" if publication else "1.0.7",
                 )
                 if language_instructions:
                     review_instructions += "\n" + language_instructions["review"]
                 review_prompt = prompt_text(
                     "collaboration/communication-review-request",
                     version="1.0.1",
-                    facts=json.dumps(facts, sort_keys=True),
+                    facts=canonical_facts,
                     candidate=draft.model_dump_json(),
                     fact_ids=json.dumps(sorted(facts)),
-                    context=json.dumps(context, sort_keys=True, ensure_ascii=False),
+                    context=canonical_context,
                 )
                 self.store.reject_credentials([review_instructions, review_prompt])
                 evidence["review_prompt_sha256"] = hashlib.sha256(
@@ -1116,20 +1133,22 @@ class CommunicationWriter:
                     evidence["reason"] = "invalid_review"
                     return result
                 evidence["review"] = review.model_dump()
+                evidence["review_facts_sha256"] = evidence["facts_sha256"]
                 evidence["review_candidate_sha256"] = evidence["candidate_sha256"]
                 evidence["review_applies_to"] = "original_candidate"
                 if review.verdict != "supported" or not reader_approved:
                     repair_prompt = prompt_text(
                         "collaboration/communication-repair-request",
-                        version="1.0.1",
-                        facts=json.dumps(facts, sort_keys=True),
+                        version="1.0.2",
+                        facts=canonical_facts,
                         candidate=draft.model_dump_json(),
                         review=review.model_dump_json(),
                         fact_ids=json.dumps(sorted(facts)),
-                        context=json.dumps(context, sort_keys=True, ensure_ascii=False),
+                        context=canonical_context,
                     )
                     self.store.reject_credentials(repair_prompt)
                     evidence["repair_attempted"] = True
+                    evidence["repair_facts_sha256"] = evidence["facts_sha256"]
                     evidence["repair_prompt_sha256"] = hashlib.sha256(repair_prompt.encode()).hexdigest()
                     corrected = await agent.run(
                         repair_prompt,

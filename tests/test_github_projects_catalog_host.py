@@ -48,9 +48,17 @@ def test_projects_appends_eight_tools_after_the_exact_parent_prompt_rows():
         "get_github_projects_request",
         "observe_github_projects",
     }
-    assert {(entry["id"], entry["version"]) for entry in manifest["templates"][358:]} == {
+    assert {(entry["id"], entry["version"]) for entry in manifest["templates"][358:366]} == {
         ("mcp/" + name, "1.0.0") for name in names
     }
-    assert len(manifest["templates"]) == len(prompt_catalog().registry) == 366
+    prior = json.dumps(manifest["templates"][:366], sort_keys=True, separators=(",", ":")).encode()
+    assert hashlib.sha256(prior).hexdigest() == "8c907f8be997e8dae0d34e9a051dafefb8b420ca451f77c9d068051af5e2c634"
+    assert {(entry["id"], entry["version"]) for entry in manifest["templates"][366:]} == {
+        ("collaboration/communication-system", "1.0.10"),
+        ("collaboration/communication-review-system", "1.0.7"),
+        ("collaboration/communication-repair-request", "1.0.2"),
+        ("collaboration/communication-delivery-references", "1.0.0"),
+    }
+    assert len(manifest["templates"]) == len(prompt_catalog().registry) == 370
     for row in manifest["templates"]:
         assert hashlib.sha256((root / row["path"]).read_bytes()).hexdigest() == row["sha256"]

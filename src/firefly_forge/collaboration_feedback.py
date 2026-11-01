@@ -482,6 +482,19 @@ def communication_controls(data: Data, run: Data, repository: Data, host: str, s
         if url:
             safe(url)
             sections.append(prompt_text(template, url=url))
+    turn = data.get("natural_turn") or {}
+    if (turn.get("resolution") or {}).get("state") == "status" and isinstance(turn.get("reply"), str):
+        from firefly_forge.scm_natural_links import delivery_links
+
+        references = [
+            f"- [{link.kind}]({link.href}) · Run: `{link.run_id}` · Revision: `{link.checkpoint_revision}`"
+            for link in delivery_links(data, repository, host)
+            if link.href in turn["reply"] and link.href not in {review, reference_url} and safe(link.href) == link.href
+        ]
+        if references:
+            sections.append(
+                prompt_text("collaboration/communication-delivery-references", references="\n".join(references))
+            )
     if receipt_id:
         safe(receipt_id)
         run_reference = ""
