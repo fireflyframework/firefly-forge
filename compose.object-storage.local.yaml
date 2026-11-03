@@ -1,0 +1,28 @@
+# Copyright 2026 Firefly Software Foundation. SPDX-License-Identifier: Apache-2.0
+# Local emulation only. Supply an already installed image pinned by digest.
+name: forge-object-storage-local
+services:
+  minio:
+    image: ${FORGE_MINIO_IMAGE:?Set an installed MinIO image pinned by sha256 digest}
+    command: ["server", "/data", "--console-address", ":9001"]
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    environment:
+      MINIO_ROOT_USER_FILE: /run/secrets/minio_user
+      MINIO_ROOT_PASSWORD_FILE: /run/secrets/minio_password
+    secrets: [minio_user, minio_password]
+    volumes:
+      - objects:/data
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: "no"
+secrets:
+  minio_user:
+    file: ${FORGE_MINIO_USER_FILE:?Set a private local MinIO administrator identity file}
+  minio_password:
+    file: ${FORGE_MINIO_PASSWORD_FILE:?Set a private local MinIO administrator credential file}
+volumes:
+  objects:
